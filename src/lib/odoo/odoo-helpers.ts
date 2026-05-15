@@ -108,12 +108,32 @@ export async function fetchOdooProducts(
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
 ): Promise<{ products: Product[]; total: number }> {
-  // Step 1: get the website-scoped published template IDs (and their OOS flag)
+  // Step 1: get the website-scoped published template IDs (and their per-website OOS flag)
   const websiteSettingsMap = await fetchWebsitePublishedSettings(sessionId)
-  const publishedIds = Array.from(websiteSettingsMap.keys())
-  if (publishedIds.length === 0) return { products: [], total: 0 }
+  if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
-  const baseDomain = [['id', 'in', publishedIds], ['type', 'in', ['consu', 'storable']], ...domain]
+  // Split into two buckets:
+  //   oosIds  — OOS allowed → always visible regardless of stock
+  //   noOosIds — OOS not allowed → only visible when qty_available > 0
+  const oosIds: number[] = []
+  const noOosIds: number[] = []
+  for (const [id, allowOos] of websiteSettingsMap) {
+    if (allowOos) oosIds.push(id)
+    else noOosIds.push(id)
+  }
+
+  // Domain: (id in oosIds) OR (id in noOosIds AND qty_available > 0)
+  // Odoo prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms;
+  // remaining top-level terms are implicitly AND-ed.
+  const baseDomain: unknown[] = [
+    '|',
+    ['id', 'in', oosIds],
+    '&',
+    ['id', 'in', noOosIds],
+    ['qty_available', '>', 0],
+    ['type', 'in', ['consu', 'storable']],
+    ...domain,
+  ]
 
   // Total count
   const count = await callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as number
