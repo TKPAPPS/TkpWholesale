@@ -16,10 +16,15 @@ interface OdooProduct {
   public_categ_ids: number[]
   taxes_id: number[]
   qty_available: number
-  allow_out_of_stock_order: boolean
   type: string
   product_variant_ids: number[]
   packaging_ids: number[]
+}
+
+interface OdooWebsiteSetting {
+  product_tmpl_id: [number, string]
+  is_published: boolean
+  allow_out_of_stock_order: boolean
 }
 
 interface OdooPackaging {
@@ -79,15 +84,36 @@ interface OdooOrder {
 const PRODUCT_FIELDS = [
   'id', 'name', 'default_code', 'description_sale', 'list_price',
   'uom_id', 'public_categ_ids', 'taxes_id', 'qty_available',
-  'allow_out_of_stock_order', 'type', 'product_variant_ids', 'packaging_ids',
+  'type', 'product_variant_ids', 'packaging_ids',
 ]
+
+// Fetch the set of template IDs published on our website, plus their per-website OOS flag.
+// This is the source of truth — product.template.website_published is global, not per-website.
+async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<number, boolean>> {
+  // Use callKw directly so no artificial limit is applied
+  const settings = await callKw(
+    sessionId,
+    'product.website.settings',
+    'search_read',
+    [[['website_id', '=', WEBSITE_ID], ['is_published', '=', true]]],
+    { fields: ['product_tmpl_id', 'allow_out_of_stock_order'] },
+  ) as unknown as OdooWebsiteSetting[]
+
+  // Map: template_id → allow_out_of_stock_order (per-website flag)
+  return new Map(settings.map(s => [s.product_tmpl_id[0], s.allow_out_of_stock_order]))
+}
 
 export async function fetchOdooProducts(
   sessionId: string,
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
 ): Promise<{ products: Product[]; total: number }> {
-  const baseDomain = [['website_published', '=', true], ['type', 'in', ['consu', 'storable']], ...domain]
+  // Step 1: get the website-scoped published template IDs (and their OOS flag)
+  const websiteSettingsMap = await fetchWebsitePublishedSettings(sessionId)
+  const publishedIds = Array.from(websiteSettingsMap.keys())
+  if (publishedIds.length === 0) return { products: [], total: 0 }
+
+  const baseDomain = [['id', 'in', publishedIds], ['type', 'in', ['consu', 'storable']], ...domain]
 
   // Total count
   const count = await callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as number
@@ -194,7 +220,9 @@ export async function fetchOdooProducts(
     }
 
     const inStock = raw.qty_available > 0
-    const sellable = inStock || raw.allow_out_of_stock_order
+    // Use per-website OOS flag from product.website.settings, not the global template flag
+    const allowOos = websiteSettingsMap.get(raw.id) ?? false
+    const sellable = inStock || allowOos
 
     return {
       id: raw.id,
