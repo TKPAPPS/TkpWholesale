@@ -10,17 +10,27 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50:  '#f0f9ff',
-          100: '#e0f2fe',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          900: '#0c4a6e',
+          50:  '#fdf5f7',
+          100: '#f9e8ee',
+          200: '#f1c9d8',
+          300: '#e5a0bd',
+          400: '#d4699a',
+          500: '#bf3d76',
+          600: '#a02057',
+          700: '#6B1535',
+          800: '#541029',
+          900: '#3d0c1d',
+        },
+        gold: {
+          light: '#e8d58a',
+          DEFAULT: '#C8A84B',
+          dark:  '#a8852c',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         hebrew: ['Rubik', 'system-ui', 'sans-serif'],
+        serif: ['Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
       },
     },
   },

@@ -30,8 +30,9 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">
         <LoadingSpinner />
+        <p className="text-sm text-gray-400">Loading your portal…</p>
       </div>
     )
   }
@@ -39,9 +40,9 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#fafaf9]">
       <Navbar />
-      <main className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 py-6">
+      <main className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
     </div>

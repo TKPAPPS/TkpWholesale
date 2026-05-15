@@ -114,13 +114,13 @@ export default function ProductsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t(lang, 'products.search')}
-              className="w-full rounded-lg border border-gray-200 bg-white ps-9 pe-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="w-full rounded-lg border border-gray-200 bg-white ps-9 pe-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
             />
           </form>
           <select
             value={sort}
             onChange={(e) => { setSort(e.target.value as typeof sort); setPage(0) }}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
           >
             <option value="name">{t(lang, 'products.sortName')}</option>
             <option value="price">{t(lang, 'products.sortPrice')}</option>
