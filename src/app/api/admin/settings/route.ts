@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { odooAuthenticate, callKw } from '@/lib/odoo/client'
+import { callKw } from '@/lib/odoo/client'
 import { bustHideOosCache, bustWebsiteSettingsCache } from '@/lib/odoo/odoo-helpers'
+import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 
 const PARAM_KEY = 'b2b_portal.hide_out_of_stock'
-
-async function getAdminSession(): Promise<string> {
-  const login = process.env.ODOO_ADMIN_LOGIN!
-  const password = process.env.ODOO_ADMIN_PASSWORD!
-  const { session_id } = await odooAuthenticate(login, password)
-  return session_id
-}
 
 async function readParam(sessionId: string): Promise<string | false> {
   const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
@@ -26,7 +20,8 @@ export async function GET() {
     return NextResponse.json({
       hide_out_of_stock: value === false ? true : value === 'true',
     })
-  } catch (err) {
+  } catch (err: unknown) {
+    invalidateAdminSession()
     console.error('admin settings GET error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
   }
@@ -38,7 +33,7 @@ export async function POST(req: NextRequest) {
     const sessionId = await getAdminSession()
 
     const existing = await callKw(sessionId, 'ir.config_parameter', 'search',
-      [[['key', '=', PARAM_KEY]]], {},
+    [[['key', '=', PARAM_KEY]]], {},
     ) as number[]
 
     if (existing.length > 0) {
@@ -55,6 +50,7 @@ export async function POST(req: NextRequest) {
     bustWebsiteSettingsCache()
     return NextResponse.json({ ok: true, hide_out_of_stock })
   } catch (err) {
+    invalidateAdminSession()
     console.error('admin settings POST error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
   }

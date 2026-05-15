@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { odooAuthenticate, callKw } from '@/lib/odoo/client'
+import { callKw } from '@/lib/odoo/client'
+import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 const PARAM_KEY = 'b2b_portal.hidden_category_ids'
-
-async function getAdminSession(): Promise<string> {
-  const { session_id } = await odooAuthenticate(
-    process.env.ODOO_ADMIN_LOGIN!,
-    process.env.ODOO_ADMIN_PASSWORD!,
-  )
-  return session_id
-}
 
 async function readHiddenIds(sessionId: string): Promise<number[]> {
   const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
@@ -55,6 +48,7 @@ export async function GET() {
       hidden_ids: hiddenIds,
     })
   } catch (err) {
+    invalidateAdminSession()
     console.error('admin categories GET error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
   }
@@ -78,6 +72,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, hidden_count: hidden_ids.length })
   } catch (err) {
+    invalidateAdminSession()
     console.error('admin categories POST error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
   }
