@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const page = Number(searchParams.get('page') ?? 0)
   const perPage = Number(searchParams.get('per_page') ?? 24)
   const sort = searchParams.get('sort') ?? 'name'
+  const createdAfter = searchParams.get('created_after') ?? null   // ISO date string e.g. 2025-05-01
 
   if (USE_MOCK) {
     let products = MOCK_PRODUCTS.filter((p) => p.sellable || !p.in_stock)
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
 
     const domain: unknown[] = []
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
+    if (createdAfter) domain.push(['create_date', '>=', createdAfter])
 
     const odooSort =
       sort === 'price'         ? 'list_price asc' :

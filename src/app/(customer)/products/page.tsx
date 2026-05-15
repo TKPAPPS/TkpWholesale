@@ -10,7 +10,7 @@ import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpin
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { Input } from '@/components/ui/Input'
-import { Search, Package, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
+import { Search, Package, ChevronDown, ChevronUp, ClipboardList, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 const PER_PAGE = 24
@@ -45,7 +45,7 @@ export default function ProductsPage() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/products?sort=new_arrivals&per_page=8&page=0&lang=' + lang)
+    fetch('/api/products?sort=new_arrivals&per_page=4&page=0&lang=' + lang)
       .then((r) => r.json())
       .then((d) => setNewArrivals(d.products ?? []))
   }, [lang])
@@ -117,6 +117,10 @@ export default function ProductsPage() {
                 <span className="text-brand-700">{t(lang, 'newArrivals.title')}</span>
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-700 text-white">NEW</span>
               </button>
+              <Link href="/new-arrivals" className="flex items-center gap-1.5 text-xs text-brand-700 hover:underline font-medium">
+                <Sparkles className="h-3.5 w-3.5" />
+                {t(lang, 'newArrivals.title')}
+              </Link>
             </div>
             {!newArrivalsCollapsed && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
