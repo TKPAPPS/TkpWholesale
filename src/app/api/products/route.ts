@@ -31,23 +31,30 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
-    const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, fetchRecentlyPublishedIds } = await import('@/lib/odoo/odoo-helpers')
 
     const domain: unknown[] = []
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
-    if (createdAfter) domain.push(['create_date', '>=', createdAfter])
+
+    // For new arrivals, filter by when the product was published to our website
+    // (product.website.settings.create_date), not the template's create_date.
+    if (sort === 'new_arrivals' && createdAfter) {
+      const recentIds = await fetchRecentlyPublishedIds(parsed.odoo_session_id, createdAfter)
+      if (recentIds.length > 0) domain.push(['id', 'in', recentIds])
+    } else if (createdAfter) {
+      domain.push(['create_date', '>=', createdAfter])
+    }
 
     const odooSort =
-      sort === 'price'         ? 'list_price asc' :
-      sort === 'new_arrivals'  ? 'create_date desc' :
-      sort === 'recently_ordered' ? 'name asc' :   // fallback — real impl needs order-join
+      sort === 'price'            ? 'list_price asc' :
+      sort === 'new_arrivals'     ? 'create_date desc' :
+      sort === 'recently_ordered' ? 'name asc' :
       'name asc'
 
     const { products, total } = await fetchOdooProducts(parsed.odoo_session_id, domain, {
       limit: perPage,
       offset: page * perPage,
       order: odooSort,
-      ignoreOos: sort === 'new_arrivals',
     })
 
     return NextResponse.json({ products, total, page, per_page: perPage })

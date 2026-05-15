@@ -11,7 +11,7 @@ import { Sparkles, ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
 
 const PER_PAGE = 24
-const DAYS = 14
+const DAYS = 90
 
 function getCreatedAfter(): string {
   const d = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000)
@@ -78,7 +78,7 @@ export default function NewArrivalsPage() {
       ) : products.length === 0 && !odooError ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
           <Package className="h-12 w-12 text-gray-300" />
-          <p className="text-gray-500 font-medium">No new products in the past {DAYS} days.</p>
+          <p className="text-gray-500 font-medium">No new products added in the past {DAYS} days.</p>
           <Link
             href="/products"
             className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-medium hover:bg-brand-800 transition-colors"

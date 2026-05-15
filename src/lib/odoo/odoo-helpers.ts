@@ -109,6 +109,14 @@ async function getHideOutOfStock(sessionId: string): Promise<boolean> {
   }
 }
 
+export async function fetchRecentlyPublishedIds(sessionId: string, publishedAfter: string): Promise<number[]> {
+  const rows = await callKw(sessionId, 'product.website.settings', 'search_read',
+    [[['website_id', '=', WEBSITE_ID], ['is_published', '=', true], ['create_date', '>=', publishedAfter]]],
+    { fields: ['product_tmpl_id'] },
+  ) as unknown as { product_tmpl_id: [number, string] }[]
+  return rows.map(r => r.product_tmpl_id[0])
+}
+
 // Cache for website published settings — costs 1.1s to fetch 2231 rows, so cache 5 minutes
 let _websiteSettingsCache: { map: Map<number, boolean>; expires: number } | null = null
 
@@ -136,7 +144,7 @@ async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<num
 export async function fetchOdooProducts(
   sessionId: string,
   domain: unknown[],
-  opts: { limit?: number; offset?: number; order?: string; ignoreOos?: boolean } = {},
+  opts: { limit?: number; offset?: number; order?: string } = {},
 ): Promise<{ products: Product[]; total: number }> {
   // Step 1: fetch website settings and the portal hide-OOS toggle in parallel
   const [websiteSettingsMap, hideOos] = await Promise.all([
@@ -148,7 +156,7 @@ export async function fetchOdooProducts(
   const publishedIds = Array.from(websiteSettingsMap.keys())
   let baseDomain: unknown[]
 
-  if (hideOos && !opts.ignoreOos) {
+  if (hideOos) {
     // Split into two buckets:
     //   oosIds  — OOS allowed → always visible regardless of stock
     //   noOosIds — OOS not allowed → only visible when qty_available > 0
@@ -171,7 +179,7 @@ export async function fetchOdooProducts(
       ...domain,
     ]
   } else {
-    // ignoreOos=true (e.g. New Arrivals) or admin hide-OOS toggle off: show all published products
+    // hide-OOS toggle off: show all published products regardless of stock
     baseDomain = [
       ['id', 'in', publishedIds],
       ['type', 'in', ['consu', 'storable']],
