@@ -54,7 +54,7 @@ function CategoryItem({ cat, selectedId, onSelect, depth = 0 }: {
 export function Sidebar({ categories, selectedCategoryId, onSelect }: SidebarProps) {
   const { lang } = useLangStore()
   return (
-    <aside className="w-56 shrink-0">
+    <aside className="w-56 shrink-0 sticky top-8 max-h-[calc(100vh-5rem)] overflow-y-auto">
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-3 mb-2">Categories</p>
       <button
         className={cn(
