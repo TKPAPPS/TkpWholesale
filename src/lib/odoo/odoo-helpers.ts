@@ -87,6 +87,28 @@ const PRODUCT_FIELDS = [
   'type', 'product_variant_ids', 'packaging_ids',
 ]
 
+// In-memory cache for the hide_out_of_stock portal setting (TTL: 60s)
+let _hideOosCache: { value: boolean; expires: number } | null = null
+
+export function bustHideOosCache() { _hideOosCache = null }
+
+async function getHideOutOfStock(sessionId: string): Promise<boolean> {
+  const now = Date.now()
+  if (_hideOosCache && now < _hideOosCache.expires) return _hideOosCache.value
+
+  try {
+    const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
+      [[['key', '=', 'b2b_portal.hide_out_of_stock']]],
+      { fields: ['value'], limit: 1 },
+    ) as unknown as { value: string }[]
+    const value = rows[0]?.value === 'false' ? false : true  // default true if not set
+    _hideOosCache = { value, expires: now + 60_000 }
+    return value
+  } catch {
+    return true  // safe default: hide OOS products
+  }
+}
+
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
 async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<number, boolean>> {
@@ -108,32 +130,46 @@ export async function fetchOdooProducts(
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
 ): Promise<{ products: Product[]; total: number }> {
-  // Step 1: get the website-scoped published template IDs (and their per-website OOS flag)
-  const websiteSettingsMap = await fetchWebsitePublishedSettings(sessionId)
+  // Step 1: fetch website settings and the portal hide-OOS toggle in parallel
+  const [websiteSettingsMap, hideOos] = await Promise.all([
+    fetchWebsitePublishedSettings(sessionId),
+    getHideOutOfStock(sessionId),
+  ])
   if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
-  // Split into two buckets:
-  //   oosIds  — OOS allowed → always visible regardless of stock
-  //   noOosIds — OOS not allowed → only visible when qty_available > 0
-  const oosIds: number[] = []
-  const noOosIds: number[] = []
-  for (const [id, allowOos] of websiteSettingsMap) {
-    if (allowOos) oosIds.push(id)
-    else noOosIds.push(id)
-  }
+  let baseDomain: unknown[]
 
-  // Domain: (id in oosIds) OR (id in noOosIds AND qty_available > 0)
-  // Odoo prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms;
-  // remaining top-level terms are implicitly AND-ed.
-  const baseDomain: unknown[] = [
-    '|',
-    ['id', 'in', oosIds],
-    '&',
-    ['id', 'in', noOosIds],
-    ['qty_available', '>', 0],
-    ['type', 'in', ['consu', 'storable']],
-    ...domain,
-  ]
+  if (hideOos) {
+    // Split into two buckets:
+    //   oosIds  — OOS allowed → always visible regardless of stock
+    //   noOosIds — OOS not allowed → only visible when qty_available > 0
+    const oosIds: number[] = []
+    const noOosIds: number[] = []
+    for (const [id, allowOos] of websiteSettingsMap) {
+      if (allowOos) oosIds.push(id)
+      else noOosIds.push(id)
+    }
+
+    // Domain: (id in oosIds) OR (id in noOosIds AND qty_available > 0)
+    // Odoo prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms.
+    baseDomain = [
+      '|',
+      ['id', 'in', oosIds],
+      '&',
+      ['id', 'in', noOosIds],
+      ['qty_available', '>', 0],
+      ['type', 'in', ['consu', 'storable']],
+      ...domain,
+    ]
+  } else {
+    // Show all published products regardless of stock
+    const publishedIds = Array.from(websiteSettingsMap.keys())
+    baseDomain = [
+      ['id', 'in', publishedIds],
+      ['type', 'in', ['consu', 'storable']],
+      ...domain,
+    ]
+  }
 
   // Total count
   const count = await callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as number
