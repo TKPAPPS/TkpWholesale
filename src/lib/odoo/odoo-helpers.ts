@@ -311,20 +311,34 @@ export async function fetchOdooProducts(
 // ─── Category helpers ─────────────────────────────────────────────────────────
 
 export async function fetchOdooCategories(sessionId: string) {
-  const [enCats, heCats] = await Promise.all([
-    searchRead(sessionId, 'product.public.category', [], ['id', 'name', 'parent_id', 'child_id'], {
-      context: { lang: 'en_US' },
-    }) as unknown as Promise<OdooCategory[]>,
-    searchRead(sessionId, 'product.public.category', [], ['id', 'name'], {
-      context: { lang: 'he_IL' },
-    }) as unknown as Promise<{ id: number; name: string }[]>,
+  // Website-scoped domain: global categories (no website) + TKP Wholesale-specific ones
+  const catDomain = [['website_id', 'in', [false, WEBSITE_ID]]]
+
+  const [enCats, heCats, hiddenRows] = await Promise.all([
+    callKw(sessionId, 'product.public.category', 'search_read',
+      [catDomain],
+      { fields: ['id', 'name', 'parent_id', 'child_id'], context: { lang: 'en_US' } },
+    ) as unknown as Promise<OdooCategory[]>,
+    callKw(sessionId, 'product.public.category', 'search_read',
+      [catDomain],
+      { fields: ['id', 'name'], context: { lang: 'he_IL' } },
+    ) as unknown as Promise<{ id: number; name: string }[]>,
+    callKw(sessionId, 'ir.config_parameter', 'search_read',
+      [[['key', '=', 'b2b_portal.hidden_category_ids']]],
+      { fields: ['value'], limit: 1 },
+    ) as unknown as Promise<{ value: string }[]>,
   ])
 
+  const hiddenSet = new Set<number>(
+    hiddenRows[0]?.value ? hiddenRows[0].value.split(',').map(Number).filter(Boolean) : []
+  )
+
   const heMap = new Map(heCats.map(c => [c.id, c]))
+  const visible = enCats.filter(c => !hiddenSet.has(c.id))
 
   type CategoryNode = { id: number; name: string; name_he: string; parent_id: number | null; children: CategoryNode[] }
   const buildTree = (parentId: number | null): CategoryNode[] => {
-    return enCats
+    return visible
       .filter(c => (parentId === null ? !c.parent_id : c.parent_id && c.parent_id[0] === parentId))
       .map(c => ({
         id: c.id,

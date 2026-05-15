@@ -1,0 +1,231 @@
+'use client'
+import { useEffect, useState, useCallback } from 'react'
+import { Button } from '@/components/ui/Button'
+import { Save, RefreshCw, Globe, Tag } from 'lucide-react'
+
+interface AdminCategory {
+  id: number
+  name: string
+  name_he: string
+  parent_id: number | null
+  website_id: number | null
+  website_name: string
+  hidden: boolean
+}
+
+interface CategoryNode extends AdminCategory {
+  children: CategoryNode[]
+}
+
+function buildTree(cats: AdminCategory[]): CategoryNode[] {
+  const map = new Map<number, CategoryNode>(cats.map(c => [c.id, { ...c, children: [] }]))
+  const roots: CategoryNode[] = []
+  for (const node of map.values()) {
+    if (node.parent_id && map.has(node.parent_id)) {
+      map.get(node.parent_id)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  return roots
+}
+
+function CategoryRow({
+  node,
+  depth,
+  hiddenIds,
+  onToggle,
+  onToggleSubtree,
+}: {
+  node: CategoryNode
+  depth: number
+  hiddenIds: Set<number>
+  onToggle: (id: number) => void
+  onToggleSubtree: (node: CategoryNode, hide: boolean) => void
+}) {
+  const isHidden = hiddenIds.has(node.id)
+  const hasChildren = node.children.length > 0
+
+  const allChildrenHidden = hasChildren && node.children.every(c => hiddenIds.has(c.id))
+  const someChildrenHidden = hasChildren && node.children.some(c => hiddenIds.has(c.id))
+
+  return (
+    <>
+      <tr className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isHidden ? 'opacity-50' : ''}`}>
+        <td className="py-2.5 px-4">
+          <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
+            {depth > 0 && <span className="text-gray-300 select-none">└</span>}
+            <span className="text-sm text-gray-800">{node.name}</span>
+            {node.name_he && node.name_he !== node.name && (
+              <span className="text-xs text-gray-400 hidden sm:inline">· {node.name_he}</span>
+            )}
+          </div>
+        </td>
+        <td className="py-2.5 px-4">
+          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+            node.website_id ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {node.website_id ? <Tag className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+            {node.website_name}
+          </span>
+        </td>
+        <td className="py-2.5 px-4 text-center">
+          <input
+            type="checkbox"
+            checked={!isHidden}
+            onChange={() => onToggle(node.id)}
+            className="h-4 w-4 rounded border-gray-300 text-brand-700 focus:ring-brand-700/20 cursor-pointer"
+          />
+        </td>
+        {hasChildren && (
+          <td className="py-2.5 px-4 text-center">
+            <button
+              onClick={() => onToggleSubtree(node, !allChildrenHidden)}
+              className="text-xs text-brand-700 hover:underline"
+            >
+              {allChildrenHidden ? 'Show all' : someChildrenHidden ? 'Hide rest' : 'Hide all'}
+            </button>
+          </td>
+        )}
+        {!hasChildren && <td />}
+      </tr>
+      {node.children.map(child => (
+        <CategoryRow
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          hiddenIds={hiddenIds}
+          onToggle={onToggle}
+          onToggleSubtree={onToggleSubtree}
+        />
+      ))}
+    </>
+  )
+}
+
+export default function CategoriesPage() {
+  const [cats, setCats] = useState<AdminCategory[]>([])
+  const [hiddenIds, setHiddenIds] = useState<Set<number>>(new Set())
+  const [original, setOriginal] = useState<Set<number>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/admin/categories')
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setCats(data.categories)
+      const ids = new Set<number>(data.hidden_ids)
+      setHiddenIds(ids)
+      setOriginal(ids)
+    } catch {
+      setError('Could not load categories from Odoo.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = (id: number) => {
+    setHiddenIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSubtree = (node: CategoryNode, hide: boolean) => {
+    const collectIds = (n: CategoryNode): number[] => [n.id, ...n.children.flatMap(collectIds)]
+    setHiddenIds(prev => {
+      const next = new Set(prev)
+      for (const id of collectIds(node)) hide ? next.add(id) : next.delete(id)
+      return next
+    })
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden_ids: Array.from(hiddenIds) }),
+      })
+      if (!res.ok) throw new Error()
+      setOriginal(new Set(hiddenIds))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch {
+      setError('Could not save. Check Odoo connectivity.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const dirty = JSON.stringify([...hiddenIds].sort()) !== JSON.stringify([...original].sort())
+  const tree = buildTree(cats)
+  const visibleCount = cats.length - hiddenIds.size
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Categories</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{visibleCount} of {cats.length} shown on wholesale portal</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={load} disabled={loading} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <Button onClick={save} loading={saving} disabled={!dirty}>
+            <Save className="h-4 w-4 me-2" />
+            {saved ? 'Saved!' : 'Save changes'}
+          </Button>
+          {dirty && !saving && (
+            <button onClick={() => setHiddenIds(original)} className="text-sm text-gray-400 hover:text-gray-600">
+              Discard
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+
+      {loading ? (
+        <p className="text-sm text-gray-400">Loading…</p>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/50">
+                <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
+                <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Scope</th>
+                <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Shown</th>
+                <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Children</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tree.map(node => (
+                <CategoryRow
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  hiddenIds={hiddenIds}
+                  onToggle={toggle}
+                  onToggleSubtree={toggleSubtree}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
