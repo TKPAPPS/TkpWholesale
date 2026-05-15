@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
 import { Button } from '@/components/ui/Button'
@@ -9,10 +9,12 @@ import { CheckCircle } from 'lucide-react'
 
 export default function OrderConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>()
+  const searchParams = useSearchParams()
   const { lang } = useLangStore()
-  const [orderName, setOrderName] = useState<string | null>(null)
+  const [orderName, setOrderName] = useState<string | null>(searchParams.get('name'))
 
   useEffect(() => {
+    if (orderName) return
     fetch(`/api/orders/${orderId}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d?.name) setOrderName(d.name) })

@@ -56,7 +56,7 @@ export default function CheckoutPage() {
       })
       const data = await res.json()
       if (!res.ok) { setConfirmError(data.message ?? 'Could not confirm order.'); return }
-      router.push(`/order-confirmation/${data.order_id}`)
+      router.push(`/order-confirmation/${data.order_id}?name=${encodeURIComponent(data.order_name ?? '')}`)
     } catch { setConfirmError('Unexpected error. Please try again.') }
     finally { setConfirming(false) }
   }
