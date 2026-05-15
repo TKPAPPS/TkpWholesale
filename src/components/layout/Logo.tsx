@@ -5,6 +5,7 @@ export function Logo({ className = '' }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-label="The Kosher Place"
+      dir="ltr"
     >
       {/* THE */}
       <text
