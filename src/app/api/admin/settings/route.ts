@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { odooAuthenticate, callKw } from '@/lib/odoo/client'
-import { bustHideOosCache } from '@/lib/odoo/odoo-helpers'
+import { bustHideOosCache, bustWebsiteSettingsCache } from '@/lib/odoo/odoo-helpers'
 
 const PARAM_KEY = 'b2b_portal.hide_out_of_stock'
 
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     bustHideOosCache()
+    bustWebsiteSettingsCache()
     return NextResponse.json({ ok: true, hide_out_of_stock })
   } catch (err) {
     console.error('admin settings POST error:', err)

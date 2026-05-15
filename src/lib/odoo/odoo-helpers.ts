@@ -109,10 +109,17 @@ async function getHideOutOfStock(sessionId: string): Promise<boolean> {
   }
 }
 
+// Cache for website published settings — costs 1.1s to fetch 2231 rows, so cache 5 minutes
+let _websiteSettingsCache: { map: Map<number, boolean>; expires: number } | null = null
+
+export function bustWebsiteSettingsCache() { _websiteSettingsCache = null }
+
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
 async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<number, boolean>> {
-  // Use callKw directly so no artificial limit is applied
+  const now = Date.now()
+  if (_websiteSettingsCache && now < _websiteSettingsCache.expires) return _websiteSettingsCache.map
+
   const settings = await callKw(
     sessionId,
     'product.website.settings',
@@ -121,8 +128,9 @@ async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<num
     { fields: ['product_tmpl_id', 'allow_out_of_stock_order'] },
   ) as unknown as OdooWebsiteSetting[]
 
-  // Map: template_id → allow_out_of_stock_order (per-website flag)
-  return new Map(settings.map(s => [s.product_tmpl_id[0], s.allow_out_of_stock_order]))
+  const map = new Map(settings.map(s => [s.product_tmpl_id[0], s.allow_out_of_stock_order]))
+  _websiteSettingsCache = { map, expires: now + 5 * 60_000 }  // 5-minute TTL
+  return map
 }
 
 export async function fetchOdooProducts(
@@ -171,11 +179,9 @@ export async function fetchOdooProducts(
     ]
   }
 
-  // Total count
-  const count = await callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as number
-
-  // Fetch EN and HE names in parallel with paginated results
-  const [enRaw, heRaw] = await Promise.all([
+  // Run count + EN + HE fetches all in parallel — count doesn't affect which products we fetch
+  const [count, enRaw, heRaw] = await Promise.all([
+    callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
     searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
       ...opts, context: { lang: 'en_US' }
     }) as unknown as Promise<OdooProduct[]>,
