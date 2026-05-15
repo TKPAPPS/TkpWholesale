@@ -35,7 +35,11 @@ export async function GET(req: NextRequest) {
     const domain: unknown[] = []
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
 
-    const odooSort = sort === 'price' ? 'list_price asc' : 'name asc'
+    const odooSort =
+      sort === 'price'         ? 'list_price asc' :
+      sort === 'new_arrivals'  ? 'create_date desc' :
+      sort === 'recently_ordered' ? 'name asc' :   // fallback — real impl needs order-join
+      'name asc'
 
     const { products, total } = await fetchOdooProducts(parsed.odoo_session_id, domain, {
       limit: perPage,

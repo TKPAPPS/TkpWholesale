@@ -74,6 +74,7 @@ const translations = {
     // Recently ordered
     'recent.title': 'Recently Ordered',
     'recent.empty': 'No recent orders.',
+    'newArrivals.title': 'New Arrivals',
     // Common
     'common.loading': 'Loading...',
     'common.error': 'Something went wrong.',
@@ -161,6 +162,7 @@ const translations = {
     'favorites.emptyHint': 'לחץ על אייקון הלב על כל מוצר כדי לשמור אותו כאן.',
     'recent.title': 'הוזמן לאחרונה',
     'recent.empty': 'אין הזמנות אחרונות.',
+    'newArrivals.title': 'מוצרים חדשים',
     'common.loading': 'טוען...',
     'common.error': 'משהו השתבש.',
     'common.tryAgain': 'נסה שוב',

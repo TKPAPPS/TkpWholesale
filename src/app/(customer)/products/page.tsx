@@ -29,6 +29,8 @@ export default function ProductsPage() {
   const [odooError, setOdooError] = useState(false)
   const [recentlyOrdered, setRecentlyOrdered] = useState<Product[]>([])
   const [recentCollapsed, setRecentCollapsed] = useState(false)
+  const [newArrivals, setNewArrivals] = useState<Product[]>([])
+  const [newArrivalsCollapsed, setNewArrivalsCollapsed] = useState(false)
 
   useEffect(() => {
     fetch('/api/categories')
@@ -41,6 +43,12 @@ export default function ProductsPage() {
       .then((r) => r.json())
       .then((d) => setRecentlyOrdered(d.products ?? []))
   }, [])
+
+  useEffect(() => {
+    fetch('/api/products?sort=new_arrivals&per_page=8&page=0&lang=' + lang)
+      .then((r) => r.json())
+      .then((d) => setNewArrivals(d.products ?? []))
+  }, [lang])
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -97,6 +105,28 @@ export default function ProductsPage() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
+        {/* New Arrivals strip */}
+        {newArrivals.length > 0 && !searchQuery && (
+          <section className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setNewArrivalsCollapsed(!newArrivalsCollapsed)}
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {newArrivalsCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+                <span className="text-brand-700">{t(lang, 'newArrivals.title')}</span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-700 text-white">NEW</span>
+              </button>
+            </div>
+            {!newArrivalsCollapsed && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {newArrivals.map((p) => <ProductCard key={p.id} product={p} />)}
+              </div>
+            )}
+            <hr className="mt-4 border-gray-100" />
+          </section>
+        )}
+
         {/* Recently ordered strip */}
         {recentlyOrdered.length > 0 && !searchQuery && (
           <section className="mb-6">
