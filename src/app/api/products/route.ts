@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       limit: perPage,
       offset: page * perPage,
       order: odooSort,
+      ignoreOos: sort === 'new_arrivals',
     })
 
     return NextResponse.json({ products, total, page, per_page: perPage })

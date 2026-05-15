@@ -6,14 +6,15 @@ import { t } from '@/lib/i18n/translations'
 import { ProductCard } from '@/components/products/ProductCard'
 import { Pagination } from '@/components/ui/Pagination'
 import { ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, ArrowLeft, Package } from 'lucide-react'
+import Link from 'next/link'
 
 const PER_PAGE = 24
+const DAYS = 14
 
 function getCreatedAfter(): string {
-  const d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+  const d = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000)
   return d.toISOString().split('T')[0]
 }
 
@@ -48,12 +49,23 @@ export default function NewArrivalsPage() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6">
-      <div className="flex items-center gap-2 mb-6">
-        <Sparkles className="h-5 w-5 text-brand-700" />
-        <h1 className="text-xl font-bold text-brand-700">{t(lang, 'newArrivals.title')}</h1>
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <Link
+          href="/products"
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-700 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t(lang, 'products.title')}
+        </Link>
+        <span className="text-gray-300">/</span>
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-brand-700" />
+          <h1 className="text-lg font-bold text-brand-700">{t(lang, 'newArrivals.title')}</h1>
+        </div>
         {!loading && (
-          <span className="text-sm text-gray-400 ms-2">{total} products</span>
+          <span className="text-sm text-gray-400 ms-auto">{total} {total === 1 ? 'product' : 'products'}</span>
         )}
       </div>
 
@@ -64,10 +76,17 @@ export default function NewArrivalsPage() {
           {Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)}
         </div>
       ) : products.length === 0 && !odooError ? (
-        <EmptyState
-          icon={<Sparkles className="h-12 w-12" />}
-          title="No new arrivals in the past 14 days."
-        />
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+          <Package className="h-12 w-12 text-gray-300" />
+          <p className="text-gray-500 font-medium">No new products in the past {DAYS} days.</p>
+          <Link
+            href="/products"
+            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-medium hover:bg-brand-800 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Browse All Products
+          </Link>
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {products.map((p) => <ProductCard key={p.id} product={p} />)}
