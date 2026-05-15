@@ -1,6 +1,5 @@
 'use client'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from './Button'
+import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 
 interface PaginationProps {
   page: number
@@ -9,29 +8,65 @@ interface PaginationProps {
   onChange: (page: number) => void
 }
 
+function buildWindow(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i)
+
+  const pages: (number | '...')[] = []
+  const addPage = (n: number) => { if (!pages.includes(n)) pages.push(n) }
+  const addEllipsis = () => { if (pages[pages.length - 1] !== '...') pages.push('...') }
+
+  addPage(0)
+  if (current > 3) addEllipsis()
+  for (let i = Math.max(1, current - 2); i <= Math.min(total - 2, current + 2); i++) addPage(i)
+  if (current < total - 4) addEllipsis()
+  addPage(total - 1)
+
+  return pages
+}
+
 export function Pagination({ page, total, perPage, onChange }: PaginationProps) {
   const totalPages = Math.ceil(total / perPage)
   if (totalPages <= 1) return null
 
+  const window = buildWindow(page, totalPages)
+
   return (
-    <div className="flex items-center justify-center gap-2 mt-8">
-      <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => onChange(page - 1)}>
+    <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 0}
+        className="flex items-center justify-center h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
         <ChevronLeft className="h-4 w-4" />
-      </Button>
-      {Array.from({ length: totalPages }, (_, i) => (
-        <Button
-          key={i}
-          variant={i === page ? 'primary' : 'ghost'}
-          size="sm"
-          onClick={() => onChange(i)}
-          className="min-w-[36px]"
-        >
-          {i + 1}
-        </Button>
-      ))}
-      <Button variant="secondary" size="sm" disabled={page >= totalPages - 1} onClick={() => onChange(page + 1)}>
+      </button>
+
+      {window.map((item, idx) =>
+        item === '...' ? (
+          <span key={`ellipsis-${idx}`} className="flex items-center justify-center h-8 w-8 text-gray-400">
+            <MoreHorizontal className="h-4 w-4" />
+          </span>
+        ) : (
+          <button
+            key={item}
+            onClick={() => onChange(item)}
+            className={`flex items-center justify-center h-8 w-8 rounded-lg text-sm font-medium transition-colors ${
+              item === page
+                ? 'bg-brand-700 text-white'
+                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {item + 1}
+          </button>
+        )
+      )}
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page >= totalPages - 1}
+        className="flex items-center justify-center h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
         <ChevronRight className="h-4 w-4" />
-      </Button>
+      </button>
     </div>
   )
 }
