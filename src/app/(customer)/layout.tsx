@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { useLangStore, initLang } from '@/store/langStore'
+import { useCartStore } from '@/store/cartStore'
 import { Navbar } from '@/components/layout/Navbar'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
@@ -10,6 +11,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   const router = useRouter()
   const { user, isLoading, setUser, setLoading } = useAuthStore()
   const { setLang } = useLangStore()
+  const fetchCart = useCartStore((s) => s.fetchCart)
 
   useEffect(() => {
     initLang()
@@ -21,6 +23,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       .then((user) => {
         setUser(user)
         setLang(user.lang === 'he_IL' ? 'he' : 'en')
+        fetchCart()
       })
       .catch(() => {
         router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))

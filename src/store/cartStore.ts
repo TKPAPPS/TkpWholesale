@@ -9,7 +9,8 @@ interface CartState {
   setCart: (cart: Cart | null) => void
   setLoading: (v: boolean) => void
   setUnavailable: (v: boolean) => void
-  lineCount: () => number
+  lineCount: () => number       // unique products (number of lines)
+  fetchCart: () => Promise<void>
 }
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -19,5 +20,15 @@ export const useCartStore = create<CartState>((set, get) => ({
   setCart: (cart) => set({ cart }),
   setLoading: (isLoading) => set({ isLoading }),
   setUnavailable: (odooUnavailable) => set({ odooUnavailable }),
-  lineCount: () => get().cart?.lines.reduce((sum, l) => sum + l.packaging_qty, 0) ?? 0,
+  lineCount: () => get().cart?.lines.length ?? 0,
+  fetchCart: async () => {
+    try {
+      const res = await fetch('/api/cart')
+      if (!res.ok) return
+      const data = await res.json()
+      set({ cart: data })
+    } catch {
+      // silently ignore — badge stays at 0
+    }
+  },
 }))

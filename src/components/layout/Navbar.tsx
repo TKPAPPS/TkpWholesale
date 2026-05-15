@@ -1,11 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
+import { formatCurrency } from '@/lib/utils'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { Logo } from './Logo'
 import { useRouter, usePathname } from 'next/navigation'
@@ -14,10 +15,21 @@ import { cn } from '@/lib/utils'
 export function Navbar() {
   const { lang } = useLangStore()
   const { user } = useAuthStore()
+  const cart = useCartStore((s) => s.cart)
   const lineCount = useCartStore((s) => s.lineCount())
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const openCartPreview = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setCartOpen(true)
+  }
+  const closeCartPreview = () => {
+    hoverTimer.current = setTimeout(() => setCartOpen(false), 150)
+  }
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -74,18 +86,83 @@ export function Navbar() {
               <Search className="h-5 w-5" />
             </Link>
 
-            {/* Cart */}
-            <Link
-              href="/cart"
-              className="relative flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+            {/* Cart with hover preview */}
+            <div
+              className="relative"
+              onMouseEnter={openCartPreview}
+              onMouseLeave={closeCartPreview}
             >
-              <ShoppingCart className="h-5 w-5" />
-              {lineCount > 0 && (
-                <span className="absolute -top-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-700 text-[10px] font-bold text-white">
-                  {lineCount > 9 ? '9+' : lineCount}
-                </span>
+              <Link
+                href="/cart"
+                className="relative flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {lineCount > 0 && (
+                  <span className="absolute -top-0.5 -end-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-700 text-[10px] font-bold text-white">
+                    {lineCount > 99 ? '99+' : lineCount}
+                  </span>
+                )}
+              </Link>
+
+              {/* Hover popover */}
+              {cartOpen && (
+                <div
+                  className="absolute end-0 top-full mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-xl z-50"
+                  onMouseEnter={openCartPreview}
+                  onMouseLeave={closeCartPreview}
+                >
+                  <div className="p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                      {lineCount > 0 ? `${lineCount} product${lineCount !== 1 ? 's' : ''} in cart` : 'Your cart is empty'}
+                    </p>
+
+                    {cart && cart.lines.length > 0 ? (
+                      <>
+                        <ul className="space-y-3 max-h-64 overflow-y-auto">
+                          {cart.lines.slice(0, 6).map((line) => (
+                            <li key={line.line_id} className="flex items-center gap-3">
+                              <img
+                                src={line.product_image_url}
+                                alt=""
+                                className="h-10 w-10 rounded-lg object-contain bg-gray-50 shrink-0"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {lang === 'he' ? line.product_name_he : line.product_name}
+                                </p>
+                                <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
+                              </div>
+                              <span className="text-sm font-semibold text-gray-900 shrink-0">
+                                {formatCurrency(line.price_total, cart.currency)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        {cart.lines.length > 6 && (
+                          <p className="text-xs text-gray-400 mt-2 text-center">+{cart.lines.length - 6} more items</p>
+                        )}
+                        <div className="border-t border-gray-100 mt-3 pt-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-400">Total</p>
+                            <p className="text-base font-bold text-gray-900">{formatCurrency(cart.amount_total, cart.currency)}</p>
+                          </div>
+                          <Link
+                            href="/cart"
+                            onClick={() => setCartOpen(false)}
+                            className="px-4 py-2 bg-brand-700 text-white text-sm font-medium rounded-lg hover:bg-brand-800 transition-colors"
+                          >
+                            View Cart
+                          </Link>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 text-center py-4">Add products to start your order.</p>
+                    )}
+                  </div>
+                </div>
               )}
-            </Link>
+            </div>
 
             {/* User + logout */}
             {user && (

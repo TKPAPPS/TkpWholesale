@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { FavoriteButton } from '@/components/products/FavoriteButton'
+import { useCartStore } from '@/store/cartStore'
 import { Package, ChevronLeft, ShoppingCart } from 'lucide-react'
 import Image from 'next/image'
 
@@ -24,6 +25,7 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
+  const fetchCart = useCartStore((s) => s.fetchCart)
   const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export default function ProductDetailPage() {
     })
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
+    fetchCart()
     setAdding(false)
   }
 
