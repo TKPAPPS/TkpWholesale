@@ -9,8 +9,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
-import { Input } from '@/components/ui/Input'
-import { Search, Package, ChevronDown, ChevronUp, ClipboardList, Sparkles } from 'lucide-react'
+import { Search, Package, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 const PER_PAGE = 24
@@ -27,8 +26,6 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [odooError, setOdooError] = useState(false)
-  const [recentlyOrdered, setRecentlyOrdered] = useState<Product[]>([])
-  const [recentCollapsed, setRecentCollapsed] = useState(false)
   const [newArrivals, setNewArrivals] = useState<Product[]>([])
   const [newArrivalsCollapsed, setNewArrivalsCollapsed] = useState(false)
 
@@ -36,12 +33,6 @@ export default function ProductsPage() {
     fetch('/api/categories')
       .then((r) => r.json())
       .then((d) => setCategories(d.categories ?? []))
-  }, [])
-
-  useEffect(() => {
-    fetch('/api/recently-ordered')
-      .then((r) => r.json())
-      .then((d) => setRecentlyOrdered(d.products ?? []))
   }, [])
 
   useEffect(() => {
@@ -125,31 +116,6 @@ export default function ProductsPage() {
             {!newArrivalsCollapsed && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {newArrivals.map((p) => <ProductCard key={p.id} product={p} />)}
-              </div>
-            )}
-            <hr className="mt-4 border-gray-100" />
-          </section>
-        )}
-
-        {/* Recently ordered strip */}
-        {recentlyOrdered.length > 0 && !searchQuery && (
-          <section className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => setRecentCollapsed(!recentCollapsed)}
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                {recentCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-                {t(lang, 'recent.title')}
-              </button>
-              <Link href="/orders" className="flex items-center gap-1.5 text-xs text-brand-700 hover:underline font-medium">
-                <ClipboardList className="h-3.5 w-3.5" />
-                {t(lang, 'orders.title')}
-              </Link>
-            </div>
-            {!recentCollapsed && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {recentlyOrdered.map((p) => <ProductCard key={p.id} product={p} />)}
               </div>
             )}
             <hr className="mt-4 border-gray-100" />
