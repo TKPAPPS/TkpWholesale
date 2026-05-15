@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+  html { font-size: 112.5%; } /* 18px base — scales all rem units up from Tailwind's 16px default */
   * { box-sizing: border-box; }
   input[type='number']::-webkit-inner-spin-button,
   input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; }
