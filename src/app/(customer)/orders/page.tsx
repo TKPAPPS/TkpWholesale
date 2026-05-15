@@ -51,12 +51,12 @@ export default function OrdersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t(lang, 'orders.search')}
-            className="w-full rounded-lg border border-gray-200 bg-white ps-9 pe-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            className="w-full rounded-lg border border-gray-200 bg-white ps-9 pe-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20"
           />
         </div>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder={t(lang, 'orders.dateFrom')} className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500" />
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder={t(lang, 'orders.dateTo')} className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-500" />
-        <button type="submit" className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 transition-colors">Search</button>
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder={t(lang, 'orders.dateFrom')} className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-700/20" />
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder={t(lang, 'orders.dateTo')} className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-700/20" />
+        <button type="submit" className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm hover:bg-brand-700 transition-colors">Search</button>
       </form>
 
       {loading ? <LoadingSpinner /> : orders.length === 0 ? (

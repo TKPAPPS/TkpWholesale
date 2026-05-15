@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
@@ -9,6 +10,14 @@ import { CheckCircle } from 'lucide-react'
 export default function OrderConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>()
   const { lang } = useLangStore()
+  const [orderName, setOrderName] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/orders/${orderId}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.name) setOrderName(d.name) })
+      .catch(() => {})
+  }, [orderId])
 
   return (
     <div className="max-w-md mx-auto text-center py-16">
@@ -17,7 +26,7 @@ export default function OrderConfirmationPage() {
       <p className="text-gray-500 mb-2">{t(lang, 'confirmation.subtitle')}</p>
       <p className="text-sm text-gray-400 mb-8">
         {t(lang, 'confirmation.orderNumber')}:{' '}
-        <span className="font-semibold text-gray-700">S00123</span>
+        <span className="font-semibold text-gray-700">{orderName ?? '…'}</span>
       </p>
       <p className="text-sm text-gray-500 mb-8">
         A confirmation email has been sent by our system. Delivery will be arranged by our team.

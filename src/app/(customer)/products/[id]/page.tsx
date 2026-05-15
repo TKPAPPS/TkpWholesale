@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { FavoriteButton } from '@/components/products/FavoriteButton'
 import { Package, ChevronLeft, ShoppingCart } from 'lucide-react'
+import Image from 'next/image'
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -23,6 +24,7 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
+  const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
     fetch(`/api/products/${id}`)
@@ -37,7 +39,7 @@ export default function ProductDetailPage() {
     await fetch('/api/cart/lines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: product.variant_id, packaging_id: selectedPkg.id, packaging_qty: qty }),
+      body: JSON.stringify({ product_id: product.template_id, packaging_id: selectedPkg.id, packaging_qty: qty }),
     })
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
@@ -52,14 +54,23 @@ export default function ProductDetailPage() {
 
   return (
     <div>
-      <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-600 hover:underline mb-6">
+      <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline mb-6">
         <ChevronLeft className="h-4 w-4" /> {t(lang, 'common.back')}
       </button>
 
       <div className="grid md:grid-cols-2 gap-8">
         {/* Image */}
-        <div className="aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center">
-          <Package className="h-32 w-32 text-gray-200" />
+        <div className="aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden relative">
+          {!imgError ? (
+            <img
+              src={`/api/images/product/${product.template_id}/512`}
+              alt={name}
+              className="w-full h-full object-contain"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <Package className="h-32 w-32 text-gray-200" />
+          )}
         </div>
 
         {/* Details */}
@@ -83,7 +94,7 @@ export default function ProductDetailPage() {
                   <button
                     key={pkg.id}
                     onClick={() => setSelectedPkg(pkg)}
-                    className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${selectedPkg?.id === pkg.id ? 'border-brand-500 bg-brand-50 text-brand-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${selectedPkg?.id === pkg.id ? 'border-brand-700 bg-brand-50 text-brand-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
                   >
                     {pkg.name}
                   </button>

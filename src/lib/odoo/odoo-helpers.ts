@@ -307,7 +307,7 @@ export async function readCart(sessionId: string, orderId: number): Promise<Cart
 
 export async function findCart(sessionId: string, partnerId: number): Promise<number | null> {
   const carts = await searchRead(sessionId, 'sale.order',
-    [['partner_id', '=', partnerId], ['state', '=', 'draft'], ['website_id', '=', WEBSITE_ID]],
+    [['partner_id', '=', partnerId], ['state', '=', 'draft']],
     ['id'],
     { limit: 1, order: 'id desc' },
   ) as unknown as { id: number }[]
