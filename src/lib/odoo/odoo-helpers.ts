@@ -49,6 +49,68 @@ interface OdooCategory {
   child_id: number[]
 }
 
+interface OdooPricelistItem {
+  id: number
+  applied_on: '0_product_variant' | '1_product' | '2_product_category' | '3_global'
+  product_tmpl_id: [number, string] | false
+  product_id: [number, string] | false
+  compute_price: 'fixed' | 'percentage' | 'formula'
+  percent_price: number
+  price_discount: number
+  fixed_price: number
+  price_surcharge: number
+  min_quantity: number
+}
+
+function applyPricelistItem(item: OdooPricelistItem, listPrice: number): number {
+  switch (item.compute_price) {
+    case 'fixed': return item.fixed_price
+    case 'percentage': return Math.round(listPrice * (1 - item.percent_price / 100) * 100) / 100
+    case 'formula': return Math.round((listPrice * (1 - item.price_discount / 100) + item.price_surcharge) * 100) / 100
+    default: return listPrice
+  }
+}
+
+// Priority: lower number = higher specificity
+const PRICELIST_PRIORITY: Record<string, number> = {
+  '0_product_variant': 0,
+  '1_product': 1,
+  '2_product_category': 2,
+  '3_global': 3,
+}
+
+function buildPlPriceMap(products: OdooProduct[], items: OdooPricelistItem[]): Map<number, number> {
+  const map = new Map<number, number>()
+  const applicable = items.filter(it => it.min_quantity <= 1)
+
+  for (const product of products) {
+    let bestPrice: number | null = null
+    let bestPriority = Infinity
+    let bestMinQty = -1
+
+    for (const item of applicable) {
+      const p = PRICELIST_PRIORITY[item.applied_on] ?? 99
+      let matches = false
+      if (item.applied_on === '0_product_variant') {
+        matches = !!(item.product_id && product.product_variant_ids.includes(item.product_id[0]))
+      } else if (item.applied_on === '1_product') {
+        matches = !!(item.product_tmpl_id && item.product_tmpl_id[0] === product.id)
+      } else if (item.applied_on === '3_global') {
+        matches = true
+      }
+      if (!matches) continue
+      if (p < bestPriority || (p === bestPriority && item.min_quantity > bestMinQty)) {
+        bestPrice = applyPricelistItem(item, product.list_price)
+        bestPriority = p
+        bestMinQty = item.min_quantity
+      }
+    }
+
+    if (bestPrice !== null && bestPrice > 0) map.set(product.id, bestPrice)
+  }
+  return map
+}
+
 interface OdooCartLine {
   id: number
   product_id: [number, string]
@@ -203,20 +265,30 @@ export async function fetchOdooProducts(
 
   const heMap = new Map(heRaw.map(p => [p.id, p]))
 
-  // Fetch pricelist-adjusted prices in a separate read() call.
-  // product.template.price is a compute field that Odoo evaluates against context.pricelist.
-  // We separate this from search_read to keep the main fetch clean; on any failure we fall
-  // back silently to list_price so the catalogue always loads.
+  // Fetch pricelist.item records for this page's products + any global rules.
+  // Fetching only the current page's template IDs keeps this call fast (24 items max).
+  // Falls back silently to list_price if the fetch fails so products always load.
   const plPriceMap = new Map<number, number>()
-  if (pricelistId) {
+  if (pricelistId && enRaw.length > 0) {
     try {
-      const ids = enRaw.map(p => p.id)
-      const plRows = await callKw(sessionId, 'product.template', 'read', [ids],
-        { fields: ['id', 'price'], context: { pricelist: pricelistId, lang: 'en_US' } }
-      ) as { id: number; price: number }[]
-      plRows.forEach(r => { if (r.price > 0) plPriceMap.set(r.id, r.price) })
+      const templateIds = enRaw.map(p => p.id)
+      const plItems = await callKw(
+        sessionId,
+        'product.pricelist.item',
+        'search_read',
+        [[
+          ['pricelist_id', '=', pricelistId],
+          '|',
+          ['applied_on', '=', '3_global'],
+          ['product_tmpl_id', 'in', templateIds],
+        ]],
+        { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
+                   'compute_price', 'percent_price', 'price_discount',
+                   'fixed_price', 'price_surcharge', 'min_quantity'] },
+      ) as OdooPricelistItem[]
+      buildPlPriceMap(enRaw, plItems).forEach((price, id) => plPriceMap.set(id, price))
     } catch (err) {
-      console.warn('Pricelist price fetch failed, falling back to list_price:', err)
+      console.warn('Pricelist item fetch failed, falling back to list_price:', err)
     }
   }
 
