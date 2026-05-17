@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callKw } from '@/lib/odoo/client'
 import { bustHideOosCache, bustWebsiteSettingsCache } from '@/lib/odoo/odoo-helpers'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
+import { verifyAdminToken } from '@/lib/supabase'
 
 const PARAM_KEY = 'b2b_portal.hide_out_of_stock'
 
@@ -13,7 +14,12 @@ async function readParam(sessionId: string): Promise<string | false> {
   return rows[0]?.value ?? false
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get('admin_session')?.value
+  if (!token || !(await verifyAdminToken(token))) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
+  }
+
   try {
     const sessionId = await getAdminSession()
     const value = await readParam(sessionId)
@@ -28,6 +34,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const token = req.cookies.get('admin_session')?.value
+  if (!token || !(await verifyAdminToken(token))) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
+  }
+
   try {
     const { hide_out_of_stock } = await req.json()
     const sessionId = await getAdminSession()

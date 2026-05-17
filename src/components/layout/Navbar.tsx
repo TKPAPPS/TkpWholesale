@@ -131,7 +131,9 @@ export function Navbar() {
                                 <p className="text-sm font-medium text-gray-900 truncate">
                                   {lang === 'he' ? line.product_name_he : line.product_name}
                                 </p>
-                                <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
+                                <p className="text-xs text-gray-400">
+                                  {line.packaging_qty} × {formatCurrency(line.price_per_pack, cart.currency)}
+                                </p>
                               </div>
                               <span className="text-sm font-semibold text-gray-900 shrink-0">
                                 {formatCurrency(line.price_total, cart.currency)}

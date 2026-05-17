@@ -61,6 +61,7 @@ export interface CartLine {
   packaging_qty: number
   unit_qty: number
   price_unit: number
+  price_per_pack: number
   price_subtotal: number
   price_total: number
   warnings: string[]

@@ -388,6 +388,9 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
     packaging_qty: line.product_packaging_qty,
     unit_qty: line.product_uom_qty,
     price_unit: line.price_unit,
+    price_per_pack: line.product_packaging_qty > 0
+      ? Math.round((line.price_subtotal / line.product_packaging_qty) * 100) / 100
+      : line.price_subtotal,
     price_subtotal: line.price_subtotal,
     price_total: line.price_total,
     warnings: [],

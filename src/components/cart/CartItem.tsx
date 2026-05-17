@@ -66,7 +66,7 @@ export function CartItem({ line, currency }: CartItemProps) {
           <QuantitySelector value={qty} onChange={updateQty} />
           <div className="text-end">
             <p className="text-sm font-semibold text-gray-900">{formatCurrency(line.price_total, currency)}</p>
-            <p className="text-xs text-gray-400">{formatCurrency(line.price_unit, currency)} / unit</p>
+            <p className="text-xs text-gray-400">{formatCurrency(line.price_per_pack, currency)} / {line.packaging_name}</p>
           </div>
           <button onClick={remove} disabled={removing} className="text-gray-400 hover:text-red-500 transition-colors p-1">
             <Trash2 className="h-4 w-4" />

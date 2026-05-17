@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
   }
 
   // --- REAL ODOO MODE ---
+  if (process.env.NODE_ENV === 'production' && process.env.SKIP_PORTAL_CHECK === 'true') {
+    console.error('FATAL: SKIP_PORTAL_CHECK=true in production. Remove this env var before going live.')
+    return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server is misconfigured.' }, { status: 500 })
+  }
+
   const { odooAuthenticate, verifyPortalUser, callKw } = await import('@/lib/odoo/client')
 
   try {

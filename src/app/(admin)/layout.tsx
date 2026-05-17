@@ -1,8 +1,8 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, Settings, FileText, ScrollText, ShieldCheck, Activity, Tag } from 'lucide-react'
+import { LayoutDashboard, Settings, FileText, ScrollText, ShieldCheck, Activity, Tag, LogOut } from 'lucide-react'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -16,6 +16,13 @@ const navItems = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/auth/logout', { method: 'POST' })
+    router.replace('/admin/login')
+  }
+
   if (pathname === '/admin/login') return <>{children}</>
 
   return (
@@ -41,7 +48,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div className="px-4 py-3 border-t border-gray-100">
-          <Link href="/admin/login" className="text-xs text-gray-400 hover:text-gray-600">Logout</Link>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Logout
+          </button>
         </div>
       </aside>
       <main className="flex-1 p-6 overflow-auto">{children}</main>

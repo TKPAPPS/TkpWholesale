@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
+import { verifyAdminToken } from '@/lib/supabase'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 const PARAM_KEY = 'b2b_portal.hidden_category_ids'
@@ -14,7 +15,12 @@ async function readHiddenIds(sessionId: string): Promise<number[]> {
   return raw ? raw.split(',').map(Number).filter(Boolean) : []
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get('admin_session')?.value
+  if (!token || !(await verifyAdminToken(token))) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
+  }
+
   try {
     const sessionId = await getAdminSession()
 
@@ -55,6 +61,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const token = req.cookies.get('admin_session')?.value
+  if (!token || !(await verifyAdminToken(token))) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
+  }
+
   try {
     const { hidden_ids }: { hidden_ids: number[] } = await req.json()
     const sessionId = await getAdminSession()
