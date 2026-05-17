@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
-    const { getOrCreateCart, validatePackaging, readCart } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     // Validate packaging belongs to this template
@@ -28,6 +28,10 @@ export async function POST(req: NextRequest) {
     if (!pkgInfo) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
+
+    // Look up the customer's pricelist price so price_unit is correct on the order line.
+    // Odoo create() / write() skip onchanges, so we must set price_unit explicitly.
+    const priceUnit = await lookupPricelistPrice(parsed.odoo_session_id, parsed.pricelist_id, product_id)
 
     const cartId = await getOrCreateCart(parsed.odoo_session_id, parsed.partner_id, parsed.pricelist_id)
 
@@ -41,15 +45,15 @@ export async function POST(req: NextRequest) {
     ) as { id: number; product_packaging_qty: number }[]
 
     if (existingLines.length > 0) {
-      // Increment existing line qty
       const newQty = existingLines[0].product_packaging_qty + packaging_qty
+      const writeVals: Record<string, unknown> = {
+        product_packaging_qty: newQty,
+        product_uom_qty: newQty * pkgInfo.qty,
+      }
+      if (priceUnit !== null) writeVals.price_unit = priceUnit
       await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
-        [[existingLines[0].id], {
-          product_packaging_qty: newQty,
-          product_uom_qty: newQty * pkgInfo.qty,
-        }], {})
+        [[existingLines[0].id], writeVals], {})
     } else {
-      // Create new line — must set product_uom_qty explicitly; Odoo create() skips onchanges
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
         product_id: pkgInfo.productVariantId,
@@ -57,6 +61,7 @@ export async function POST(req: NextRequest) {
         product_uom_qty: packaging_qty * pkgInfo.qty,
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
+      if (priceUnit !== null) lineVals.price_unit = priceUnit
       await callKw(parsed.odoo_session_id, 'sale.order.line', 'create', [lineVals], {})
     }
 

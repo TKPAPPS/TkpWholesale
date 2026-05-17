@@ -9,9 +9,9 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
 
   const lines = await searchRead(sessionId, 'sale.order.line',
     [['id', '=', lineId]],
-    ['id', 'order_id', 'product_packaging_qty', 'product_packaging_id'],
+    ['id', 'order_id', 'product_packaging_qty', 'product_packaging_id', 'product_template_id'],
     { limit: 1 },
-  ) as { id: number; order_id: [number, string]; product_packaging_qty: number; product_packaging_id: [number, string] | false }[]
+  ) as { id: number; order_id: [number, string]; product_packaging_qty: number; product_packaging_id: [number, string] | false; product_template_id: [number, string] }[]
 
   if (!lines[0]) return null
 
@@ -35,7 +35,8 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
     if (pkgs[0]) unitsPerPack = pkgs[0].qty
   }
 
-  return { lineId: lines[0].id, orderId, unitsPerPack }
+  const templateId = lines[0].product_template_id ? lines[0].product_template_id[0] : null
+  return { lineId: lines[0].id, orderId, unitsPerPack, templateId }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { lineId: string } }) {
@@ -54,17 +55,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
 
   try {
     const { callKw } = await import('@/lib/odoo/client')
-    const { readCart } = await import('@/lib/odoo/odoo-helpers')
+    const { readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
     const resolved = await resolveCartForLine(parsed.odoo_session_id, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
+    const writeVals: Record<string, unknown> = {
+      product_packaging_qty: packaging_qty,
+      product_uom_qty: packaging_qty * resolved.unitsPerPack,
+    }
+    if (resolved.templateId && parsed.pricelist_id) {
+      const priceUnit = await lookupPricelistPrice(
+        parsed.odoo_session_id, parsed.pricelist_id, resolved.templateId,
+      )
+      if (priceUnit !== null) writeVals.price_unit = priceUnit
+    }
     await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
-      [[resolved.lineId], {
-        product_packaging_qty: packaging_qty,
-        product_uom_qty: packaging_qty * resolved.unitsPerPack,
-      }], {})
+      [[resolved.lineId], writeVals], {})
 
     const cart = await readCart(parsed.odoo_session_id, resolved.orderId)
     return NextResponse.json(cart)

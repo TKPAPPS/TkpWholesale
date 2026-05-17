@@ -111,6 +111,47 @@ function buildPlPriceMap(products: OdooProduct[], items: OdooPricelistItem[]): M
   return map
 }
 
+// Look up the pricelist price for a single product template.
+// Used when creating/updating cart lines so price_unit is correct for the customer's pricelist.
+// Returns null if no rule applies or the lookup fails — caller should fall back to Odoo default.
+export async function lookupPricelistPrice(
+  sessionId: string,
+  pricelistId: number | null,
+  templateId: number,
+): Promise<number | null> {
+  if (!pricelistId) return null
+  try {
+    const items = await callKw(sessionId, 'product.pricelist.item', 'search_read',
+      [[
+        ['pricelist_id', '=', pricelistId],
+        '|',
+        ['applied_on', '=', '3_global'],
+        ['product_tmpl_id', '=', templateId],
+      ]],
+      { fields: ['id', 'applied_on', 'compute_price', 'percent_price', 'price_discount',
+                 'fixed_price', 'price_surcharge', 'min_quantity'] },
+    ) as OdooPricelistItem[]
+
+    const applicable = items.filter(it => it.min_quantity <= 1)
+    if (applicable.length === 0) return null
+
+    const best = applicable.sort(
+      (a, b) => (PRICELIST_PRIORITY[a.applied_on] ?? 99) - (PRICELIST_PRIORITY[b.applied_on] ?? 99)
+    )[0]
+
+    if (best.compute_price === 'fixed') return best.fixed_price
+
+    // percentage / formula — need list_price to compute the discount
+    const tmpl = await callKw(sessionId, 'product.template', 'read', [[templateId]],
+      { fields: ['list_price'] },
+    ) as { list_price: number }[]
+    return applyPricelistItem(best, tmpl[0]?.list_price ?? 0)
+  } catch (err) {
+    console.warn('lookupPricelistPrice error:', err)
+    return null
+  }
+}
+
 interface OdooCartLine {
   id: number
   product_id: [number, string]
