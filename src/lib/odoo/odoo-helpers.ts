@@ -12,7 +12,6 @@ interface OdooProduct {
   default_code: string | false
   description_sale: string | false
   list_price: number
-  price?: number       // pricelist-computed price, present only when context.pricelist is set
   uom_id: [number, string]
   public_categ_ids: number[]
   taxes_id: number[]
@@ -189,18 +188,11 @@ export async function fetchOdooProducts(
     ]
   }
 
-  // When a pricelist is provided, include the 'price' computed field which Odoo evaluates
-  // against the customer's pricelist (context.pricelist). Falls back to list_price otherwise.
-  const enFields = pricelistId ? [...PRODUCT_FIELDS, 'price'] : PRODUCT_FIELDS
-  const enContext = pricelistId
-    ? { lang: 'en_US', pricelist: pricelistId }
-    : { lang: 'en_US' }
-
   // Run count + EN + HE fetches all in parallel — count doesn't affect which products we fetch
   const [count, enRaw, heRaw] = await Promise.all([
     callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
-    searchRead(sessionId, 'product.template', baseDomain, enFields, {
-      ...opts, context: enContext
+    searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
+      ...opts, context: { lang: 'en_US' }
     }) as unknown as Promise<OdooProduct[]>,
     searchRead(sessionId, 'product.template', baseDomain, ['id', 'name', 'description_sale'], {
       ...opts, context: { lang: 'he_IL' }
@@ -210,6 +202,23 @@ export async function fetchOdooProducts(
   if (enRaw.length === 0) return { products: [], total: count }
 
   const heMap = new Map(heRaw.map(p => [p.id, p]))
+
+  // Fetch pricelist-adjusted prices in a separate read() call.
+  // product.template.price is a compute field that Odoo evaluates against context.pricelist.
+  // We separate this from search_read to keep the main fetch clean; on any failure we fall
+  // back silently to list_price so the catalogue always loads.
+  const plPriceMap = new Map<number, number>()
+  if (pricelistId) {
+    try {
+      const ids = enRaw.map(p => p.id)
+      const plRows = await callKw(sessionId, 'product.template', 'read', [ids],
+        { fields: ['id', 'price'], context: { pricelist: pricelistId, lang: 'en_US' } }
+      ) as { id: number; price: number }[]
+      plRows.forEach(r => { if (r.price > 0) plPriceMap.set(r.id, r.price) })
+    } catch (err) {
+      console.warn('Pricelist price fetch failed, falling back to list_price:', err)
+    }
+  }
 
   // Collect all packaging IDs and tax IDs
   const allPackagingIds = Array.from(new Set(enRaw.flatMap(p => p.packaging_ids)))
@@ -267,8 +276,7 @@ export async function fetchOdooProducts(
     const taxNames = Array.from(new Set(uniqueTaxes.map(t => t.name)))
 
     // Use pricelist price when available; fall back to list_price.
-    // raw.price is Odoo's 'price' computed field, evaluated against context.pricelist.
-    const basePrice = (pricelistId && raw.price && raw.price > 0) ? raw.price : raw.list_price
+    const basePrice = plPriceMap.get(raw.id) ?? raw.list_price
     // back-compute excl-tax price if taxes are price_include
     const unitPriceExcl = inclRate > 0
       ? Math.round(basePrice / (1 + inclRate / 100) * 100) / 100
