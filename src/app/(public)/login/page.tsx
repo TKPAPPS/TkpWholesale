@@ -53,8 +53,9 @@ export default function LoginPage() {
         <div className="space-y-4">
           <p className="text-white/60 text-sm uppercase tracking-widest font-medium">Wholesale Portal</p>
           <h2 className="text-white text-4xl font-serif font-bold leading-tight">
-            Your exclusive B2B ordering experience.
+            The Kosher Place<br />Wholesale Website.
           </h2>
+          <p className="text-white/50 text-sm">Private portal for registered customers only.</p>
         </div>
 
         <p className="text-white/40 text-xs">
