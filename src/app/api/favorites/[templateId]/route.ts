@@ -9,7 +9,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { templateI
   const templateId = Number(params.templateId)
   if (!templateId) return NextResponse.json({ error: 'INVALID_TEMPLATE_ID' }, { status: 400 })
 
-  const supabase = createServerClient()
+  let supabase
+  try {
+    supabase = createServerClient()
+  } catch {
+    return NextResponse.json(
+      { error: 'SUPABASE_NOT_CONFIGURED', message: 'Favorites require Supabase. See docs/local-setup-status.md.' },
+      { status: 503 },
+    )
+  }
+
   const { error } = await supabase
     .from('favorites')
     .delete()

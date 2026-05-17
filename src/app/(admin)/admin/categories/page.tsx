@@ -20,13 +20,13 @@ interface CategoryNode extends AdminCategory {
 function buildTree(cats: AdminCategory[]): CategoryNode[] {
   const map = new Map<number, CategoryNode>(cats.map(c => [c.id, { ...c, children: [] }]))
   const roots: CategoryNode[] = []
-  for (const node of map.values()) {
+  Array.from(map.values()).forEach(node => {
     if (node.parent_id && map.has(node.parent_id)) {
       map.get(node.parent_id)!.children.push(node)
     } else {
       roots.push(node)
     }
-  }
+  })
   return roots
 }
 
@@ -169,7 +169,7 @@ export default function CategoriesPage() {
     }
   }
 
-  const dirty = JSON.stringify([...hiddenIds].sort()) !== JSON.stringify([...original].sort())
+  const dirty = JSON.stringify(Array.from(hiddenIds).sort()) !== JSON.stringify(Array.from(original).sort())
   const tree = buildTree(cats)
   const visibleCount = cats.length - hiddenIds.size
 

@@ -7,7 +7,16 @@ export async function GET(req: NextRequest) {
   const session = parseSession(req)
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const supabase = createServerClient()
+  let supabase
+  try {
+    supabase = createServerClient()
+  } catch {
+    return NextResponse.json(
+      { error: 'SUPABASE_NOT_CONFIGURED', message: 'Favorites require Supabase. See docs/local-setup-status.md.' },
+      { status: 503 },
+    )
+  }
+
   const { data: rows, error } = await supabase
     .from('favorites')
     .select('template_id')
@@ -21,7 +30,6 @@ export async function GET(req: NextRequest) {
   const templateIds = rows.map((r: { template_id: number }) => r.template_id)
   if (templateIds.length === 0) return NextResponse.json({ favorites: [] })
 
-  // Validate against Odoo — only return products that are still published and visible
   const domain = [['id', 'in', templateIds]]
   const { products } = await fetchOdooProducts(session.odoo_session_id, domain)
   return NextResponse.json({ favorites: products })
@@ -35,7 +43,16 @@ export async function POST(req: NextRequest) {
   const template_id = Number(body?.template_id)
   if (!template_id) return NextResponse.json({ error: 'INVALID_TEMPLATE_ID' }, { status: 400 })
 
-  const supabase = createServerClient()
+  let supabase
+  try {
+    supabase = createServerClient()
+  } catch {
+    return NextResponse.json(
+      { error: 'SUPABASE_NOT_CONFIGURED', message: 'Favorites require Supabase. See docs/local-setup-status.md.' },
+      { status: 503 },
+    )
+  }
+
   const { error } = await supabase
     .from('favorites')
     .upsert({ partner_id: session.partner_id, template_id }, { onConflict: 'partner_id,template_id' })

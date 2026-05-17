@@ -162,10 +162,10 @@ export async function fetchOdooProducts(
     //   noOosIds — OOS not allowed → only visible when qty_available > 0
     const oosIds: number[] = []
     const noOosIds: number[] = []
-    for (const [id, allowOos] of websiteSettingsMap) {
+    Array.from(websiteSettingsMap.entries()).forEach(([id, allowOos]) => {
       if (allowOos) oosIds.push(id)
       else noOosIds.push(id)
-    }
+    })
 
     // Domain: (id in oosIds) OR (id in noOosIds AND qty_available > 0)
     // Odoo prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms.
