@@ -375,26 +375,49 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
     'price_subtotal', 'price_total', 'name',
   ]) as unknown as OdooCartLine[]
 
-  return lines.map(line => ({
-    line_id: line.id,
-    product_id: line.product_id[0],
-    template_id: line.product_template_id[0],
-    product_name: line.product_template_id[1] ?? line.name,
-    product_name_he: line.product_template_id[1] ?? line.name,
-    product_image_url: `/api/images/product/${line.product_template_id[0]}/128`,
-    sku: '',
-    packaging_id: line.product_packaging_id ? line.product_packaging_id[0] : 0,
-    packaging_name: line.product_packaging_id ? line.product_packaging_id[1] : 'Unit',
-    packaging_qty: line.product_packaging_qty,
-    unit_qty: line.product_uom_qty,
-    price_unit: line.price_unit,
-    price_per_pack: line.product_packaging_qty > 0
-      ? Math.round((line.price_subtotal / line.product_packaging_qty) * 100) / 100
-      : line.price_subtotal,
-    price_subtotal: line.price_subtotal,
-    price_total: line.price_total,
-    warnings: [],
-  }))
+  // Fetch units-per-package for every packaging used in this order.
+  // Using product.packaging.qty (e.g. 12 for "Case of 12") is the only
+  // unambiguous way to compute the package price regardless of how
+  // product_packaging_qty is stored on the order line.
+  const packagingIds = lines
+    .map(l => l.product_packaging_id ? l.product_packaging_id[0] : 0)
+    .filter(Boolean)
+
+  const unitsPerPackMap = new Map<number, number>()
+  if (packagingIds.length > 0) {
+    const pkgs = await callKw(sessionId, 'product.packaging', 'read',
+      [packagingIds],
+      { fields: ['id', 'qty'] },
+    ) as { id: number; qty: number }[]
+    pkgs.forEach(p => unitsPerPackMap.set(p.id, p.qty))
+  }
+
+  return lines.map(line => {
+    const packagingId = line.product_packaging_id ? line.product_packaging_id[0] : 0
+    const unitsPerPack = unitsPerPackMap.get(packagingId) ?? 1
+    // price_unit is price per individual UOM unit; multiply by units per pack
+    // to get the customer-facing package price (what they pay per box/case/etc.)
+    const price_per_pack = Math.round(line.price_unit * unitsPerPack * 100) / 100
+
+    return {
+      line_id: line.id,
+      product_id: line.product_id[0],
+      template_id: line.product_template_id[0],
+      product_name: line.product_template_id[1] ?? line.name,
+      product_name_he: line.product_template_id[1] ?? line.name,
+      product_image_url: `/api/images/product/${line.product_template_id[0]}/128`,
+      sku: '',
+      packaging_id: packagingId,
+      packaging_name: line.product_packaging_id ? line.product_packaging_id[1] : 'Unit',
+      packaging_qty: line.product_packaging_qty,
+      unit_qty: line.product_uom_qty,
+      price_unit: line.price_unit,
+      price_per_pack,
+      price_subtotal: line.price_subtotal,
+      price_total: line.price_total,
+      warnings: [],
+    }
+  })
 }
 
 export async function readCart(sessionId: string, orderId: number): Promise<Cart> {
