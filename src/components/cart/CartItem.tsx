@@ -18,6 +18,7 @@ export function CartItem({ line, currency }: CartItemProps) {
   const { setCart } = useCartStore()
   const [qty, setQty] = useState(line.packaging_qty)
   const [removing, setRemoving] = useState(false)
+  const [imgError, setImgError] = useState(false)
 
   const name = lang === 'he' ? line.product_name_he : line.product_name
 
@@ -50,8 +51,17 @@ export function CartItem({ line, currency }: CartItemProps) {
 
   return (
     <div className="flex gap-3 py-4 border-b border-gray-100 last:border-0">
-      <div className="h-14 w-14 shrink-0 rounded-lg bg-gray-50 flex items-center justify-center">
-        <Package className="h-7 w-7 text-gray-300" />
+      <div className="h-14 w-14 shrink-0 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">
+        {!imgError && line.product_image_url ? (
+          <img
+            src={line.product_image_url}
+            alt=""
+            className="h-14 w-14 object-contain rounded-lg"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <Package className="h-7 w-7 text-gray-300" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{name}</p>

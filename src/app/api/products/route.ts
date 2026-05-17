@@ -51,11 +51,12 @@ export async function GET(req: NextRequest) {
       sort === 'recently_ordered' ? 'name asc' :
       'name asc'
 
-    const { products, total } = await fetchOdooProducts(parsed.odoo_session_id, domain, {
-      limit: perPage,
-      offset: page * perPage,
-      order: odooSort,
-    })
+    const { products, total } = await fetchOdooProducts(
+      parsed.odoo_session_id,
+      domain,
+      { limit: perPage, offset: page * perPage, order: odooSort },
+      parsed.pricelist_id ?? undefined,
+    )
 
     return NextResponse.json({ products, total, page, per_page: perPage })
   } catch (err) {

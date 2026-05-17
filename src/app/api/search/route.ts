@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
       ['description_sale', 'ilike', q],
     ]
 
-    const { products, total } = await fetchOdooProducts(parsed.odoo_session_id, domain, { limit: 20 })
+    const { products, total } = await fetchOdooProducts(
+      parsed.odoo_session_id, domain, { limit: 20 }, parsed.pricelist_id ?? undefined,
+    )
 
     return NextResponse.json({ results: products, query: q, total })
   } catch (err) {

@@ -12,6 +12,7 @@ interface OdooProduct {
   default_code: string | false
   description_sale: string | false
   list_price: number
+  price?: number       // pricelist-computed price, present only when context.pricelist is set
   uom_id: [number, string]
   public_categ_ids: number[]
   taxes_id: number[]
@@ -145,6 +146,7 @@ export async function fetchOdooProducts(
   sessionId: string,
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
+  pricelistId?: number | null,
 ): Promise<{ products: Product[]; total: number }> {
   // Step 1: fetch website settings and the portal hide-OOS toggle in parallel
   const [websiteSettingsMap, hideOos] = await Promise.all([
@@ -187,11 +189,18 @@ export async function fetchOdooProducts(
     ]
   }
 
+  // When a pricelist is provided, include the 'price' computed field which Odoo evaluates
+  // against the customer's pricelist (context.pricelist). Falls back to list_price otherwise.
+  const enFields = pricelistId ? [...PRODUCT_FIELDS, 'price'] : PRODUCT_FIELDS
+  const enContext = pricelistId
+    ? { lang: 'en_US', pricelist: pricelistId }
+    : { lang: 'en_US' }
+
   // Run count + EN + HE fetches all in parallel — count doesn't affect which products we fetch
   const [count, enRaw, heRaw] = await Promise.all([
     callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
-    searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
-      ...opts, context: { lang: 'en_US' }
+    searchRead(sessionId, 'product.template', baseDomain, enFields, {
+      ...opts, context: enContext
     }) as unknown as Promise<OdooProduct[]>,
     searchRead(sessionId, 'product.template', baseDomain, ['id', 'name', 'description_sale'], {
       ...opts, context: { lang: 'he_IL' }
@@ -257,10 +266,13 @@ export async function fetchOdooProducts(
     const exclRate = uniqueTaxes.filter(t => !t.price_include).reduce((s, t) => s + t.amount, 0)
     const taxNames = Array.from(new Set(uniqueTaxes.map(t => t.name)))
 
-    // list_price with price_include taxes already baked in → back-compute excl
+    // Use pricelist price when available; fall back to list_price.
+    // raw.price is Odoo's 'price' computed field, evaluated against context.pricelist.
+    const basePrice = (pricelistId && raw.price && raw.price > 0) ? raw.price : raw.list_price
+    // back-compute excl-tax price if taxes are price_include
     const unitPriceExcl = inclRate > 0
-      ? Math.round(raw.list_price / (1 + inclRate / 100) * 100) / 100
-      : raw.list_price
+      ? Math.round(basePrice / (1 + inclRate / 100) * 100) / 100
+      : basePrice
     const unitPriceIncl = Math.round(unitPriceExcl * (1 + (inclRate + exclRate) / 100) * 100) / 100
 
     const templatePackagings = packagings.filter(p => raw.packaging_ids.includes(p.id) && p.sales)

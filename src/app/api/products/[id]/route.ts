@@ -21,7 +21,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
-    const { products } = await fetchOdooProducts(parsed.odoo_session_id, [['id', '=', id]], { limit: 1 })
+    const { products } = await fetchOdooProducts(
+      parsed.odoo_session_id, [['id', '=', id]], { limit: 1 }, parsed.pricelist_id ?? undefined,
+    )
 
     if (products.length === 0) {
       return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })

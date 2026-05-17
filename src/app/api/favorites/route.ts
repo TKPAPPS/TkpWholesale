@@ -31,7 +31,9 @@ export async function GET(req: NextRequest) {
   if (templateIds.length === 0) return NextResponse.json({ favorites: [] })
 
   const domain = [['id', 'in', templateIds]]
-  const { products } = await fetchOdooProducts(session.odoo_session_id, domain)
+  const { products } = await fetchOdooProducts(
+    session.odoo_session_id, domain, {}, session.pricelist_id ?? undefined,
+  )
   return NextResponse.json({ favorites: products })
 }
 

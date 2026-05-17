@@ -43,9 +43,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ products: [] })
     }
 
-    const { products } = await fetchOdooProducts(parsed.odoo_session_id,
+    const { products } = await fetchOdooProducts(
+      parsed.odoo_session_id,
       [['id', 'in', recentTemplateIds]],
       { limit: 8 },
+      parsed.pricelist_id ?? undefined,
     )
 
     // Re-sort to match recency order
