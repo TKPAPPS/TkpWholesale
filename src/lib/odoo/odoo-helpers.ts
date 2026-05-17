@@ -383,10 +383,16 @@ export async function fetchOdooProducts(
         return true
       })
 
-    // Separate included (already in list_price) vs excluded taxes
-    const inclRate = uniqueTaxes.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
-    const exclRate = uniqueTaxes.filter(t => !t.price_include).reduce((s, t) => s + t.amount, 0)
-    const taxNames = Array.from(new Set(uniqueTaxes.map(t => t.name)))
+    // When both a price-inclusive and price-exclusive tax exist at the same rate (e.g. 7%
+    // incl + 7% excl), they cancel each other: incl strips 7% from base, excl adds 7% back.
+    // In practice the customer's fiscal position removes the excl tax so the customer pays
+    // exactly the list_price / pricelist price. Drop the excl tax to avoid double-counting.
+    const inclAmounts = new Set(uniqueTaxes.filter(t => t.price_include).map(t => t.amount))
+    const effectiveTaxes = uniqueTaxes.filter(t => t.price_include || !inclAmounts.has(t.amount))
+
+    const inclRate = effectiveTaxes.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
+    const exclRate = effectiveTaxes.filter(t => !t.price_include).reduce((s, t) => s + t.amount, 0)
+    const taxNames = Array.from(new Set(effectiveTaxes.map(t => t.name)))
 
     // Use pricelist price when available; fall back to list_price.
     const basePrice = plPriceMap.get(raw.id) ?? raw.list_price
