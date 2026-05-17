@@ -9,9 +9,9 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
 
   const lines = await searchRead(sessionId, 'sale.order.line',
     [['id', '=', lineId]],
-    ['id', 'order_id', 'product_packaging_qty'],
+    ['id', 'order_id', 'product_packaging_qty', 'product_packaging_id'],
     { limit: 1 },
-  ) as { id: number; order_id: [number, string]; product_packaging_qty: number }[]
+  ) as { id: number; order_id: [number, string]; product_packaging_qty: number; product_packaging_id: [number, string] | false }[]
 
   if (!lines[0]) return null
 
@@ -25,7 +25,17 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
   const order = orders[0]
   if (!order || order.partner_id[0] !== partnerId || order.state !== 'draft') return null
 
-  return { lineId: lines[0].id, orderId }
+  // Fetch units per package so product_uom_qty stays in sync with packaging qty
+  let unitsPerPack = 1
+  const packagingId = lines[0].product_packaging_id ? lines[0].product_packaging_id[0] : null
+  if (packagingId) {
+    const pkgs = await callKw(sessionId, 'product.packaging', 'read', [[packagingId]], {
+      fields: ['id', 'qty'],
+    }) as { id: number; qty: number }[]
+    if (pkgs[0]) unitsPerPack = pkgs[0].qty
+  }
+
+  return { lineId: lines[0].id, orderId, unitsPerPack }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { lineId: string } }) {
@@ -51,7 +61,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
     await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
-      [[resolved.lineId], { product_packaging_qty: packaging_qty }], {})
+      [[resolved.lineId], {
+        product_packaging_qty: packaging_qty,
+        product_uom_qty: packaging_qty * resolved.unitsPerPack,
+      }], {})
 
     const cart = await readCart(parsed.odoo_session_id, resolved.orderId)
     return NextResponse.json(cart)

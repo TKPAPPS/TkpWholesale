@@ -44,13 +44,17 @@ export async function POST(req: NextRequest) {
       // Increment existing line qty
       const newQty = existingLines[0].product_packaging_qty + packaging_qty
       await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
-        [[existingLines[0].id], { product_packaging_qty: newQty }], {})
+        [[existingLines[0].id], {
+          product_packaging_qty: newQty,
+          product_uom_qty: newQty * pkgInfo.qty,
+        }], {})
     } else {
-      // Create new line
+      // Create new line — must set product_uom_qty explicitly; Odoo create() skips onchanges
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
         product_id: pkgInfo.productVariantId,
         product_packaging_qty: packaging_qty,
+        product_uom_qty: packaging_qty * pkgInfo.qty,
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
       await callKw(parsed.odoo_session_id, 'sale.order.line', 'create', [lineVals], {})
