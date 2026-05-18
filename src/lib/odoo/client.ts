@@ -93,12 +93,12 @@ export async function searchRead(
   }) as Promise<Record<string, unknown>[]>
 }
 
-// Verify the user is a portal user (share=True), not an internal user
+// Verify the user is an active Odoo user (portal or internal)
 export async function verifyPortalUser(sessionId: string, uid: number): Promise<boolean> {
   const result = await callKw(sessionId, 'res.users', 'read', [[uid]], {
-    fields: ['share', 'active'],
-  }) as { share: boolean; active: boolean }[]
-  return result[0]?.share === true && result[0]?.active === true
+    fields: ['active'],
+  }) as { active: boolean }[]
+  return result[0]?.active === true
 }
 
 // Destroy Odoo session (logout)
