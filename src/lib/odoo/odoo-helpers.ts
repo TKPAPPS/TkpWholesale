@@ -244,12 +244,22 @@ async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<num
   return map
 }
 
+// 60-second in-memory cache for product list results, keyed by pricelist + domain + pagination.
+// Shared across requests in the same Vercel instance — each instance warms independently.
+const _productCache = new Map<string, { data: { products: Product[]; total: number }; expires: number }>()
+
+export function bustProductCache() { _productCache.clear() }
+
 export async function fetchOdooProducts(
   sessionId: string,
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
   pricelistId?: number | null,
 ): Promise<{ products: Product[]; total: number }> {
+  const cacheKey = `${pricelistId ?? 0}:${opts.limit ?? 100}:${opts.offset ?? 0}:${opts.order ?? ''}:${JSON.stringify(domain)}`
+  const hit = _productCache.get(cacheKey)
+  if (hit && Date.now() < hit.expires) return hit.data
+
   // Step 1: fetch website settings and the portal hide-OOS toggle in parallel
   const [websiteSettingsMap, hideOos] = await Promise.all([
     fetchWebsitePublishedSettings(sessionId),
@@ -458,7 +468,11 @@ export async function fetchOdooProducts(
     }
   })
 
-  return { products, total: count }
+  const result = { products, total: count }
+  // Evict oldest entry if cache grows too large (>200 entries)
+  if (_productCache.size >= 200) _productCache.delete(_productCache.keys().next().value!)
+  _productCache.set(cacheKey, { data: result, expires: Date.now() + 60_000 })
+  return result
 }
 
 // ─── Category helpers ─────────────────────────────────────────────────────────

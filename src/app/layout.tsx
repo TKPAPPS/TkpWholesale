@@ -1,3 +1,5 @@
+export const preferredRegion = 'sin1'
+
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import './globals.css'
