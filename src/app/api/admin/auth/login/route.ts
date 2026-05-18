@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { devAdminToken } from '@/lib/supabase'
+
+function setSessionCookie(res: NextResponse, token: string) {
+  res.cookies.set('admin_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 8 * 60 * 60,
+    path: '/',
+  })
+}
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json()
@@ -10,9 +21,20 @@ export async function POST(req: NextRequest) {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anonKey) {
-    console.error('Supabase env vars not configured for admin auth')
-    return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Admin auth not configured.' }, { status: 500 })
+
+  // Supabase not configured — fall back to Odoo admin credentials in dev only.
+  if (!url || !anonKey || url.includes('your-project')) {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Admin auth not configured.' }, { status: 500 })
+    }
+    const adminEmail = process.env.ODOO_ADMIN_LOGIN
+    const adminPassword = process.env.ODOO_ADMIN_PASSWORD
+    if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) {
+      return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
+    }
+    const res = NextResponse.json({ ok: true, email, dev: true })
+    setSessionCookie(res, devAdminToken())
+    return res
   }
 
   const supabase = createClient(url, anonKey, { auth: { persistSession: false } })
@@ -23,12 +45,6 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true, email })
-  res.cookies.set('admin_session', data.session.access_token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 8 * 60 * 60,
-    path: '/',
-  })
+  setSessionCookie(res, data.session.access_token)
   return res
 }
