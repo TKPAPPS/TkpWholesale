@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search, Zap } from 'lucide-react'
+import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search, Zap, FileText } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
@@ -44,6 +44,7 @@ export function Navbar() {
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: Clock },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: Package },
+    { href: '/invoices', label: t(lang, 'invoices.title'), icon: FileText },
   ]
 
   return (

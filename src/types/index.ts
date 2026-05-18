@@ -128,6 +128,35 @@ export interface OrderDetail extends Order {
   amount_tax: number
 }
 
+export interface Invoice {
+  id: number
+  name: string
+  invoice_date: string
+  invoice_date_due: string | null
+  amount_total: number
+  amount_residual: number
+  payment_state: 'not_paid' | 'partial' | 'in_payment' | 'paid'
+  currency: string
+  state_label: string
+  line_count: number
+}
+
+export interface InvoiceLine {
+  line_id: number
+  name: string
+  quantity: number
+  price_unit: number
+  price_subtotal: number
+  price_total: number
+}
+
+export interface InvoiceDetail extends Invoice {
+  lines: InvoiceLine[]
+  note: string
+  amount_untaxed: number
+  amount_tax: number
+}
+
 export interface ApiError {
   error: string
   message: string

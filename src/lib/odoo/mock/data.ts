@@ -1,4 +1,4 @@
-import type { Category, Product, Cart, Order, OrderDetail, DeliveryAddress, User } from '@/types'
+import type { Category, Product, Cart, Order, OrderDetail, DeliveryAddress, User, Invoice, InvoiceDetail } from '@/types'
 
 export const MOCK_USER: User = {
   uid: 42,
@@ -315,5 +315,33 @@ export const MOCK_ORDER_DETAIL: OrderDetail = {
   lines: [
     { line_id: 1001, product_id: 22, template_id: 22, packaging_id: 1, product_name: 'Extra Virgin Olive Oil 5L', product_name_he: 'שמן זית כתית מובחר 5 ליטר', sku: 'OIL-EV-5L', packaging_name: 'Pack of 4', packaging_qty: 2, unit_qty: 8, price_unit: 240.00, price_subtotal: 1920.00, price_total: 2016.00 },
     { line_id: 1002, product_id: 23, template_id: 23, packaging_id: 2, product_name: 'Tahini 500g', product_name_he: 'טחינה גולמית 500 גרם', sku: 'TAH-500', packaging_name: 'Pack of 12', packaging_qty: 1, unit_qty: 12, price_unit: 90.00, price_subtotal: 1080.00, price_total: 1134.00 },
+  ],
+}
+
+export const MOCK_INVOICES: Invoice[] = [
+  { id: 201, name: 'INV/2026/0042', invoice_date: '2026-05-10', invoice_date_due: '2026-06-09', amount_total: 3150.00, amount_residual: 0, payment_state: 'paid', currency: 'THB', state_label: 'Paid', line_count: 2 },
+  { id: 202, name: 'INV/2026/0035', invoice_date: '2026-04-28', invoice_date_due: '2026-05-28', amount_total: 1134.00, amount_residual: 1134.00, payment_state: 'not_paid', currency: 'THB', state_label: 'Due', line_count: 1 },
+  { id: 203, name: 'INV/2026/0021', invoice_date: '2026-03-15', invoice_date_due: '2026-04-14', amount_total: 2520.00, amount_residual: 2520.00, payment_state: 'not_paid', currency: 'THB', state_label: 'Overdue', line_count: 3 },
+  { id: 204, name: 'INV/2026/0010', invoice_date: '2026-02-01', invoice_date_due: '2026-03-02', amount_total: 756.00, amount_residual: 378.00, payment_state: 'partial', currency: 'THB', state_label: 'Partial', line_count: 1 },
+  { id: 205, name: 'INV/2025/0098', invoice_date: '2025-12-20', invoice_date_due: '2026-01-19', amount_total: 4200.00, amount_residual: 0, payment_state: 'paid', currency: 'THB', state_label: 'Paid', line_count: 4 },
+]
+
+export const MOCK_INVOICE_DETAIL: InvoiceDetail = {
+  id: 201,
+  name: 'INV/2026/0042',
+  invoice_date: '2026-05-10',
+  invoice_date_due: '2026-06-09',
+  amount_total: 3150.00,
+  amount_residual: 0,
+  amount_untaxed: 3000.00,
+  amount_tax: 150.00,
+  payment_state: 'paid',
+  currency: 'THB',
+  state_label: 'Paid',
+  line_count: 2,
+  note: '',
+  lines: [
+    { line_id: 2001, name: 'Extra Virgin Olive Oil 5L', quantity: 8, price_unit: 240.00, price_subtotal: 1920.00, price_total: 2016.00 },
+    { line_id: 2002, name: 'Tahini 500g', quantity: 12, price_unit: 90.00, price_subtotal: 1080.00, price_total: 1134.00 },
   ],
 }
