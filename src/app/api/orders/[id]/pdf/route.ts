@@ -20,32 +20,40 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { assertOrderOwnership } = await import('@/lib/odoo/odoo-helpers')
+    const { callKw } = await import('@/lib/odoo/client')
 
-    try {
-      const order = await assertOrderOwnership(sessionId, id, parsed.commercial_partner_id)
-      if (!['sale', 'done'].includes(order.state)) {
-        return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
-      }
-    } catch {
+    // Verify ownership + get access_token in one read
+    const orders = await callKw(sessionId, 'sale.order', 'read', [[id]], {
+      fields: ['id', 'state', 'commercial_partner_id', 'partner_id', 'access_token'],
+    }) as { id: number; state: string; commercial_partner_id: [number, string] | false; partner_id: [number, string] | false; access_token: string }[]
+
+    const order = orders[0]
+    if (!order || !['sale', 'done'].includes(order.state)) {
+      return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
+    }
+    const partnerId = order.commercial_partner_id ? order.commercial_partner_id[0] : order.partner_id ? order.partner_id[0] : null
+    if (partnerId !== parsed.commercial_partner_id) {
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
 
-    // Proxy the PDF from Odoo using the admin API key (Bearer token)
-    const apikey = sessionId.split(':').slice(1).join(':')
-    const pdfRes = await fetch(`${ODOO_URL}/report/pdf/sale.report_saleorder/${id}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apikey}`,
-      },
-    })
+    // Use access_token for unauthenticated portal PDF (works on Odoo SaaS).
+    // Falls back to Bearer token if access_token is not available.
+    const pdfUrl = order.access_token
+      ? `${ODOO_URL}/report/pdf/sale.report_saleorder/${id}?access_token=${order.access_token}`
+      : `${ODOO_URL}/report/pdf/sale.report_saleorder/${id}`
+    const fetchHeaders: Record<string, string> = order.access_token
+      ? {}
+      : { Authorization: `Bearer ${sessionId.split(':').slice(1).join(':')}` }
 
-    if (!pdfRes.ok) {
+    const pdfRes = await fetch(pdfUrl, { headers: fetchHeaders })
+    const contentType = pdfRes.headers.get('content-type') ?? ''
+
+    if (!pdfRes.ok || !contentType.includes('pdf')) {
+      console.error('PDF proxy: unexpected response', pdfRes.status, contentType)
       return NextResponse.json({ error: 'PDF_ERROR', message: 'Could not generate PDF.' }, { status: 502 })
     }
 
     const pdfBuffer = await pdfRes.arrayBuffer()
-
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {

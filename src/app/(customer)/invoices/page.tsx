@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { FileText, Download, AlertCircle } from 'lucide-react'
+import { useToastStore } from '@/store/toastStore'
 
 const PER_PAGE = 20
 
@@ -32,6 +33,7 @@ function PaymentBadge({ state, label, lang }: { state: string; label: string; la
 
 export default function InvoicesPage() {
   const { lang } = useLangStore()
+  const showToast = useToastStore((s) => s.show)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [total, setTotal] = useState(0)
   const [totalOutstanding, setTotalOutstanding] = useState(0)
@@ -69,7 +71,7 @@ export default function InvoicesPage() {
     setDownloading(invoice.id)
     try {
       const res = await fetch(`/api/invoices/${invoice.id}/pdf`)
-      if (!res.ok) { alert('PDF not available. This feature requires a live Odoo connection.'); return }
+      if (!res.ok) { showToast('Could not generate PDF. Please try again.', 'error'); return }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -77,6 +79,8 @@ export default function InvoicesPage() {
       a.download = `${invoice.name}.pdf`
       a.click()
       URL.revokeObjectURL(url)
+    } catch {
+      showToast('Could not generate PDF. Please try again.', 'error')
     } finally {
       setDownloading(null)
     }

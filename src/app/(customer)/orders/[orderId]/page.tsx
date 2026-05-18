@@ -20,6 +20,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const showToast = useToastStore((s) => s.show)
   const fetchCart = useCartStore((s) => s.fetchCart)
 
@@ -30,8 +31,23 @@ export default function OrderDetailPage() {
       .finally(() => setLoading(false))
   }, [orderId])
 
-  const downloadPdf = () => {
-    window.open(`/api/orders/${orderId}/pdf`, '_blank')
+  const downloadPdf = async () => {
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/pdf`)
+      if (!res.ok) { showToast('Could not generate PDF. Please try again.', 'error'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `order-${orderId}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast('Could not generate PDF. Please try again.', 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   const reorder = async () => {
@@ -70,7 +86,7 @@ export default function OrderDetailPage() {
           <p className="text-sm text-gray-400">{formatDate(order.date_order, lang)} · {order.state_label}</p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
-          <Button variant="secondary" size="sm" onClick={downloadPdf}>
+          <Button variant="secondary" size="sm" onClick={downloadPdf} loading={downloadingPdf}>
             <Download className="h-4 w-4 me-1" /> {t(lang, 'orders.downloadPdf')}
           </Button>
           <Button variant="ghost" size="sm" onClick={reorder} loading={reordering}>

@@ -22,10 +22,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const sessionId = await getOdooSession()
     const { callKw } = await import('@/lib/odoo/client')
 
-    // Verify ownership before proxying
+    // Verify ownership + get access_token in one read
     const moves = await callKw(sessionId, 'account.move', 'read', [[id]], {
-      fields: ['id', 'commercial_partner_id', 'state', 'move_type'],
-    }) as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string }[]
+      fields: ['id', 'commercial_partner_id', 'state', 'move_type', 'access_token'],
+    }) as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string; access_token: string }[]
 
     const move = moves[0]
     if (!move || move.move_type !== 'out_invoice' || move.state !== 'posted') {
@@ -36,12 +36,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 
-    const apikey = sessionId.split(':').slice(1).join(':')
-    const pdfRes = await fetch(`${ODOO_URL}/report/pdf/account.report_invoice_with_payments/${id}`, {
-      headers: { Authorization: `Bearer ${apikey}` },
-    })
+    // Use access_token for unauthenticated portal PDF (works on Odoo SaaS).
+    // Falls back to Bearer token if access_token is not available.
+    const pdfUrl = move.access_token
+      ? `${ODOO_URL}/report/pdf/account.report_invoice_with_payments/${id}?access_token=${move.access_token}`
+      : `${ODOO_URL}/report/pdf/account.report_invoice_with_payments/${id}`
+    const fetchHeaders: Record<string, string> = move.access_token
+      ? {}
+      : { Authorization: `Bearer ${sessionId.split(':').slice(1).join(':')}` }
 
-    if (!pdfRes.ok) {
+    const pdfRes = await fetch(pdfUrl, { headers: fetchHeaders })
+    const contentType = pdfRes.headers.get('content-type') ?? ''
+
+    if (!pdfRes.ok || !contentType.includes('pdf')) {
+      console.error('invoice PDF proxy: unexpected response', pdfRes.status, contentType)
       return NextResponse.json({ error: 'PDF_ERROR', message: 'Could not generate PDF.' }, { status: 502 })
     }
 
