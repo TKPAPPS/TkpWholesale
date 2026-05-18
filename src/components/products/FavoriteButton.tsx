@@ -32,7 +32,7 @@ export function FavoriteButton({ templateId, initialFavorited = false, className
     <button
       onClick={(e) => { e.preventDefault(); toggle() }}
       disabled={loading}
-      className={cn('flex items-center justify-center h-8 w-8 rounded-full hover:bg-gray-100 transition-colors', className)}
+      className={cn('flex items-center justify-center h-10 w-10 rounded-full hover:bg-gray-100 transition-colors', className)}
       aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'}
     >
       <Heart className={cn('h-4 w-4 transition-colors', favorited ? 'fill-red-500 text-red-500' : 'text-gray-400')} />

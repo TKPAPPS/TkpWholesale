@@ -82,7 +82,7 @@ export function CartItem({ line, currency }: CartItemProps) {
               {formatCurrency(line.price_total, currency)}
             </p>
           </div>
-          <button onClick={remove} disabled={removing} className="text-gray-400 hover:text-red-500 transition-colors p-1">
+          <button onClick={remove} disabled={removing} className="text-gray-400 hover:text-red-500 transition-colors p-2 -m-1">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>

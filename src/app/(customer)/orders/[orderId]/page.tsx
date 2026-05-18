@@ -38,12 +38,12 @@ export default function OrderDetailPage() {
         <ChevronLeft className="h-4 w-4" /> {t(lang, 'orders.title')}
       </button>
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900">{order.name}</h1>
           <p className="text-sm text-gray-400">{formatDate(order.date_order, lang)} · {order.state_label}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <Button variant="secondary" size="sm" onClick={downloadPdf}>
             <Download className="h-4 w-4 me-1" /> {t(lang, 'orders.downloadPdf')}
           </Button>
@@ -57,7 +57,7 @@ export default function OrderDetailPage() {
       <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Delivery Address</p>
         <p className="text-sm font-medium text-gray-900">{order.partner_shipping.name}</p>
-        <p className="text-sm text-gray-500">{order.partner_shipping.street}, {order.partner_shipping.city}</p>
+        <p className="text-sm text-gray-500 line-clamp-2">{order.partner_shipping.street}, {order.partner_shipping.city}</p>
       </div>
 
       {/* Lines */}
@@ -65,11 +65,11 @@ export default function OrderDetailPage() {
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Items</p>
         {order.lines.map((line) => (
           <div key={line.line_id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <Package className="h-8 w-8 text-gray-200 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
-                <p className="text-xs text-gray-400">{line.sku} · {line.packaging_name} × {line.packaging_qty}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 line-clamp-2">{lang === 'he' ? line.product_name_he : line.product_name}</p>
+                <p className="text-xs text-gray-400 truncate">{line.sku} · {line.packaging_name} × {line.packaging_qty}</p>
               </div>
             </div>
             <div className="text-end">

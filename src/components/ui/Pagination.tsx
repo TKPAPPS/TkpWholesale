@@ -35,21 +35,21 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
       <button
         onClick={() => onChange(page - 1)}
         disabled={page === 0}
-        className="flex items-center justify-center h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
 
       {window.map((item, idx) =>
         item === '...' ? (
-          <span key={`ellipsis-${idx}`} className="flex items-center justify-center h-8 w-8 text-gray-400">
+          <span key={`ellipsis-${idx}`} className="flex items-center justify-center h-10 w-10 text-gray-400">
             <MoreHorizontal className="h-4 w-4" />
           </span>
         ) : (
           <button
             key={item}
             onClick={() => onChange(item)}
-            className={`flex items-center justify-center h-8 w-8 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center justify-center h-10 w-10 rounded-lg text-sm font-medium transition-colors ${
               item === page
                 ? 'bg-brand-700 text-white'
                 : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -63,7 +63,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages - 1}
-        className="flex items-center justify-center h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <ChevronRight className="h-4 w-4" />
       </button>

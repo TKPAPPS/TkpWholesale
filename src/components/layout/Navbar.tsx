@@ -94,7 +94,7 @@ export function Navbar() {
             >
               <Link
                 href="/cart"
-                className="relative flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                className="relative flex items-center justify-center h-10 w-10 rounded-lg text-gray-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
               >
                 <ShoppingCart className="h-5 w-5" />
                 {lineCount > 0 && (
@@ -107,7 +107,7 @@ export function Navbar() {
               {/* Hover popover */}
               {cartOpen && (
                 <div
-                  className="absolute end-0 top-full mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-xl z-50"
+                  className="absolute end-0 top-full mt-2 w-[min(320px,calc(100vw-1rem))] bg-white rounded-2xl border border-gray-100 shadow-xl z-50"
                   onMouseEnter={openCartPreview}
                   onMouseLeave={closeCartPreview}
                 >
@@ -178,7 +178,7 @@ export function Navbar() {
                 <button
                   onClick={handleLogout}
                   title="Sign out"
-                  className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  className="flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
@@ -187,7 +187,7 @@ export function Navbar() {
 
             {/* Mobile menu button */}
             <button
-              className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-gray-500 hover:bg-gray-100"
+              className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

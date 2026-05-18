@@ -98,9 +98,9 @@ export default function CheckoutPage() {
               {review.delivery_addresses.map((addr) => (
                 <label key={addr.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${selectedAddress === addr.id ? 'border-brand-700 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}>
                   <input type="radio" name="address" value={addr.id} checked={selectedAddress === addr.id} onChange={() => setSelectedAddress(addr.id)} className="mt-0.5" />
-                  <div className="text-sm">
+                  <div className="text-sm min-w-0">
                     <p className="font-medium text-gray-900">{addr.name}</p>
-                    <p className="text-gray-500">{addr.street}, {addr.city} {addr.zip}</p>
+                    <p className="text-gray-500 line-clamp-2">{addr.street}, {addr.city} {addr.zip}</p>
                   </div>
                 </label>
               ))}

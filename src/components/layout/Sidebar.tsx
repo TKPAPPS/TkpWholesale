@@ -28,7 +28,7 @@ function CategoryItem({ cat, selectedId, onSelect, depth = 0 }: {
     <div>
       <button
         className={cn(
-          'w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors text-start',
+          'w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors text-start',
           isSelected ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-50',
           depth > 0 && 'ps-6 text-xs',
         )}
@@ -58,7 +58,7 @@ export function Sidebar({ categories, selectedCategoryId, onSelect }: SidebarPro
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-3 mb-2">Categories</p>
       <button
         className={cn(
-          'w-full text-start rounded-lg px-3 py-2 text-sm transition-colors',
+          'w-full text-start rounded-lg px-3 py-2.5 text-sm transition-colors',
           selectedCategoryId === null ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-50',
         )}
         onClick={() => onSelect(null)}
