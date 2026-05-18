@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Admin auth not configured.' }, { status: 500 })
     }
     const adminEmail = process.env.ODOO_ADMIN_LOGIN
-    const adminPassword = process.env.ODOO_ADMIN_PASSWORD
+    const adminPassword = process.env.ODOO_ADMIN_API_KEY
     if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) {
       return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
     }

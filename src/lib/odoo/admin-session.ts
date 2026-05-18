@@ -11,7 +11,7 @@ export async function getAdminSession(): Promise<string> {
 
   const { session_id } = await odooAuthenticate(
     process.env.ODOO_ADMIN_LOGIN!,
-    process.env.ODOO_ADMIN_PASSWORD!,
+    process.env.ODOO_ADMIN_API_KEY!,
   )
   _cache = { session_id, expires: now + 30 * 60_000 }
   return session_id
