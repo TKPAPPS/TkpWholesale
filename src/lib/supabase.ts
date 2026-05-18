@@ -19,11 +19,17 @@ export function createServerClient() {
 // Verify a Supabase access token from the admin_session cookie.
 // Returns the authenticated user email, or null if invalid / unauthorized.
 // In dev without Supabase: accepts the deterministic dev token set by the login route.
+function isSupabaseConfigured(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  return !!(url && key && !url.includes('your-project') && key !== 'your-service-role-key')
+}
+
 export async function verifyAdminToken(token: string): Promise<{ email: string } | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!url || !key) {
+  if (!isSupabaseConfigured()) {
     // Production must never reach here without Supabase configured
     if (process.env.NODE_ENV === 'production') return null
     const adminEmail = process.env.ODOO_ADMIN_LOGIN
