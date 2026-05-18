@@ -37,7 +37,7 @@ export async function verifyAdminToken(token: string): Promise<{ email: string }
     return null
   }
 
-  const supabase = createClient(url, key, { auth: { persistSession: false } })
+  const supabase = createClient(url!, key!, { auth: { persistSession: false } })
   const { data: { user }, error } = await supabase.auth.getUser(token)
   if (error || !user?.email) return null
   return { email: user.email }
