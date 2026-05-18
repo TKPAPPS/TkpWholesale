@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CART, MOCK_DELIVERY_ADDRESSES } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -21,12 +22,13 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { findCart, readCart, emptyCart, fetchDeliveryAddresses } = await import('@/lib/odoo/odoo-helpers')
 
-    const cartId = await findCart(parsed.odoo_session_id, parsed.partner_id)
+    const cartId = await findCart(sessionId, parsed.partner_id)
     const [cart, delivery_addresses] = await Promise.all([
-      cartId ? readCart(parsed.odoo_session_id, cartId) : Promise.resolve(emptyCart()),
-      fetchDeliveryAddresses(parsed.odoo_session_id, parsed.commercial_partner_id),
+      cartId ? readCart(sessionId, cartId) : Promise.resolve(emptyCart()),
+      fetchDeliveryAddresses(sessionId, parsed.commercial_partner_id),
     ])
 
     const blocking_errors: string[] = []
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
       delivery_addresses,
     })
   } catch (err) {
+    invalidateOdooSession()
     console.error('checkout review error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseSession } from '@/lib/odoo/session'
 import { createServerClient } from '@/lib/supabase'
 import { fetchOdooProducts } from '@/lib/odoo/odoo-helpers'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 export async function GET(req: NextRequest) {
   const session = parseSession(req)
@@ -31,10 +32,17 @@ export async function GET(req: NextRequest) {
   if (templateIds.length === 0) return NextResponse.json({ favorites: [] })
 
   const domain = [['id', 'in', templateIds]]
-  const { products } = await fetchOdooProducts(
-    session.odoo_session_id, domain, {}, session.pricelist_id ?? undefined,
-  )
-  return NextResponse.json({ favorites: products })
+  try {
+    const sessionId = await getOdooSession()
+    const { products } = await fetchOdooProducts(
+      sessionId, domain, {}, session.pricelist_id ?? undefined,
+    )
+    return NextResponse.json({ favorites: products })
+  } catch (err) {
+    invalidateOdooSession()
+    console.error('favorites Odoo error:', err)
+    return NextResponse.json({ favorites: [] })
+  }
 }
 
 export async function POST(req: NextRequest) {

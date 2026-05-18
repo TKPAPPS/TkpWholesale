@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -16,11 +17,12 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { searchRead } = await import('@/lib/odoo/client')
     const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
 
     // Find recently ordered product template IDs from confirmed orders
-    const lines = await searchRead(parsed.odoo_session_id, 'sale.order.line',
+    const lines = await searchRead(sessionId, 'sale.order.line',
       [['order_id.partner_id', 'child_of', parsed.commercial_partner_id],
        ['order_id.state', 'in', ['sale', 'done']]],
       ['product_template_id'],
@@ -44,7 +46,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { products } = await fetchOdooProducts(
-      parsed.odoo_session_id,
+      sessionId,
       [['id', 'in', recentTemplateIds]],
       { limit: 8 },
       parsed.pricelist_id ?? undefined,
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ products: products.slice(0, 4) })
   } catch (err) {
+    invalidateOdooSession()
     console.error('recently-ordered error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

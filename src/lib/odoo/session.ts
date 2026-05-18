@@ -4,7 +4,7 @@ export interface OdooSession {
   uid: number
   partner_id: number
   commercial_partner_id: number
-  odoo_session_id: string
+  odoo_session_id?: string  // no longer used for API calls; kept for backward compat
   lang: 'en' | 'he'
   pricelist_id: number | null
   name: string

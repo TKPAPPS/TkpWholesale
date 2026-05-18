@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_ORDERS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { searchRead } = await import('@/lib/odoo/client')
 
     const domain: unknown[] = [
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
     if (dateFrom) domain.push(['date_order', '>=', dateFrom])
     if (dateTo) domain.push(['date_order', '<=', dateTo + ' 23:59:59'])
 
-    const allOrders = await searchRead(parsed.odoo_session_id, 'sale.order', domain,
+    const allOrders = await searchRead(sessionId, 'sale.order', domain,
       ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line'],
       { order: 'date_order desc' },
     ) as { id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[] }[]
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest) {
     const paged = orders.slice(page * perPage, page * perPage + perPage)
     return NextResponse.json({ orders: paged, total, page, per_page: perPage })
   } catch (err) {
+    invalidateOdooSession()
     console.error('orders error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

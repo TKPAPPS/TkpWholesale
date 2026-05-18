@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -28,16 +29,17 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { findCart } = await import('@/lib/odoo/odoo-helpers')
     const { callKw } = await import('@/lib/odoo/client')
 
-    const cartId = await findCart(parsed.odoo_session_id, parsed.partner_id)
+    const cartId = await findCart(sessionId, parsed.partner_id)
     if (!cartId) {
       return NextResponse.json({ error: 'CART_EMPTY', message: 'No active cart found.' }, { status: 400 })
     }
 
     // Read current cart state for idempotency check
-    const orders = await callKw(parsed.odoo_session_id, 'sale.order', 'read', [[cartId]], {
+    const orders = await callKw(sessionId, 'sale.order', 'read', [[cartId]], {
       fields: ['id', 'name', 'state', 'amount_total', 'currency_id'],
     }) as { id: number; name: string; state: string; amount_total: number; currency_id: [number, string] }[]
 
@@ -58,22 +60,22 @@ export async function POST(req: NextRequest) {
 
     // Validate delivery address belongs to this commercial partner
     const { fetchDeliveryAddresses } = await import('@/lib/odoo/odoo-helpers')
-    const addresses = await fetchDeliveryAddresses(parsed.odoo_session_id, parsed.commercial_partner_id)
+    const addresses = await fetchDeliveryAddresses(sessionId, parsed.commercial_partner_id)
     const validAddress = addresses.find(a => a.id === delivery_address_id)
     if (!validAddress) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address not valid.' }, { status: 400 })
     }
 
     // Write delivery address and note, then confirm
-    await callKw(parsed.odoo_session_id, 'sale.order', 'write', [[cartId], {
+    await callKw(sessionId, 'sale.order', 'write', [[cartId], {
       partner_shipping_id: delivery_address_id,
       note: note ?? '',
     }], {})
 
-    await callKw(parsed.odoo_session_id, 'sale.order', 'action_confirm', [[cartId]], {})
+    await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
 
     // Re-read to get final state
-    const confirmed = await callKw(parsed.odoo_session_id, 'sale.order', 'read', [[cartId]], {
+    const confirmed = await callKw(sessionId, 'sale.order', 'read', [[cartId]], {
       fields: ['id', 'name', 'state', 'amount_total', 'currency_id'],
     }) as { id: number; name: string; state: string; amount_total: number; currency_id: [number, string] }[]
 
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
       already_confirmed: false,
     })
   } catch (err) {
+    invalidateOdooSession()
     console.error('checkout confirm error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

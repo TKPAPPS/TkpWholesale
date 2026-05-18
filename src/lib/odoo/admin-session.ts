@@ -1,11 +1,11 @@
 import { odooAuthenticate } from './client'
 
-// Cached admin Odoo session — reused across requests within the same
-// serverless instance. TTL is 30 minutes (well under Odoo's default 1-week
-// session lifetime) so the cached session_id stays valid.
+// Cached server Odoo session (authenticated via API key).
+// Reused across all requests — admin panel AND customer routes.
+// TTL is 30 minutes (well under Odoo's default 1-week session lifetime).
 let _cache: { session_id: string; expires: number } | null = null
 
-export async function getAdminSession(): Promise<string> {
+async function acquireSession(): Promise<string> {
   const now = Date.now()
   if (_cache && now < _cache.expires) return _cache.session_id
 
@@ -19,4 +19,12 @@ export async function getAdminSession(): Promise<string> {
 
 // Call this if an Odoo call fails with a session error so the next request
 // re-authenticates instead of retrying with a dead session.
-export function invalidateAdminSession() { _cache = null }
+function invalidate() { _cache = null }
+
+// Customer-route names
+export const getOdooSession = acquireSession
+export const invalidateOdooSession = invalidate
+
+// Admin-route names (aliases — same underlying session)
+export const getAdminSession = acquireSession
+export const invalidateAdminSession = invalidate

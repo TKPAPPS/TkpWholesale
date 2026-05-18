@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_ORDER_DETAIL } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -19,12 +20,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { assertOrderOwnership } = await import('@/lib/odoo/odoo-helpers')
     const { searchRead, callKw } = await import('@/lib/odoo/client')
 
     let order: Awaited<ReturnType<typeof assertOrderOwnership>>
     try {
-      order = await assertOrderOwnership(parsed.odoo_session_id, id, parsed.commercial_partner_id)
+      order = await assertOrderOwnership(sessionId, id, parsed.commercial_partner_id)
     } catch {
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     // Fetch lines
-    const lines = await searchRead(parsed.odoo_session_id, 'sale.order.line',
+    const lines = await searchRead(sessionId, 'sale.order.line',
       [['order_id', '=', id]],
       ['id', 'product_id', 'product_template_id', 'product_packaging_id',
         'product_packaging_qty', 'product_uom_qty', 'price_unit',
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const shippingId = order.partner_shipping_id ? order.partner_shipping_id[0] : null
     let shippingAddress = { id: 0, name: '', street: '', city: '', zip: '', country: '' }
     if (shippingId) {
-      const addrs = await callKw(parsed.odoo_session_id, 'res.partner', 'read', [[shippingId]], {
+      const addrs = await callKw(sessionId, 'res.partner', 'read', [[shippingId]], {
         fields: ['id', 'name', 'street', 'street2', 'city', 'zip', 'country_id'],
       }) as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false }[]
       const a = addrs[0]
@@ -96,6 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       amount_tax: order.amount_tax,
     })
   } catch (err) {
+    invalidateOdooSession()
     console.error('order detail error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

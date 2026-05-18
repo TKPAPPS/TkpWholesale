@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { fetchOdooProducts, fetchRecentlyPublishedIds } = await import('@/lib/odoo/odoo-helpers')
 
     const domain: unknown[] = []
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
     // For new arrivals, filter by when the product was published to our website
     // (product.website.settings.create_date), not the template's create_date.
     if (sort === 'new_arrivals' && createdAfter) {
-      const recentIds = await fetchRecentlyPublishedIds(parsed.odoo_session_id, createdAfter)
+      const recentIds = await fetchRecentlyPublishedIds(sessionId, createdAfter)
       if (recentIds.length > 0) domain.push(['id', 'in', recentIds])
     } else if (createdAfter) {
       domain.push(['create_date', '>=', createdAfter])
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
       'name asc'
 
     const { products, total } = await fetchOdooProducts(
-      parsed.odoo_session_id,
+      sessionId,
       domain,
       { limit: perPage, offset: page * perPage, order: odooSort },
       parsed.pricelist_id ?? undefined,
@@ -60,6 +62,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ products, total, page, per_page: perPage })
   } catch (err) {
+    invalidateOdooSession()
     console.error('products error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

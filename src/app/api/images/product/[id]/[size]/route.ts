@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getOdooSession } from '@/lib/odoo/admin-session'
 
 const ODOO_URL = process.env.ODOO_URL!
 const SIZE_MAP: Record<string, string> = {
@@ -12,17 +13,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
   const field = SIZE_MAP[params.size] ?? 'image_512'
   const url = `${ODOO_URL}/web/image/product.template/${params.id}/${field}`
 
-  // Forward the Odoo session so staging instances return the actual image
   const headers: Record<string, string> = { Accept: 'image/*' }
-  const raw = req.cookies.get('session')?.value
-  if (raw) {
-    try {
-      const session = JSON.parse(raw) as { odoo_session_id?: string }
-      if (session.odoo_session_id && session.odoo_session_id !== 'mock') {
-        headers.Cookie = `session_id=${session.odoo_session_id}`
-      }
-    } catch { /* ignore */ }
-  }
+  try {
+    const sessionId = await getOdooSession()
+    headers.Cookie = `session_id=${sessionId}`
+  } catch { /* proceed without auth — public images may still work */ }
 
   try {
     const res = await fetch(url, { headers })

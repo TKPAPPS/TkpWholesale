@@ -69,7 +69,6 @@ export async function POST(req: NextRequest) {
       uid: auth.uid,
       partner_id: partner.id,
       commercial_partner_id: partner.commercial_partner_id[0],
-      odoo_session_id: auth.session_id,
       lang,
       pricelist_id: user.pricelist_id,
       name: user.name,

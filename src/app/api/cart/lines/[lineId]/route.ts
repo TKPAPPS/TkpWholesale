@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CART } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -54,11 +55,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { callKw } = await import('@/lib/odoo/client')
     const { readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
-    const resolved = await resolveCartForLine(parsed.odoo_session_id, lineId, parsed.partner_id)
+    const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
     const writeVals: Record<string, unknown> = {
@@ -67,16 +69,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     }
     if (resolved.templateId && parsed.pricelist_id) {
       const priceUnit = await lookupPricelistPrice(
-        parsed.odoo_session_id, parsed.pricelist_id, resolved.templateId,
+        sessionId, parsed.pricelist_id, resolved.templateId,
       )
       if (priceUnit !== null) writeVals.price_unit = priceUnit
     }
-    await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
+    await callKw(sessionId, 'sale.order.line', 'write',
       [[resolved.lineId], writeVals], {})
 
-    const cart = await readCart(parsed.odoo_session_id, resolved.orderId)
+    const cart = await readCart(sessionId, resolved.orderId)
     return NextResponse.json(cart)
   } catch (err) {
+    invalidateOdooSession()
     console.error('cart line PATCH error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }
@@ -95,18 +98,20 @@ export async function DELETE(req: NextRequest, { params }: { params: { lineId: s
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { callKw } = await import('@/lib/odoo/client')
     const { readCart } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
-    const resolved = await resolveCartForLine(parsed.odoo_session_id, lineId, parsed.partner_id)
+    const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
-    await callKw(parsed.odoo_session_id, 'sale.order.line', 'unlink', [[resolved.lineId]], {})
+    await callKw(sessionId, 'sale.order.line', 'unlink', [[resolved.lineId]], {})
 
-    const cart = await readCart(parsed.odoo_session_id, resolved.orderId)
+    const cart = await readCart(sessionId, resolved.orderId)
     return NextResponse.json(cart)
   } catch (err) {
+    invalidateOdooSession()
     console.error('cart line DELETE error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

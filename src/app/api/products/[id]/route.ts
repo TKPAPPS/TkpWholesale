@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -20,9 +21,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
     const { products } = await fetchOdooProducts(
-      parsed.odoo_session_id, [['id', '=', id]], { limit: 1 }, parsed.pricelist_id ?? undefined,
+      sessionId, [['id', '=', id]], { limit: 1 }, parsed.pricelist_id ?? undefined,
     )
 
     if (products.length === 0) {
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     return NextResponse.json(products[0])
   } catch (err) {
+    invalidateOdooSession()
     console.error('product detail error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }

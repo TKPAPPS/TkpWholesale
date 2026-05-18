@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CART } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
+import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -20,24 +21,25 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
+    const sessionId = await getOdooSession()
     const { getOrCreateCart, validatePackaging, readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     // Validate packaging belongs to this template
-    const pkgInfo = await validatePackaging(parsed.odoo_session_id, product_id, packaging_id ?? 0)
+    const pkgInfo = await validatePackaging(sessionId, product_id, packaging_id ?? 0)
     if (!pkgInfo) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
 
     // Look up the customer's pricelist price so price_unit is correct on the order line.
     // Odoo create() / write() skip onchanges, so we must set price_unit explicitly.
-    const priceUnit = await lookupPricelistPrice(parsed.odoo_session_id, parsed.pricelist_id, product_id)
+    const priceUnit = await lookupPricelistPrice(sessionId, parsed.pricelist_id, product_id)
 
-    const cartId = await getOrCreateCart(parsed.odoo_session_id, parsed.partner_id, parsed.pricelist_id)
+    const cartId = await getOrCreateCart(sessionId, parsed.partner_id, parsed.pricelist_id)
 
     // Check if a line with the same product + packaging already exists
     const existingLines = await searchRead(
-      parsed.odoo_session_id, 'sale.order.line',
+      sessionId, 'sale.order.line',
       [['order_id', '=', cartId], ['product_id', '=', pkgInfo.productVariantId],
        ...(packaging_id ? [['product_packaging_id', '=', packaging_id]] : [])],
       ['id', 'product_packaging_qty'],
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
         product_uom_qty: newQty * pkgInfo.qty,
       }
       if (priceUnit !== null) writeVals.price_unit = priceUnit
-      await callKw(parsed.odoo_session_id, 'sale.order.line', 'write',
+      await callKw(sessionId, 'sale.order.line', 'write',
         [[existingLines[0].id], writeVals], {})
     } else {
       const lineVals: Record<string, unknown> = {
@@ -62,12 +64,13 @@ export async function POST(req: NextRequest) {
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
       if (priceUnit !== null) lineVals.price_unit = priceUnit
-      await callKw(parsed.odoo_session_id, 'sale.order.line', 'create', [lineVals], {})
+      await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
     }
 
-    const cart = await readCart(parsed.odoo_session_id, cartId)
+    const cart = await readCart(sessionId, cartId)
     return NextResponse.json(cart)
   } catch (err) {
+    invalidateOdooSession()
     console.error('cart lines POST error:', err)
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }
