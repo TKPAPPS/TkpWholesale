@@ -79,6 +79,15 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
           </div>
         )}
 
+        {/* Low stock badge */}
+        {product.sellable && product.qty_available > 0 && product.qty_available < 20 && (
+          <div className="absolute top-2 start-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+              Low stock
+            </span>
+          </div>
+        )}
+
         {/* Favorite button */}
         <div className="absolute top-2 end-2">
           <FavoriteButton templateId={product.template_id} initialFavorited={favorited} />

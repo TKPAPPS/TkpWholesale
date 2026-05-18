@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useLangStore, initLang } from '@/store/langStore'
 import { useCartStore } from '@/store/cartStore'
 import { Navbar } from '@/components/layout/Navbar'
+import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   return (
     <div className="min-h-screen bg-[#fafaf9]">
       <Navbar />
+      <AnnouncementBanner />
       <main className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>

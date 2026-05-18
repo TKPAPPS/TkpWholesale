@@ -46,6 +46,7 @@ export interface Product {
   tax_names: string[]
   sellable: boolean
   in_stock: boolean
+  qty_available: number
 }
 
 export interface CartLine {
@@ -98,6 +99,7 @@ export interface Order {
   amount_total: number
   currency: string
   state: string
+  delivery_status: string | null
   state_label: string
   line_count: number
 }

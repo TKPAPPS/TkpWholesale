@@ -82,7 +82,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true,
+    in_stock: true, qty_available: 50,
   },
   {
     id: 11,
@@ -112,7 +112,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true,
+    in_stock: true, qty_available: 50,
   },
   {
     id: 12,
@@ -142,7 +142,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true,
+    in_stock: true, qty_available: 50,
   },
   {
     id: 13,
@@ -172,7 +172,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: false,
-    in_stock: false,
+    in_stock: false, qty_available: 0,
   },
   {
     id: 14,
@@ -202,7 +202,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true,
+    in_stock: true, qty_available: 50,
   },
   {
     id: 15,
@@ -232,7 +232,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true,
+    in_stock: true, qty_available: 50,
   },
 ]
 
@@ -293,9 +293,9 @@ export const MOCK_CART: Cart = {
 }
 
 export const MOCK_ORDERS: Order[] = [
-  { id: 789, name: 'S00123', date_order: '2026-05-10T09:30:00Z', amount_total: 3150.00, currency: 'THB', state: 'sale', state_label: 'Sales Order', line_count: 2 },
-  { id: 780, name: 'S00115', date_order: '2026-04-28T14:00:00Z', amount_total: 1134.00, currency: 'THB', state: 'sale', state_label: 'Sales Order', line_count: 1 },
-  { id: 771, name: 'S00108', date_order: '2026-04-10T11:15:00Z', amount_total: 2520.00, currency: 'THB', state: 'done', state_label: 'Done', line_count: 3 },
+  { id: 789, name: 'S00123', date_order: '2026-05-10T09:30:00Z', amount_total: 3150.00, currency: 'THB', state: 'sale', delivery_status: 'partial', state_label: 'Partially Shipped', line_count: 2 },
+  { id: 780, name: 'S00115', date_order: '2026-04-28T14:00:00Z', amount_total: 1134.00, currency: 'THB', state: 'sale', delivery_status: null, state_label: 'Confirmed', line_count: 1 },
+  { id: 771, name: 'S00108', date_order: '2026-04-10T11:15:00Z', amount_total: 2520.00, currency: 'THB', state: 'done', delivery_status: 'full', state_label: 'Delivered', line_count: 3 },
 ]
 
 export const MOCK_ORDER_DETAIL: OrderDetail = {
@@ -307,7 +307,8 @@ export const MOCK_ORDER_DETAIL: OrderDetail = {
   amount_tax: 150.00,
   currency: 'THB',
   state: 'sale',
-  state_label: 'Sales Order',
+  delivery_status: null,
+  state_label: 'Confirmed',
   line_count: 2,
   partner_shipping: { id: 78, name: 'Main Warehouse', street: '123 Sukhumvit Rd', city: 'Bangkok', zip: '10110', country: 'Thailand' },
   note: 'Please deliver before noon.',

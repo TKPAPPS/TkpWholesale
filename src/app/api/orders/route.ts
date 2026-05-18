@@ -40,22 +40,34 @@ export async function GET(req: NextRequest) {
     if (dateTo) domain.push(['date_order', '<=', dateTo + ' 23:59:59'])
 
     const allOrders = await searchRead(sessionId, 'sale.order', domain,
-      ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line'],
+      ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line', 'delivery_status'],
       { order: 'date_order desc' },
-    ) as { id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[] }[]
+    ) as { id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[]; delivery_status?: string }[]
 
-    const STATE_LABELS: Record<string, string> = { sale: 'Confirmed', done: 'Done' }
+    const STATE_LABELS: Record<string, string> = {
+      draft: 'Quotation', sent: 'Sent', sale: 'Confirmed', done: 'Completed', cancel: 'Cancelled',
+    }
+    const DELIVERY_LABELS: Record<string, string> = {
+      pending: 'Confirmed', partial: 'Partially Shipped', full: 'Delivered',
+    }
 
-    const orders = allOrders.map(o => ({
-      id: o.id,
-      name: o.name,
-      date_order: o.date_order,
-      amount_total: o.amount_total,
-      currency: o.currency_id[1] ?? 'THB',
-      state: o.state,
-      state_label: STATE_LABELS[o.state] ?? o.state,
-      line_count: o.order_line.length,
-    }))
+    const orders = allOrders.map(o => {
+      const deliveryStatus = o.delivery_status ?? null
+      const stateLabel = deliveryStatus
+        ? DELIVERY_LABELS[deliveryStatus] ?? STATE_LABELS[o.state] ?? o.state
+        : STATE_LABELS[o.state] ?? o.state
+      return {
+        id: o.id,
+        name: o.name,
+        date_order: o.date_order,
+        amount_total: o.amount_total,
+        currency: o.currency_id[1] ?? 'THB',
+        state: o.state,
+        delivery_status: deliveryStatus,
+        state_label: stateLabel,
+        line_count: o.order_line.length,
+      }
+    })
 
     const total = orders.length
     const paged = orders.slice(page * perPage, page * perPage + perPage)

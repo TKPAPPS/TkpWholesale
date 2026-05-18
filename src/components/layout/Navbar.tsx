@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search } from 'lucide-react'
+import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search, Zap } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
@@ -38,7 +38,9 @@ export function Navbar() {
   }
 
   const navLinks = [
+    { href: '/', label: 'Home', icon: Package },
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
+    { href: '/quick-order', label: 'Quick Order', icon: Zap },
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: Clock },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: Package },
@@ -57,7 +59,7 @@ export function Navbar() {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
             {navLinks.map(({ href, label }) => {
-              const active = pathname.startsWith(href)
+              const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
               return (
                 <Link
                   key={href}
@@ -210,7 +212,7 @@ export function Navbar() {
                 onClick={() => setMobileOpen(false)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors',
-                  pathname.startsWith(href)
+                  (href === '/' ? pathname === '/' : pathname.startsWith(href))
                     ? 'text-brand-700 bg-brand-50'
                     : 'text-gray-600 hover:bg-gray-50',
                 )}

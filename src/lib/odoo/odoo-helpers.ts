@@ -465,6 +465,7 @@ export async function fetchOdooProducts(
       tax_names: taxNames,
       sellable,
       in_stock: inStock,
+      qty_available: raw.qty_available,
     }
   })
 
