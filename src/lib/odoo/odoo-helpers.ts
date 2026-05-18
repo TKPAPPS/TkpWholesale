@@ -205,7 +205,7 @@ async function getHideOutOfStock(sessionId: string): Promise<boolean> {
       { fields: ['value'], limit: 1 },
     ) as unknown as { value: string }[]
     const value = rows[0]?.value === 'false' ? false : true  // default true if not set
-    _hideOosCache = { value, expires: now + 60_000 }
+    _hideOosCache = { value, expires: now + 5 * 60_000 }
     return value
   } catch {
     return true  // safe default: hide OOS products
@@ -471,7 +471,7 @@ export async function fetchOdooProducts(
   const result = { products, total: count }
   // Evict oldest entry if cache grows too large (>200 entries)
   if (_productCache.size >= 200) _productCache.delete(_productCache.keys().next().value!)
-  _productCache.set(cacheKey, { data: result, expires: Date.now() + 60_000 })
+  _productCache.set(cacheKey, { data: result, expires: Date.now() + 5 * 60_000 })
   return result
 }
 
