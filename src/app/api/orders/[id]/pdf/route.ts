@@ -3,7 +3,6 @@ import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
-const ODOO_URL = process.env.ODOO_URL!
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = req.cookies.get('session')?.value
@@ -22,10 +21,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const sessionId = await getOdooSession()
     const { callKw } = await import('@/lib/odoo/client')
 
-    // Verify ownership + get access_token in one read
+    // Verify ownership
     const orders = await callKw(sessionId, 'sale.order', 'read', [[id]], {
-      fields: ['id', 'state', 'commercial_partner_id', 'partner_id', 'access_token'],
-    }) as { id: number; state: string; commercial_partner_id: [number, string] | false; partner_id: [number, string] | false; access_token: string }[]
+      fields: ['id', 'state', 'commercial_partner_id', 'partner_id'],
+    }) as { id: number; state: string; commercial_partner_id: [number, string] | false; partner_id: [number, string] | false }[]
 
     const order = orders[0]
     if (!order || !['sale', 'done'].includes(order.state)) {
@@ -36,24 +35,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
 
-    // Use access_token for unauthenticated portal PDF (works on Odoo SaaS).
-    // Falls back to Bearer token if access_token is not available.
-    const pdfUrl = order.access_token
-      ? `${ODOO_URL}/report/pdf/sale.report_saleorder/${id}?access_token=${order.access_token}`
-      : `${ODOO_URL}/report/pdf/sale.report_saleorder/${id}`
-    const fetchHeaders: Record<string, string> = order.access_token
-      ? {}
-      : { Authorization: `Bearer ${sessionId.split(':').slice(1).join(':')}` }
+    // Render PDF via JSON-RPC using the admin API key.
+    // The /report/pdf/ HTTP endpoint requires auth='user' (session cookie) which
+    // doesn't work with API keys on Odoo SaaS. JSON-RPC execute_kw works instead.
+    // Odoo encodes returned bytes as latin-1 strings in JSON; Buffer 'binary' reverses that.
+    const result = await callKw(
+      sessionId,
+      'ir.actions.report',
+      'render_qweb_pdf',
+      ['sale.report_saleorder', [id]],
+      {},
+    ) as [string, string]
 
-    const pdfRes = await fetch(pdfUrl, { headers: fetchHeaders })
-    const contentType = pdfRes.headers.get('content-type') ?? ''
+    const pdfBuffer = Buffer.from(result[0], 'binary')
 
-    if (!pdfRes.ok || !contentType.includes('pdf')) {
-      console.error('PDF proxy: unexpected response', pdfRes.status, contentType)
-      return NextResponse.json({ error: 'PDF_ERROR', message: 'Could not generate PDF.' }, { status: 502 })
-    }
-
-    const pdfBuffer = await pdfRes.arrayBuffer()
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
@@ -64,7 +59,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     })
   } catch (err) {
     invalidateOdooSession()
-    console.error('PDF proxy error:', err)
-    return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
+    console.error('order PDF error:', err)
+    return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not generate PDF.' }, { status: 503 })
   }
 }
