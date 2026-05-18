@@ -25,7 +25,7 @@ export function AnnouncementBanner() {
       .then(d => {
         if (d.announcement) {
           const key = `dismissed-announcement-${d.announcement.id}`
-          if (!sessionStorage.getItem(key)) setAnnouncement(d.announcement)
+          if (!localStorage.getItem(key)) setAnnouncement(d.announcement)
         }
       })
       .catch(() => {})
@@ -36,7 +36,7 @@ export function AnnouncementBanner() {
   const { bg, text, Icon } = STYLES[announcement.type] ?? STYLES.info
 
   const dismiss = () => {
-    sessionStorage.setItem(`dismissed-announcement-${announcement.id}`, '1')
+    localStorage.setItem(`dismissed-announcement-${announcement.id}`, '1')
     setDismissed(true)
   }
 

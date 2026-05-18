@@ -46,6 +46,8 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
       setTimeout(() => setAdded(false), 2000)
       fetchCart()
       showToast(`${name} added to cart`)
+    } catch {
+      showToast('Could not add to cart. Please try again.', 'error')
     } finally {
       setAdding(false)
     }

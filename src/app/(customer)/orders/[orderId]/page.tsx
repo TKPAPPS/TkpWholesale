@@ -81,14 +81,14 @@ export default function OrderDetailPage() {
 
       {/* Delivery */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Delivery Address</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.deliveryAddress')}</p>
         <p className="text-sm font-medium text-gray-900">{order.partner_shipping.name}</p>
         <p className="text-sm text-gray-500 line-clamp-2">{order.partner_shipping.street}, {order.partner_shipping.city}</p>
       </div>
 
       {/* Lines */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Items</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{t(lang, 'orders.items')}</p>
         {order.lines.map((line) => (
           <div key={line.line_id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -109,19 +109,19 @@ export default function OrderDetailPage() {
       {/* Totals */}
       <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 space-y-2">
         <div className="flex justify-between text-sm text-gray-600">
-          <span>Subtotal</span><span>{formatCurrency(order.amount_untaxed, order.currency)}</span>
+          <span>{t(lang, 'cart.subtotal')}</span><span>{formatCurrency(order.amount_untaxed, order.currency)}</span>
         </div>
         <div className="flex justify-between text-sm text-gray-600">
-          <span>VAT</span><span>{formatCurrency(order.amount_tax, order.currency)}</span>
+          <span>{t(lang, 'cart.tax')}</span><span>{formatCurrency(order.amount_tax, order.currency)}</span>
         </div>
         <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-2">
-          <span>Total</span><span>{formatCurrency(order.amount_total, order.currency)}</span>
+          <span>{t(lang, 'cart.total')}</span><span>{formatCurrency(order.amount_total, order.currency)}</span>
         </div>
       </div>
 
       {order.note && (
         <div className="mt-4 bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Order Note</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.orderNote')}</p>
           <p className="text-sm text-gray-600">{order.note}</p>
         </div>
       )}

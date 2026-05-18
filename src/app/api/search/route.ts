@@ -26,16 +26,34 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
+    const { searchRead } = await import('@/lib/odoo/client')
 
-    const domain = [
-      '|', '|',
-      ['name', 'ilike', q],
-      ['default_code', 'ilike', q],
-      ['description_sale', 'ilike', q],
-    ]
+    // Search both English and Hebrew name fields in parallel, plus SKU
+    const skuDomain = ['default_code', 'ilike', q]
+    const [enResults, heResults] = await Promise.all([
+      searchRead(sessionId, 'product.template',
+        [['|', ['name', 'ilike', q], skuDomain]],
+        ['id'], { limit: 50, context: { lang: 'en_US' } },
+      ) as Promise<{ id: number }[]>,
+      searchRead(sessionId, 'product.template',
+        [['name', 'ilike', q]],
+        ['id'], { limit: 50, context: { lang: 'he_IL' } },
+      ) as Promise<{ id: number }[]>,
+    ])
+
+    // Deduplicate IDs from both language searches
+    const idMap: Record<number, true> = {}
+    enResults.forEach((p) => { idMap[p.id] = true })
+    heResults.forEach((p) => { idMap[p.id] = true })
+    const allIds = Object.keys(idMap).map(Number)
+
+    if (allIds.length === 0) return NextResponse.json({ results: [], query: q, total: 0 })
 
     const { products, total } = await fetchOdooProducts(
-      sessionId, domain, { limit: 20 }, parsed.pricelist_id ?? undefined,
+      sessionId,
+      [['id', 'in', allIds]],
+      { limit: 20 },
+      parsed.pricelist_id ?? undefined,
     )
 
     return NextResponse.json({ results: products, query: q, total })

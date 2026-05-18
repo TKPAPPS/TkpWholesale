@@ -17,7 +17,7 @@ export default function AdminDashboard() {
       .catch(() => setError(true))
   }, [])
 
-  const supabaseConfigured = false // will be true once Supabase env vars are set
+  const supabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL
 
   const stats = [
     { label: 'Orders Today', value: data ? String(data.orders_today) : '—' },

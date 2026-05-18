@@ -48,6 +48,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       price_total: number; name: string;
     }[]
 
+    // Fetch SKUs from product variants
+    const variantIds = lines.map((l) => l.product_id[0]).filter(Boolean)
+    const variants = variantIds.length > 0
+      ? await callKw(sessionId, 'product.product', 'read', [variantIds], {
+          fields: ['id', 'default_code'],
+        }) as { id: number; default_code: string | false }[]
+      : []
+    const skuMap: Record<number, string> = {}
+    variants.forEach((v) => { skuMap[v.id] = v.default_code || '' })
+
     // Fetch shipping address
     const shippingId = order.partner_shipping_id ? order.partner_shipping_id[0] : null
     let shippingAddress = { id: 0, name: '', street: '', city: '', zip: '', country: '' }
@@ -88,7 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         packaging_id: l.product_packaging_id ? l.product_packaging_id[0] : null,
         product_name: l.product_template_id[1] ?? l.name,
         product_name_he: l.product_template_id[1] ?? l.name,
-        sku: '',
+        sku: skuMap[l.product_id[0]] ?? '',
         packaging_name: l.product_packaging_id ? l.product_packaging_id[1] : 'Unit',
         packaging_qty: l.product_packaging_qty,
         unit_qty: l.product_uom_qty,

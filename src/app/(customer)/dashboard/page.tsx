@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Product, Order } from '@/types'
 import { useAuthStore } from '@/store/authStore'
@@ -15,6 +16,7 @@ const STATE_STEP: Record<string, number> = { draft: 0, sent: 1, sale: 2, done: 3
 const STATE_LABEL: Record<string, string> = { draft: 'Quotation', sent: 'Sent', sale: 'Confirmed', done: 'Completed' }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { user } = useAuthStore()
   const { lang } = useLangStore()
   const cart = useCartStore((s) => s.cart)
@@ -49,7 +51,7 @@ export default function DashboardPage() {
           body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
         })
       }
-      window.location.href = '/cart'
+      router.push('/cart')
     } finally {
       setReordering(null)
     }

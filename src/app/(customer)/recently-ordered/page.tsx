@@ -19,6 +19,7 @@ export default function RecentlyOrderedPage() {
     fetch('/api/recently-ordered')
       .then((r) => r.json())
       .then((d) => setProducts(d.products ?? []))
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 

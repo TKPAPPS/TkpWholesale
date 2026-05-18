@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Product, PackagingOption } from '@/types'
 import { useLangStore } from '@/store/langStore'
+import { t } from '@/lib/i18n/translations'
 import { useCartStore } from '@/store/cartStore'
 import { useToastStore } from '@/store/toastStore'
 import { formatCurrency } from '@/lib/utils'
@@ -95,8 +96,8 @@ export default function QuickOrderPage() {
       <div className="flex items-center gap-3 mb-6">
         <Zap className="h-6 w-6 text-brand-700" />
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Quick Order</h1>
-          <p className="text-sm text-gray-500">Search products, set quantities, add everything to cart at once.</p>
+          <h1 className="text-xl font-bold text-gray-900">{t(lang, 'quickOrder.title')}</h1>
+          <p className="text-sm text-gray-500">{t(lang, 'quickOrder.subtitle')}</p>
         </div>
       </div>
 
@@ -109,7 +110,7 @@ export default function QuickOrderPage() {
         <input
           value={query}
           onChange={(e) => handleInput(e.target.value)}
-          placeholder="Search by product name or SKU…"
+          placeholder={t(lang, 'quickOrder.searchPlaceholder')}
           className="w-full rounded-xl border border-gray-200 bg-white ps-10 pe-10 py-3 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
           autoFocus
         />
@@ -222,14 +223,14 @@ export default function QuickOrderPage() {
           <div className="flex flex-wrap items-center justify-between gap-4 bg-white rounded-xl border border-gray-100 px-4 py-4">
             <div>
               <p className="text-xs text-gray-400">{rows.length} product{rows.length !== 1 ? 's' : ''}</p>
-              <p className="text-lg font-bold text-gray-900">Total {formatCurrency(total, currency)}</p>
-              <p className="text-xs text-gray-400">incl. tax</p>
+              <p className="text-lg font-bold text-gray-900">{t(lang, 'cart.total')} {formatCurrency(total, currency)}</p>
+              <p className="text-xs text-gray-400">{t(lang, 'quickOrder.inclTax')}</p>
             </div>
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setRows([])}>Clear all</Button>
+              <Button variant="secondary" onClick={() => setRows([])}>{t(lang, 'quickOrder.clearAll')}</Button>
               <Button onClick={addAllToCart} loading={adding}>
                 <ShoppingCart className="h-4 w-4 me-2" />
-                Add {rows.length} item{rows.length !== 1 ? 's' : ''} to cart
+                {t(lang, 'products.addToCart')}
               </Button>
             </div>
           </div>
@@ -237,7 +238,7 @@ export default function QuickOrderPage() {
       ) : (
         <div className="text-center py-16 text-gray-400">
           <Zap className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-          <p className="text-sm">Search for products above to build your order</p>
+          <p className="text-sm">{t(lang, 'quickOrder.emptyHint')}</p>
         </div>
       )}
     </div>

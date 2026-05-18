@@ -56,7 +56,7 @@ export default function OrdersPage() {
         </div>
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} placeholder={t(lang, 'orders.dateFrom')} className="w-full sm:w-auto rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-700/20" />
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} placeholder={t(lang, 'orders.dateTo')} className="w-full sm:w-auto rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-700/20" />
-        <button type="submit" className="w-full sm:w-auto h-10 px-4 rounded-lg bg-brand-700 text-white text-sm font-medium hover:bg-brand-800 transition-colors">Search</button>
+        <button type="submit" className="w-full sm:w-auto h-10 px-4 rounded-lg bg-brand-700 text-white text-sm font-medium hover:bg-brand-800 transition-colors">{t(lang, 'common.search')}</button>
       </form>
 
       {loading ? <LoadingSpinner /> : orders.length === 0 ? (

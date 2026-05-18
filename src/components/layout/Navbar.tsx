@@ -38,9 +38,9 @@ export function Navbar() {
   }
 
   const navLinks = [
-    { href: '/dashboard', label: 'Home', icon: Package },
+    { href: '/dashboard', label: t(lang, 'nav.home'), icon: Package },
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
-    { href: '/quick-order', label: 'Quick Order', icon: Zap },
+    { href: '/quick-order', label: t(lang, 'nav.quickOrder'), icon: Zap },
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: Clock },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: Package },
@@ -116,7 +116,7 @@ export function Navbar() {
                 >
                   <div className="p-4">
                     <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-                      {lineCount > 0 ? `${lineCount} product${lineCount !== 1 ? 's' : ''} in cart` : 'Your cart is empty'}
+                      {lineCount > 0 ? `${lineCount} ${t(lang, 'nav.itemsInCart')}` : t(lang, 'nav.cartEmpty')}
                     </p>
 
                     {cart && cart.lines.length > 0 ? (
@@ -147,11 +147,11 @@ export function Navbar() {
                           ))}
                         </ul>
                         {cart.lines.length > 6 && (
-                          <p className="text-xs text-gray-400 mt-2 text-center">+{cart.lines.length - 6} more items</p>
+                          <p className="text-xs text-gray-400 mt-2 text-center">+{cart.lines.length - 6} {t(lang, 'nav.itemsInCart')}</p>
                         )}
                         <div className="border-t border-gray-100 mt-3 pt-3 flex items-center justify-between">
                           <div>
-                            <p className="text-xs text-gray-400">Total</p>
+                            <p className="text-xs text-gray-400">{t(lang, 'cart.total')}</p>
                             <p className="text-base font-bold text-gray-900">{formatCurrency(cart.amount_total, cart.currency)}</p>
                           </div>
                           <Link
@@ -159,12 +159,12 @@ export function Navbar() {
                             onClick={() => setCartOpen(false)}
                             className="px-4 py-2 bg-brand-700 text-white text-sm font-medium rounded-lg hover:bg-brand-800 transition-colors"
                           >
-                            View Cart
+                            {t(lang, 'nav.viewCart')}
                           </Link>
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400 text-center py-4">Add products to start your order.</p>
+                      <p className="text-sm text-gray-400 text-center py-4">{t(lang, 'nav.cartEmptyHint')}</p>
                     )}
                   </div>
                 </div>
