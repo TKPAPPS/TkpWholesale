@@ -104,6 +104,15 @@ const translations = {
     'quickOrder.inclTax': 'incl. tax',
     'quickOrder.clearAll': 'Clear all',
     'quickOrder.emptyHint': 'Search for products above to build your order',
+    // Order progress steps
+    'orders.stepConfirmed': 'Confirmed',
+    'orders.stepProcessing': 'Processing',
+    'orders.stepShipped': 'Shipped',
+    'orders.stepDelivered': 'Delivered',
+    // Greetings
+    'common.goodMorning': 'Good morning',
+    'common.goodAfternoon': 'Good afternoon',
+    'common.goodEvening': 'Good evening',
     // Common
     'common.search': 'Search',
     // Admin
@@ -194,6 +203,13 @@ const translations = {
     'quickOrder.inclTax': 'כולל מע"מ',
     'quickOrder.clearAll': 'נקה הכל',
     'quickOrder.emptyHint': 'חפש מוצרים למעלה כדי לבנות את ההזמנה שלך',
+    'orders.stepConfirmed': 'מאושר',
+    'orders.stepProcessing': 'בעיבוד',
+    'orders.stepShipped': 'נשלח',
+    'orders.stepDelivered': 'נמסר',
+    'common.goodMorning': 'בוקר טוב',
+    'common.goodAfternoon': 'צהריים טובים',
+    'common.goodEvening': 'ערב טוב',
     'common.search': 'חפש',
     'common.loading': 'טוען...',
     'common.error': 'משהו השתבש.',

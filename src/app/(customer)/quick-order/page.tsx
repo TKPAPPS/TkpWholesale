@@ -222,7 +222,7 @@ export default function QuickOrderPage() {
           {/* Footer */}
           <div className="flex flex-wrap items-center justify-between gap-4 bg-white rounded-xl border border-gray-100 px-4 py-4">
             <div>
-              <p className="text-xs text-gray-400">{rows.length} product{rows.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-gray-400">{rows.length} {t(lang, 'orders.lines')}</p>
               <p className="text-lg font-bold text-gray-900">{t(lang, 'cart.total')} {formatCurrency(total, currency)}</p>
               <p className="text-xs text-gray-400">{t(lang, 'quickOrder.inclTax')}</p>
             </div>

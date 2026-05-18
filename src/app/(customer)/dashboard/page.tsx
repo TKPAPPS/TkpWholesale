@@ -10,10 +10,10 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { ProductCard } from '@/components/products/ProductCard'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { t } from '@/lib/i18n/translations'
 import { Package, ClipboardList, Heart, Sparkles, Zap, ShoppingCart, RefreshCw, ChevronRight } from 'lucide-react'
 
 const STATE_STEP: Record<string, number> = { draft: 0, sent: 1, sale: 2, done: 3 }
-const STATE_LABEL: Record<string, string> = { draft: 'Quotation', sent: 'Sent', sale: 'Confirmed', done: 'Completed' }
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -58,7 +58,7 @@ export default function DashboardPage() {
   }
 
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const greeting = t(lang, hour < 12 ? 'common.goodMorning' : hour < 17 ? 'common.goodAfternoon' : 'common.goodEvening')
   const firstName = user?.name?.split(' ')[0] ?? ''
 
   if (loading) return <LoadingSpinner />
@@ -75,12 +75,12 @@ export default function DashboardPage() {
         <div className="flex gap-3">
           <Link href="/quick-order">
             <Button size="sm" variant="secondary">
-              <Zap className="h-4 w-4 me-1.5" /> Quick Order
+              <Zap className="h-4 w-4 me-1.5" /> {t(lang, 'nav.quickOrder')}
             </Button>
           </Link>
           <Link href="/products">
             <Button size="sm">
-              <Package className="h-4 w-4 me-1.5" /> Browse Products
+              <Package className="h-4 w-4 me-1.5" /> {t(lang, 'nav.products')}
             </Button>
           </Link>
         </div>
@@ -89,10 +89,10 @@ export default function DashboardPage() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Orders placed', value: recentOrders.length > 0 ? recentOrders.length + '+' : '0', icon: ClipboardList, href: '/orders' },
-          { label: 'Items in cart', value: String(lineCount), icon: ShoppingCart, href: '/cart' },
-          { label: 'Favourites', value: String(favorites.length), icon: Heart, href: '/favorites' },
-          { label: 'Cart total', value: cart ? formatCurrency(cart.amount_total, cart.currency) : '—', icon: Package, href: '/cart' },
+          { label: t(lang, 'orders.title'), value: recentOrders.length > 0 ? recentOrders.length + '+' : '0', icon: ClipboardList, href: '/orders' },
+          { label: t(lang, 'nav.itemsInCart'), value: String(lineCount), icon: ShoppingCart, href: '/cart' },
+          { label: t(lang, 'favorites.title'), value: String(favorites.length), icon: Heart, href: '/favorites' },
+          { label: t(lang, 'cart.total'), value: cart ? formatCurrency(cart.amount_total, cart.currency) : '—', icon: Package, href: '/cart' },
         ].map(({ label, value, icon: Icon, href }) => (
           <Link key={label} href={href} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-brand-200 transition-colors">
             <div className="flex items-center gap-2 mb-1">
@@ -108,9 +108,9 @@ export default function DashboardPage() {
       {recentOrders.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-900">Recent Orders</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{t(lang, 'orders.title')}</h2>
             <Link href="/orders" className="text-xs text-brand-700 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="h-3.5 w-3.5" />
+              {t(lang, 'orders.viewDetail')} <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <div className="space-y-2">
@@ -122,13 +122,13 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-bold text-gray-900">{order.name}</p>
                       <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${step >= 3 ? 'bg-blue-50 text-blue-700 border-blue-100' : step >= 2 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                        {STATE_LABEL[order.state] ?? order.state}
+                        {order.state_label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.date_order, lang)} · {order.line_count} items</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.date_order, lang)} · {order.line_count} {t(lang, 'orders.lines')}</p>
                     {/* Progress bar */}
                     <div className="flex gap-1 mt-2">
-                      {['Confirmed', 'Processing', 'Shipped', 'Delivered'].map((s, i) => (
+                      {[t(lang, 'orders.stepConfirmed'), t(lang, 'orders.stepProcessing'), t(lang, 'orders.stepShipped'), t(lang, 'orders.stepDelivered')].map((s, i) => (
                         <div key={s} className={`h-1 flex-1 rounded-full ${i <= step - 1 ? 'bg-brand-700' : 'bg-gray-100'}`} />
                       ))}
                     </div>
@@ -140,11 +140,11 @@ export default function DashboardPage() {
                       loading={reordering === order.id}
                       onClick={() => reorderLast(order.id)}
                     >
-                      <RefreshCw className="h-3.5 w-3.5 me-1" /> Reorder
+                      <RefreshCw className="h-3.5 w-3.5 me-1" /> {t(lang, 'orders.reorder')}
                     </Button>
                     <Link href={`/orders/${order.id}`}>
                       <Button variant="secondary" size="sm">
-                        View <ChevronRight className="h-3.5 w-3.5 ms-1" />
+                        {t(lang, 'orders.viewDetail')} <ChevronRight className="h-3.5 w-3.5 ms-1" />
                       </Button>
                     </Link>
                   </div>
@@ -160,10 +160,10 @@ export default function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <Heart className="h-4 w-4 text-red-400" /> Your Favourites
+              <Heart className="h-4 w-4 text-red-400" /> {t(lang, 'favorites.title')}
             </h2>
             <Link href="/favorites" className="text-xs text-brand-700 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="h-3.5 w-3.5" />
+              {t(lang, 'orders.viewDetail')} <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -177,10 +177,10 @@ export default function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-brand-700" /> New Arrivals
+              <Sparkles className="h-4 w-4 text-brand-700" /> {t(lang, 'newArrivals.title')}
             </h2>
             <Link href="/new-arrivals" className="text-xs text-brand-700 hover:underline flex items-center gap-1">
-              View all <ChevronRight className="h-3.5 w-3.5" />
+              {t(lang, 'orders.viewDetail')} <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -193,8 +193,8 @@ export default function DashboardPage() {
       {recentOrders.length === 0 && favorites.length === 0 && (
         <div className="text-center py-12">
           <Package className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-600 mb-4">Start your first order</p>
-          <Link href="/products"><Button>Browse Products</Button></Link>
+          <p className="text-sm font-medium text-gray-600 mb-4">{t(lang, 'cart.emptyHint')}</p>
+          <Link href="/products"><Button>{t(lang, 'cart.browseProducts')}</Button></Link>
         </div>
       )}
     </div>
