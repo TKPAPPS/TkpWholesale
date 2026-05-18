@@ -38,7 +38,7 @@ export function Navbar() {
   }
 
   const navLinks = [
-    { href: '/', label: 'Home', icon: Package },
+    { href: '/dashboard', label: 'Home', icon: Package },
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
     { href: '/quick-order', label: 'Quick Order', icon: Zap },
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: Clock },
@@ -59,7 +59,7 @@ export function Navbar() {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
             {navLinks.map(({ href, label }) => {
-              const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+              const active = pathname.startsWith(href)
               return (
                 <Link
                   key={href}
