@@ -24,7 +24,6 @@ export default function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [sort, setSort] = useState<'name' | 'price' | 'recently_ordered'>('name')
   const [search, setSearch] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [odooError, setOdooError] = useState(false)
   const [newArrivals, setNewArrivals] = useState<Product[]>([])
@@ -72,32 +71,38 @@ export default function ProductsPage() {
     finally { setLoading(false) }
   }, [page, sort, selectedCategory, lang])
 
-  const doSearch = useCallback(async () => {
-    if (!searchQuery.trim()) { loadProducts(); return }
+  const doSearch = useCallback(async (q: string) => {
     setLoading(true)
-    const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&lang=${lang}`)
-    const data = await res.json()
-    setProducts(data.results ?? [])
-    setTotal(data.total ?? 0)
-    setLoading(false)
-  }, [searchQuery, lang, loadProducts])
+    setOdooError(false)
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&lang=${lang}`)
+      const data = await res.json()
+      setProducts(data.results ?? [])
+      setTotal(data.total ?? 0)
+    } catch { setOdooError(true) }
+    finally { setLoading(false) }
+  }, [lang])
 
-  useEffect(() => { if (searchQuery) doSearch(); else loadProducts() }, [page, sort, selectedCategory, lang])
+  useEffect(() => {
+    if (search.trim()) doSearch(search)
+    else loadProducts()
+  }, [page, sort, selectedCategory, lang])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-    setSearchQuery(search)
     setPage(0)
-    if (search) doSearch(); else loadProducts()
+    if (search.trim()) doSearch(search)
+    else loadProducts()
   }
 
   const handleSearchInput = (value: string) => {
     setSearch(value)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
-      setSearchQuery(value)
       setPage(0)
+      if (value.trim()) doSearch(value)
+      else loadProducts()
     }, 400)
   }
 
@@ -105,7 +110,6 @@ export default function ProductsPage() {
     setSelectedCategory(id)
     setPage(0)
     setSearch('')
-    setSearchQuery('')
   }
 
   return (
@@ -127,7 +131,7 @@ export default function ProductsPage() {
       {/* Main content */}
       <div className="flex-1 min-w-0">
         {/* New Arrivals strip */}
-        {newArrivals.length > 0 && !searchQuery && (
+        {newArrivals.length > 0 && !search && (
           <section className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <button
