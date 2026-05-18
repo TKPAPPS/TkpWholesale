@@ -1,20 +1,21 @@
-import { odooAuthenticate } from './client'
+import { adminAuthenticate } from './client'
 
-// Cached server Odoo session (authenticated via API key).
-// Reused across all requests — admin panel AND customer routes.
-// TTL is 30 minutes (well under Odoo's default 1-week session lifetime).
-let _cache: { session_id: string; expires: number } | null = null
+// Cached admin credentials token in "uid:apikey" format.
+// callKw() detects this format and routes to /jsonrpc (external API) instead of
+// /web/session/authenticate — required for Odoo.com SaaS where API keys don't
+// work with the web session endpoint.
+// TTL is 30 minutes; uid is stable so re-auth just refreshes the cache entry.
+let _cache: { token: string; expires: number } | null = null
 
 async function acquireSession(): Promise<string> {
   const now = Date.now()
-  if (_cache && now < _cache.expires) return _cache.session_id
+  if (_cache && now < _cache.expires) return _cache.token
 
-  const { session_id } = await odooAuthenticate(
-    process.env.ODOO_ADMIN_LOGIN!,
-    process.env.ODOO_ADMIN_API_KEY!,
-  )
-  _cache = { session_id, expires: now + 30 * 60_000 }
-  return session_id
+  const apikey = process.env.ODOO_ADMIN_API_KEY!
+  const uid = await adminAuthenticate(process.env.ODOO_ADMIN_LOGIN!, apikey)
+  const token = `${uid}:${apikey}`
+  _cache = { token, expires: now + 30 * 60_000 }
+  return token
 }
 
 // Call this if an Odoo call fails with a session error so the next request

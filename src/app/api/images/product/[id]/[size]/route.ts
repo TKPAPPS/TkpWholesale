@@ -15,8 +15,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
 
   const headers: Record<string, string> = { Accept: 'image/*' }
   try {
-    const sessionId = await getOdooSession()
-    headers.Cookie = `session_id=${sessionId}`
+    const token = await getOdooSession()
+    const apikey = token.split(':').slice(1).join(':')
+    headers.Authorization = `Bearer ${apikey}`
   } catch { /* proceed without auth — public images may still work */ }
 
   try {

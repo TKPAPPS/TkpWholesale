@@ -31,11 +31,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
 
-    // Proxy the PDF from Odoo using the admin server-side session
+    // Proxy the PDF from Odoo using the admin API key (Bearer token)
+    const apikey = sessionId.split(':').slice(1).join(':')
     const pdfRes = await fetch(`${ODOO_URL}/report/pdf/sale.report_saleorder/${id}`, {
       method: 'GET',
       headers: {
-        Cookie: `session_id=${sessionId}`,
+        Authorization: `Bearer ${apikey}`,
       },
     })
 
