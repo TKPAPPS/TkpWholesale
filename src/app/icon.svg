@@ -1,32 +1,26 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100" height="100" rx="16" fill="#6B1535"/>
+<svg viewBox="0 0 420 150" xmlns="http://www.w3.org/2000/svg">
+  <rect width="420" height="150" fill="white"/>
   <text
-    x="50" y="22"
-    font-family="Georgia, 'Times New Roman', serif"
-    font-size="13"
+    x="6" y="30"
+    font-family="Georgia, Cambria, 'Times New Roman', serif"
+    font-size="19"
     font-weight="700"
     fill="#C8A84B"
-    text-anchor="middle"
-    letter-spacing="4"
-    direction="ltr"
+    letter-spacing="8"
   >THE</text>
   <text
-    x="50" y="78"
-    font-family="Georgia, 'Times New Roman', serif"
-    font-size="62"
+    x="2" y="118"
+    font-family="Georgia, Cambria, 'Times New Roman', serif"
+    font-size="90"
     font-weight="700"
-    fill="#C8A84B"
-    text-anchor="middle"
-    direction="ltr"
-  >K</text>
-  <text
-    x="50" y="94"
-    font-family="Georgia, 'Times New Roman', serif"
-    font-size="10"
-    font-weight="700"
-    fill="#C8A84B"
-    text-anchor="middle"
-    letter-spacing="3"
-    direction="ltr"
+    fill="#6B1535"
   >KOSHER</text>
+  <text
+    x="250" y="143"
+    font-family="Georgia, Cambria, 'Times New Roman', serif"
+    font-size="19"
+    font-weight="700"
+    fill="#C8A84B"
+    letter-spacing="8"
+  >PLACE</text>
 </svg>
