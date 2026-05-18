@@ -10,6 +10,7 @@ import { FavoriteButton } from './FavoriteButton'
 import { QuantitySelector } from './QuantitySelector'
 import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
+import { useToastStore } from '@/store/toastStore'
 
 interface ProductCardProps {
   product: Product
@@ -19,6 +20,7 @@ interface ProductCardProps {
 export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const { lang } = useLangStore()
   const fetchCart = useCartStore((s) => s.fetchCart)
+  const showToast = useToastStore((s) => s.show)
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
@@ -42,6 +44,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
       setAdded(true)
       setTimeout(() => setAdded(false), 2000)
       fetchCart()
+      showToast(`${name} added to cart`)
     } finally {
       setAdding(false)
     }

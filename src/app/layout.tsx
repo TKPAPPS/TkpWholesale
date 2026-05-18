@@ -2,6 +2,7 @@ export const preferredRegion = 'sin1'
 
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
+import { Toast } from '@/components/ui/Toast'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-gray-50 text-gray-900 antialiased" style={{ fontFamily: lang === 'he' ? "'Rubik', sans-serif" : "'Inter', sans-serif" }}>
         {children}
+        <Toast />
       </body>
     </html>
   )

@@ -28,11 +28,19 @@ export default function ProductsPage() {
   const [odooError, setOdooError] = useState(false)
   const [newArrivals, setNewArrivals] = useState<Product[]>([])
   const [newArrivalsCollapsed, setNewArrivalsCollapsed] = useState(false)
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     fetch('/api/categories')
       .then((r) => r.json())
       .then((d) => setCategories(d.categories ?? []))
+    fetch('/api/favorites')
+      .then((r) => r.json())
+      .then((d) => {
+        const ids = (d.favorites ?? []).map((p: { template_id: number }) => p.template_id)
+        setFavoriteIds(new Set(ids))
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -115,7 +123,7 @@ export default function ProductsPage() {
             </div>
             {!newArrivalsCollapsed && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {newArrivals.map((p) => <ProductCard key={p.id} product={p} />)}
+                {newArrivals.map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
               </div>
             )}
             <hr className="mt-4 border-gray-100" />
@@ -162,7 +170,7 @@ export default function ProductsPage() {
           />
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {products.map((p) => <ProductCard key={p.id} product={p} />)}
+            {products.map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
           </div>
         )}
 
