@@ -8,6 +8,8 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { useToastStore } from '@/store/toastStore'
+import { useCartStore } from '@/store/cartStore'
 import { Package, ChevronLeft, Download, RefreshCw } from 'lucide-react'
 
 export default function OrderDetailPage() {
@@ -17,6 +19,9 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [reordering, setReordering] = useState(false)
+  const showToast = useToastStore((s) => s.show)
+  const fetchCart = useCartStore((s) => s.fetchCart)
 
   useEffect(() => {
     fetch(`/api/orders/${orderId}`)
@@ -27,6 +32,27 @@ export default function OrderDetailPage() {
 
   const downloadPdf = () => {
     window.open(`/api/orders/${orderId}/pdf`, '_blank')
+  }
+
+  const reorder = async () => {
+    if (!order) return
+    setReordering(true)
+    try {
+      for (const line of order.lines) {
+        await fetch('/api/cart/lines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
+        })
+      }
+      await fetchCart()
+      showToast(`${order.lines.length} item${order.lines.length !== 1 ? 's' : ''} added to cart`)
+      router.push('/cart')
+    } catch {
+      showToast('Could not reorder. Please try again.', 'error')
+    } finally {
+      setReordering(false)
+    }
   }
 
   if (loading) return <LoadingSpinner />
@@ -47,7 +73,7 @@ export default function OrderDetailPage() {
           <Button variant="secondary" size="sm" onClick={downloadPdf}>
             <Download className="h-4 w-4 me-1" /> {t(lang, 'orders.downloadPdf')}
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={reorder} loading={reordering}>
             <RefreshCw className="h-4 w-4 me-1" /> {t(lang, 'orders.reorder')}
           </Button>
         </div>

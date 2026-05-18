@@ -1,9 +1,10 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Product, Category } from '@/types'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { MobileCategoryDrawer, MobileCategoryButton } from '@/components/layout/MobileCategoryDrawer'
 import { ProductCard } from '@/components/products/ProductCard'
 import { Pagination } from '@/components/ui/Pagination'
 import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
@@ -29,6 +30,8 @@ export default function ProductsPage() {
   const [newArrivals, setNewArrivals] = useState<Product[]>([])
   const [newArrivalsCollapsed, setNewArrivalsCollapsed] = useState(false)
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set())
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     fetch('/api/categories')
@@ -83,9 +86,19 @@ export default function ProductsPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     setSearchQuery(search)
     setPage(0)
     if (search) doSearch(); else loadProducts()
+  }
+
+  const handleSearchInput = (value: string) => {
+    setSearch(value)
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchQuery(value)
+      setPage(0)
+    }, 400)
   }
 
   const handleCategorySelect = (id: number | null) => {
@@ -97,10 +110,19 @@ export default function ProductsPage() {
 
   return (
     <div className="flex gap-6">
-      {/* Sidebar */}
+      {/* Desktop sidebar */}
       <div className="hidden lg:block">
         <Sidebar categories={categories} selectedCategoryId={selectedCategory} onSelect={handleCategorySelect} />
       </div>
+
+      {/* Mobile category drawer */}
+      <MobileCategoryDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        categories={categories}
+        selectedCategoryId={selectedCategory}
+        onSelect={handleCategorySelect}
+      />
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
@@ -132,11 +154,12 @@ export default function ProductsPage() {
 
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <MobileCategoryButton onClick={() => setDrawerOpen(true)} selectedCategoryId={selectedCategory} />
           <form onSubmit={handleSearch} className="flex-1 relative">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchInput(e.target.value)}
               placeholder={t(lang, 'products.search')}
               className="w-full rounded-lg border border-gray-200 bg-white ps-9 pe-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
             />

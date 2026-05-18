@@ -105,6 +105,8 @@ export interface Order {
 export interface OrderLine {
   line_id: number
   product_id: number
+  template_id: number
+  packaging_id: number | null
   product_name: string
   product_name_he: string
   sku: string

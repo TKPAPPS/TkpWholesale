@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { FavoriteButton } from '@/components/products/FavoriteButton'
 import { useCartStore } from '@/store/cartStore'
+import { useToastStore } from '@/store/toastStore'
 import { Package, ChevronLeft, ShoppingCart } from 'lucide-react'
 import Image from 'next/image'
 
@@ -25,13 +26,26 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
+  const [favorited, setFavorited] = useState(false)
   const fetchCart = useCartStore((s) => s.fetchCart)
+  const showToast = useToastStore((s) => s.show)
   const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
     fetch(`/api/products/${id}`)
       .then((r) => { if (!r.ok) { setNotFound(true); return null } return r.json() })
-      .then((d) => { if (d) { setProduct(d); setSelectedPkg(d.packaging_options.find((p: PackagingOption) => p.is_default) ?? d.packaging_options[0]) } })
+      .then((d) => {
+        if (!d) return
+        setProduct(d)
+        setSelectedPkg(d.packaging_options.find((p: PackagingOption) => p.is_default) ?? d.packaging_options[0])
+        fetch('/api/favorites')
+          .then((r) => r.json())
+          .then((fav) => {
+            const ids = new Set((fav.favorites ?? []).map((p: { template_id: number }) => p.template_id))
+            setFavorited(ids.has(d.template_id))
+          })
+          .catch(() => {})
+      })
       .finally(() => setLoading(false))
   }, [id])
 
@@ -46,6 +60,7 @@ export default function ProductDetailPage() {
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     fetchCart()
+    showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
     setAdding(false)
   }
 
@@ -65,11 +80,14 @@ export default function ProductDetailPage() {
         {/* Image */}
         <div className="aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden relative">
           {!imgError ? (
-            <img
+            <Image
               src={`/api/images/product/${product.template_id}/512`}
               alt={name}
-              className="w-full h-full object-contain"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-contain"
               onError={() => setImgError(true)}
+              priority
             />
           ) : (
             <Package className="h-32 w-32 text-gray-200" />
@@ -83,7 +101,7 @@ export default function ProductDetailPage() {
               <h1 className="text-xl font-bold text-gray-900">{name}</h1>
               <p className="text-sm text-gray-400 mt-0.5">{t(lang, 'products.sku')}: {product.sku}</p>
             </div>
-            <FavoriteButton templateId={product.template_id} />
+            <FavoriteButton templateId={product.template_id} initialFavorited={favorited} />
           </div>
 
           {description && <p className="text-sm text-gray-600">{description}</p>}

@@ -3,9 +3,10 @@ import { CartLine } from '@/types'
 import { useLangStore } from '@/store/langStore'
 import { formatCurrency } from '@/lib/utils'
 import { t } from '@/lib/i18n/translations'
+import Image from 'next/image'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { Trash2, Package, AlertTriangle } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useCartStore } from '@/store/cartStore'
 
 interface CartItemProps {
@@ -19,22 +20,25 @@ export function CartItem({ line, currency }: CartItemProps) {
   const [qty, setQty] = useState(line.packaging_qty)
   const [removing, setRemoving] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const name = lang === 'he' ? line.product_name_he : line.product_name
 
   const updateQty = useCallback(
-    async (newQty: number) => {
+    (newQty: number) => {
       setQty(newQty)
-      // Debounce is handled by the caller in production
-      const res = await fetch(`/api/cart/lines/${line.line_id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packaging_qty: newQty }),
-      })
-      if (res.ok) {
-        const cart = await res.json()
-        setCart(cart)
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(async () => {
+        const res = await fetch(`/api/cart/lines/${line.line_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packaging_qty: newQty }),
+        })
+        if (res.ok) {
+          const cart = await res.json()
+          setCart(cart)
+        }
+      }, 500)
     },
     [line.line_id, setCart],
   )
@@ -53,10 +57,12 @@ export function CartItem({ line, currency }: CartItemProps) {
     <div className="flex gap-3 py-4 border-b border-gray-100 last:border-0">
       <div className="h-14 w-14 shrink-0 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden">
         {!imgError && line.product_image_url ? (
-          <img
+          <Image
             src={line.product_image_url}
             alt=""
-            className="h-14 w-14 object-contain rounded-lg"
+            width={56}
+            height={56}
+            className="object-contain rounded-lg"
             onError={() => setImgError(true)}
           />
         ) : (

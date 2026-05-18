@@ -84,6 +84,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       lines: lines.map(l => ({
         line_id: l.id,
         product_id: l.product_id[0],
+        template_id: l.product_template_id[0],
+        packaging_id: l.product_packaging_id ? l.product_packaging_id[0] : null,
         product_name: l.product_template_id[1] ?? l.name,
         product_name_he: l.product_template_id[1] ?? l.name,
         sku: '',

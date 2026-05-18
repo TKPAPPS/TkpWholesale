@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import Image from 'next/image'
 import { ShoppingCart, Heart, Clock, Package, LogOut, Menu, X, Search } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { useCartStore } from '@/store/cartStore'
@@ -121,10 +122,12 @@ export function Navbar() {
                         <ul className="space-y-3 max-h-64 overflow-y-auto">
                           {cart.lines.slice(0, 6).map((line) => (
                             <li key={line.line_id} className="flex items-center gap-3">
-                              <img
+                              <Image
                                 src={line.product_image_url}
                                 alt=""
-                                className="h-10 w-10 rounded-lg object-contain bg-gray-50 shrink-0"
+                                width={40}
+                                height={40}
+                                className="rounded-lg object-contain bg-gray-50 shrink-0"
                                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                               />
                               <div className="flex-1 min-w-0">

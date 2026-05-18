@@ -4,6 +4,7 @@ import { useLangStore } from '@/store/langStore'
 import { formatCurrency } from '@/lib/utils'
 import { t } from '@/lib/i18n/translations'
 import Link from 'next/link'
+import Image from 'next/image'
 import { ShoppingCart, Package } from 'lucide-react'
 import { useState } from 'react'
 import { FavoriteButton } from './FavoriteButton'
@@ -55,11 +56,12 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
       {/* Image area */}
       <Link href={`/products/${product.id}`} className="relative aspect-square bg-gray-50 overflow-hidden">
         {!imgError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={product.image_url}
             alt={name}
-            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-contain group-hover:scale-105 transition-transform duration-300"
             onError={() => setImgError(true)}
           />
         ) : (
