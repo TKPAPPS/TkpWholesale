@@ -17,7 +17,7 @@ const translations = {
     'auth.loginButton': 'Sign In',
     'auth.loginError': 'Invalid email or password.',
     'auth.welcome': 'Welcome back',
-    'auth.privatePortal': 'Private B2B Ordering Portal',
+    'auth.privatePortal': 'The Kosher Place Wholesale Portal',
     // Products
     'products.title': 'Products',
     'products.search': 'Search products, SKU...',
@@ -155,7 +155,7 @@ const translations = {
     'auth.loginButton': 'כניסה למערכת',
     'auth.loginError': 'אימייל או סיסמה שגויים.',
     'auth.welcome': 'ברוך הבא',
-    'auth.privatePortal': 'פורטל הזמנות B2B פרטי',
+    'auth.privatePortal': 'פורטל הזמנות סיטונאי - The Kosher Place',
     'products.title': 'מוצרים',
     'products.search': 'חיפוש מוצרים, מק"ט...',
     'products.noResults': 'לא נמצאו מוצרים.',

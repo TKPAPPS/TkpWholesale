@@ -6,8 +6,8 @@ import { Toast } from '@/components/ui/Toast'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'B2B Ordering Portal',
-  description: 'Private B2B ordering portal',
+  title: 'The Kosher Place Wholesale',
+  description: 'The Kosher Place private wholesale ordering portal',
   robots: 'noindex, nofollow',
 }
 
