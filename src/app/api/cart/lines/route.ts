@@ -22,22 +22,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
-    // Validate packaging belongs to this template
-    const pkgInfo = await validatePackaging(sessionId, product_id, packaging_id ?? 0)
+    // Run all three independent operations in parallel
+    const [pkgInfo, priceUnit, cartId] = await Promise.all([
+      validatePackaging(sessionId, product_id, packaging_id ?? 0),
+      lookupPricelistPrice(sessionId, parsed.pricelist_id, product_id),
+      getOrCreateCart(sessionId, parsed.partner_id, parsed.pricelist_id),
+    ])
+
     if (!pkgInfo) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
 
-    // Look up the customer's pricelist price so price_unit is correct on the order line.
-    // Odoo create() / write() skip onchanges, so we must set price_unit explicitly.
-    const priceUnit = await lookupPricelistPrice(sessionId, parsed.pricelist_id, product_id)
-
-    const cartId = await getOrCreateCart(sessionId, parsed.partner_id, parsed.pricelist_id)
-
-    // Check if a line with the same product + packaging already exists
+    // Check for existing line with same product + packaging
     const existingLines = await searchRead(
       sessionId, 'sale.order.line',
       [['order_id', '=', cartId], ['product_id', '=', pkgInfo.productVariantId],
@@ -53,8 +52,7 @@ export async function POST(req: NextRequest) {
         product_uom_qty: newQty * pkgInfo.qty,
       }
       if (priceUnit !== null) writeVals.price_unit = priceUnit
-      await callKw(sessionId, 'sale.order.line', 'write',
-        [[existingLines[0].id], writeVals], {})
+      await callKw(sessionId, 'sale.order.line', 'write', [[existingLines[0].id], writeVals], {})
     } else {
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
@@ -67,8 +65,8 @@ export async function POST(req: NextRequest) {
       await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
     }
 
-    const cart = await readCart(sessionId, cartId)
-    return NextResponse.json(cart)
+    // Return immediately — client calls fetchCart() separately to refresh the cart display
+    return NextResponse.json({ ok: true })
   } catch (err) {
     invalidateOdooSession()
     console.error('cart lines POST error:', err)

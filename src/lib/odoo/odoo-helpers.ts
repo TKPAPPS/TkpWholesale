@@ -581,13 +581,15 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
 }
 
 export async function readCart(sessionId: string, orderId: number): Promise<Cart> {
-  const orders = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
-    fields: ['id', 'name', 'state', 'partner_shipping_id', 'note', 'amount_untaxed', 'amount_tax', 'amount_total', 'currency_id'],
-  }) as unknown as OdooOrder[]
+  // Fetch order header and lines in parallel
+  const [orders, lines] = await Promise.all([
+    callKw(sessionId, 'sale.order', 'read', [[orderId]], {
+      fields: ['id', 'name', 'state', 'partner_shipping_id', 'note', 'amount_untaxed', 'amount_tax', 'amount_total', 'currency_id'],
+    }) as unknown as Promise<OdooOrder[]>,
+    readCartLines(sessionId, orderId),
+  ])
 
   const order = orders[0]
-  const lines = await readCartLines(sessionId, orderId)
-
   return {
     cart_id: order.id,
     state: order.state as Cart['state'],
@@ -701,7 +703,6 @@ export async function validatePackaging(
   packagingId: number,
 ): Promise<{ qty: number; productVariantId: number } | null> {
   if (packagingId === 0) {
-    // unit packaging — get first variant
     const variants = await searchRead(sessionId, 'product.product',
       [['product_tmpl_id', '=', templateId]],
       ['id'],
@@ -710,19 +711,14 @@ export async function validatePackaging(
     return variants[0] ? { qty: 1, productVariantId: variants[0].id } : null
   }
 
-  const pkgs = await callKw(sessionId, 'product.packaging', 'read', [[packagingId]], {
-    fields: ['id', 'qty', 'product_id', 'sales'],
-  }) as unknown as { id: number; qty: number; product_id: [number, string]; sales: boolean }[]
+  // Single call: domain path validates template membership, filters sales=true
+  const pkgs = await searchRead(sessionId, 'product.packaging',
+    [['id', '=', packagingId], ['product_id.product_tmpl_id', '=', templateId], ['sales', '=', true]],
+    ['id', 'qty', 'product_id'],
+    { limit: 1 },
+  ) as unknown as { id: number; qty: number; product_id: [number, string] }[]
 
   const pkg = pkgs[0]
-  if (!pkg || !pkg.sales) return null
-
-  // Verify this packaging belongs to a variant of the requested template
-  const variant = await callKw(sessionId, 'product.product', 'read', [[pkg.product_id[0]]], {
-    fields: ['id', 'product_tmpl_id'],
-  }) as unknown as { id: number; product_tmpl_id: [number, string] }[]
-
-  if (variant[0]?.product_tmpl_id[0] !== templateId) return null
-
+  if (!pkg) return null
   return { qty: pkg.qty, productVariantId: pkg.product_id[0] }
 }
