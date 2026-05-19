@@ -28,8 +28,8 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
   const totalPages = Math.ceil(total / perPage)
   if (totalPages <= 1) return null
 
-  const go = (p: number) => { onChange(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const window = buildWindow(page, totalPages)
+  const go = (p: number) => { onChange(p); globalThis.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const pages = buildWindow(page, totalPages)
 
   return (
     <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
@@ -41,7 +41,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
         <ChevronLeft className="h-4 w-4" />
       </button>
 
-      {window.map((item, idx) =>
+      {pages.map((item, idx) =>
         item === '...' ? (
           <span key={`ellipsis-${idx}`} className="flex items-center justify-center h-10 w-10 text-gray-400">
             <MoreHorizontal className="h-4 w-4" />
