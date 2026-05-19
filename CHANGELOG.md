@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-05-19 (Security Fix Pack 2 — rate limiting)
+
+### Security
+- **Rate limiting on auth endpoints** — `/api/auth/login` and `/api/admin/auth/login` now enforce sliding-window rate limits via Upstash Redis (`@upstash/ratelimit`).
+  - Customer login: 10 req/IP/15 min, 6 req/identifier/15 min
+  - Admin login: 5 req/IP/15 min, 3 req/email/15 min
+- **Production fail-closed** — if `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN` are absent in production, both login endpoints return 503. No unlimited login path exists in production when rate limiting is unconfigured.
+- **Dev in-memory fallback** — sliding-window emulated with a module-level `Map` when `NODE_ENV !== 'production'`. No external dependency needed for local dev.
+- **Upstash errors fail open** — transient Redis errors are logged as warnings and the request is allowed through (availability > strictness for non-critical transient failures).
+- **Identifiers never stored in plaintext** — Redis keys use `rl:{scope}:{field}:{SHA-256(normalized identifier)}`. Emails are trimmed+lowercased before hashing.
+- **429 with `Retry-After`** — rate-limited responses include `Retry-After: <seconds>` and generic `RATE_LIMITED` error code.
+- **Rate check runs before Odoo/Supabase** — no backend call is made for a rate-limited request.
+
+### Files changed
+- `src/lib/rate-limit.ts` — new helper: `checkRateLimit()`, `clientIp()`, `RateLimitConfigError`
+- `src/app/api/auth/login/route.ts` — `applyRateLimit()` called before mock/real auth paths
+- `src/app/api/admin/auth/login/route.ts` — `applyRateLimit()` called before Odoo/Supabase paths
+- `.env.local.example` — added `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
+- `package.json` — added `@upstash/redis`, `@upstash/ratelimit`
+
+### Required production setup
+Add via Vercel Marketplace → Upstash Redis → Storage tab. Env vars are auto-injected:
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+---
+
 ## 2026-05-19 (Security Fix Pack 1 — hardening follow-up)
 
 ### Security

@@ -26,6 +26,8 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SESSION_SECRET` | Signs the customer session cookie (min 32 chars) |
 | `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data |
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL — required in production for rate limiting |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token — required in production for rate limiting |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
@@ -52,13 +54,22 @@ Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odo
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
 Mock data is never complete — do not treat mock behaviour as ground truth for real Odoo.
 
+## Rate limiting
+- Implemented in `src/lib/rate-limit.ts` using `@upstash/ratelimit` (sliding window) + `@upstash/redis`.
+- **Production fail-closed**: if `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN` are missing, login endpoints return 503. No unlimited login path in production.
+- **Dev fallback**: module-level `Map` used when `NODE_ENV !== 'production'`. No Upstash required locally.
+- **Upstash errors fail open**: transient Redis errors → warn + allow request through.
+- **Keys**: `rl:{scope}:{field}:{SHA-256(trim+lowercase identifier)}`. Emails/IPs never stored in plaintext.
+- **Limits**: customer IP 10/15 min, customer identifier 6/15 min; admin IP 5/15 min, admin email 3/15 min.
+- **429 response**: `{ "error": "RATE_LIMITED", "message": "Too many login attempts. Please try again later." }` + `Retry-After` header.
+- **Setup**: add Upstash Redis via Vercel Marketplace → Storage. Env vars are auto-injected.
+
 ## Admin panel auth
 - Login at `/admin/login` with Odoo email + Odoo password.
 - Credentials are verified via `/jsonrpc` `authenticate` (works on SaaS; `/web/session/authenticate` rejects API keys).
-- Session cookie = HMAC-SHA256 of `SESSION_SECRET` (falls back to `'dev'` if not set). Cookie TTL: 8 hours.
+- Session cookie = HMAC-SHA256 of `SESSION_SECRET`. Cookie TTL: 8 hours. No `'dev'` fallback in production.
 - `verifyAdminToken` always checks the HMAC token first, then Supabase JWT if Supabase is configured.
 - If Supabase env vars are partially set in Vercel (e.g. SERVICE_ROLE_KEY set but ANON_KEY not), the HMAC path still works.
-- Diagnostic endpoint: `/api/odoo-ping` (no auth required — remove when no longer needed).
 
 ## Customer session cookie
 - Cookie name: `session`. Format since 2026-05-19: `base64url(JSON).hex(HMAC-SHA256(SESSION_SECRET, base64url(JSON)))`.
