@@ -1,4 +1,4 @@
-const ODOO_URL = process.env.ODOO_URL!
+const ODOO_URL = (process.env.ODOO_URL ?? '').replace(/\/$/, '')
 const ODOO_DB = process.env.ODOO_DB!
 
 export class OdooError extends Error {
