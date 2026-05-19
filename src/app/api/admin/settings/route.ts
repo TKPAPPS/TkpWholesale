@@ -6,14 +6,6 @@ import { verifyAdminToken } from '@/lib/supabase'
 
 const PARAM_KEY = 'b2b_portal.hide_out_of_stock'
 
-async function readParam(sessionId: string): Promise<string | false> {
-  const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
-    [[['key', '=', PARAM_KEY]]],
-    { fields: ['key', 'value'], limit: 1 },
-  ) as { key: string; value: string }[]
-  return rows[0]?.value ?? false
-}
-
 export async function GET(req: NextRequest) {
   const token = req.cookies.get('admin_session')?.value
   if (!token || !(await verifyAdminToken(token))) {
@@ -22,9 +14,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getAdminSession()
-    const value = await readParam(sessionId)
+    // get_param returns the string value or false if not set; default true (hide OOS)
+    const value = await callKw(sessionId, 'ir.config_parameter', 'get_param',
+      [PARAM_KEY, 'true'], {},
+    ) as string | false
     return NextResponse.json({
-      hide_out_of_stock: value === false ? true : value === 'true',
+      hide_out_of_stock: value === false ? true : value !== 'false',
     })
   } catch (err: unknown) {
     invalidateAdminSession()
@@ -43,19 +38,10 @@ export async function POST(req: NextRequest) {
     const { hide_out_of_stock } = await req.json()
     const sessionId = await getAdminSession()
 
-    const existing = await callKw(sessionId, 'ir.config_parameter', 'search',
-    [[['key', '=', PARAM_KEY]]], {},
-    ) as number[]
-
-    if (existing.length > 0) {
-      await callKw(sessionId, 'ir.config_parameter', 'write',
-        [existing, { value: String(hide_out_of_stock) }], {},
-      )
-    } else {
-      await callKw(sessionId, 'ir.config_parameter', 'create',
-        [{ key: PARAM_KEY, value: String(hide_out_of_stock) }], {},
-      )
-    }
+    // set_param handles create-or-update automatically
+    await callKw(sessionId, 'ir.config_parameter', 'set_param',
+      [PARAM_KEY, String(hide_out_of_stock)], {},
+    )
 
     bustHideOosCache()
     bustWebsiteSettingsCache()
@@ -63,6 +49,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     invalidateAdminSession()
     console.error('admin settings POST error:', err)
-    return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
+    return NextResponse.json({
+      error: 'ODOO_UNAVAILABLE',
+      message: err instanceof Error ? err.message : String(err),
+    }, { status: 503 })
   }
 }

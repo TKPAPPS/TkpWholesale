@@ -1,6 +1,8 @@
 import { callKw, searchRead } from './client'
+import { getOdooSession } from './admin-session'
 import { langContext } from './session'
 import type { Product, PackagingOption, Cart, CartLine } from '@/types'
+import { unstable_cache, revalidateTag } from 'next/cache'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 
@@ -190,23 +192,25 @@ const PRODUCT_FIELDS = [
   'type', 'product_variant_ids', 'packaging_ids',
 ]
 
-// In-memory cache for the hide_out_of_stock portal setting (TTL: 60s)
-let _hideOosCache: { value: boolean; expires: number } | null = null
+// Fetch hide-OOS setting via Next.js data cache — shared across all Vercel instances.
+// unstable_cache persists results in Vercel's infrastructure, surviving cold starts.
+const _fetchHideOos = unstable_cache(
+  async (): Promise<boolean> => {
+    const sessionId = await getOdooSession()
+    const value = await callKw(sessionId, 'ir.config_parameter', 'get_param',
+      ['b2b_portal.hide_out_of_stock', 'true'], {},
+    ) as string | false
+    return value === false ? true : value !== 'false'
+  },
+  ['odoo-hide-oos'],
+  { revalidate: 60, tags: ['odoo-hide-oos'] },
+)
 
-export function bustHideOosCache() { _hideOosCache = null }
+export function bustHideOosCache() { revalidateTag('odoo-hide-oos') }
 
-async function getHideOutOfStock(sessionId: string): Promise<boolean> {
-  const now = Date.now()
-  if (_hideOosCache && now < _hideOosCache.expires) return _hideOosCache.value
-
+async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
   try {
-    const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
-      [[['key', '=', 'b2b_portal.hide_out_of_stock']]],
-      { fields: ['value'], limit: 1 },
-    ) as unknown as { value: string }[]
-    const value = rows[0]?.value === 'false' ? false : true  // default true if not set
-    _hideOosCache = { value, expires: now + 5 * 60_000 }
-    return value
+    return await _fetchHideOos()
   } catch {
     return true  // safe default: hide OOS products
   }
@@ -220,28 +224,35 @@ export async function fetchRecentlyPublishedIds(sessionId: string, publishedAfte
   return rows.map(r => r.product_tmpl_id[0])
 }
 
-// Cache for website published settings — costs 1.1s to fetch 2231 rows, so cache 5 minutes
-let _websiteSettingsCache: { map: Map<number, boolean>; expires: number } | null = null
+// Fetch published product settings via Next.js data cache — shared across all Vercel instances.
+// Returns serializable [templateId, allowOos][] tuples (Maps aren't JSON-serializable).
+// Costs ~1s to fetch thousands of rows from Odoo; cached so cold starts don't pay this cost.
+const _fetchWebsiteSettings = unstable_cache(
+  async (websiteId: number): Promise<[number, boolean][]> => {
+    const sessionId = await getOdooSession()
+    const settings = await callKw(
+      sessionId,
+      'product.website.settings',
+      'search_read',
+      [[['website_id', '=', websiteId], ['is_published', '=', true]]],
+      { fields: ['product_tmpl_id', 'allow_out_of_stock_order'] },
+    ) as unknown as OdooWebsiteSetting[]
+    return settings.map(s => [s.product_tmpl_id[0], s.allow_out_of_stock_order])
+  },
+  ['odoo-website-settings'],
+  { revalidate: 300, tags: ['odoo-website-settings'] },
+)
 
-export function bustWebsiteSettingsCache() { _websiteSettingsCache = null }
+export function bustWebsiteSettingsCache() {
+  revalidateTag('odoo-website-settings')
+  revalidateTag('odoo-hide-oos')
+}
 
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
-async function fetchWebsitePublishedSettings(sessionId: string): Promise<Map<number, boolean>> {
-  const now = Date.now()
-  if (_websiteSettingsCache && now < _websiteSettingsCache.expires) return _websiteSettingsCache.map
-
-  const settings = await callKw(
-    sessionId,
-    'product.website.settings',
-    'search_read',
-    [[['website_id', '=', WEBSITE_ID], ['is_published', '=', true]]],
-    { fields: ['product_tmpl_id', 'allow_out_of_stock_order'] },
-  ) as unknown as OdooWebsiteSetting[]
-
-  const map = new Map(settings.map(s => [s.product_tmpl_id[0], s.allow_out_of_stock_order]))
-  _websiteSettingsCache = { map, expires: now + 5 * 60_000 }  // 5-minute TTL
-  return map
+async function fetchWebsitePublishedSettings(_sessionId: string): Promise<Map<number, boolean>> {
+  const raw = await _fetchWebsiteSettings(WEBSITE_ID)
+  return new Map<number, boolean>(raw)
 }
 
 // 60-second in-memory cache for product list results, keyed by pricelist + domain + pagination.
