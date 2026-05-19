@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOdooSession } from '@/lib/odoo/admin-session'
+import { parseSession } from '@/lib/odoo/session'
 
 const ODOO_URL = process.env.ODOO_URL!
 const SIZE_MAP: Record<string, string> = {
@@ -10,6 +11,10 @@ const SIZE_MAP: Record<string, string> = {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string; size: string } }) {
+  if (!parseSession(req)) {
+    return new NextResponse(null, { status: 401 })
+  }
+
   const field = SIZE_MAP[params.size] ?? 'image_512'
   const url = `${ODOO_URL}/web/image/product.template/${params.id}/${field}`
 
@@ -31,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        'Cache-Control': 'private, max-age=86400, stale-while-revalidate=604800',
       },
     })
   } catch {

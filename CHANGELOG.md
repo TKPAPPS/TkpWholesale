@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-05-19 (Security Fix Pack 1)
+
+### Security
+- **Signed customer session cookie** — `session` cookie is now HMAC-SHA256 signed with `SESSION_SECRET`. Format: `base64url(JSON).hex(HMAC)`. Old unsigned cookies are rejected — users who had an active session must log in again. Prevents authenticated users from forging another customer's `partner_id`/`commercial_partner_id` via browser DevTools. All 15+ API routes that call `parseSession()` are protected transparently — no changes needed at call sites. Constant-time signature comparison (`crypto.timingSafeEqual`) prevents timing attacks.
+- **Removed `/api/odoo-ping`** — Unauthenticated diagnostic endpoint that exposed Odoo URL, DB name, admin login, website IDs/names, and Odoo auth status. File deleted; route now returns 404.
+- **Auth-gated product image proxy** — `/api/images/product/[id]/[size]` now requires a valid signed customer session; unauthenticated requests receive 401. `Cache-Control` changed from `public` to `private` so the CDN does not cache auth-gated responses.
+
+### Files changed
+- `src/lib/odoo/session.ts` — added `signSession()`, replaced `JSON.parse` with `verifySession()` (HMAC verify + decode) in `parseSession()`
+- `src/app/api/auth/login/route.ts` — both mock and real cookie writes now use `signSession()` instead of `JSON.stringify()`
+- `src/app/api/images/product/[id]/[size]/route.ts` — added `parseSession` auth guard; `Cache-Control: public` → `private`
+- `src/app/api/odoo-ping/route.ts` — deleted
+
+---
+
 ## 2026-05-19
 
 ### Fixed

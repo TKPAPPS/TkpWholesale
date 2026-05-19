@@ -60,6 +60,13 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - If Supabase env vars are partially set in Vercel (e.g. SERVICE_ROLE_KEY set but ANON_KEY not), the HMAC path still works.
 - Diagnostic endpoint: `/api/odoo-ping` (no auth required — remove when no longer needed).
 
+## Customer session cookie
+- Cookie name: `session`. Format since 2026-05-19: `base64url(JSON).hex(HMAC-SHA256(SESSION_SECRET, base64url(JSON)))`.
+- **`SESSION_SECRET` is required in production.** Falls back to `'dev'` if unset (unsafe — anyone who knows the fallback can forge cookies).
+- `parseSession(req)` in `src/lib/odoo/session.ts` verifies the HMAC before returning the payload. Returns `null` for missing, unsigned, tampered, or malformed cookies — callers treat this as unauthenticated.
+- `signSession(payload)` in `src/lib/odoo/session.ts` is the only place that should write a customer session cookie value. Only called from `src/app/api/auth/login/route.ts`.
+- Old unsigned (plain JSON) cookies are rejected — users must re-login after this change.
+
 ## Known issues / follow-ups
 - PDF download: `ir.attachment` strategy implemented but not confirmed working end-to-end on SaaS.
 - `_productCache` is still per Vercel instance (not shared). High traffic → consider Vercel KV.

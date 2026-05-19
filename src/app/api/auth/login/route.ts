@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_USER } from '@/lib/odoo/mock/data'
+import { signSession } from '@/lib/odoo/session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     }
     const user = { ...MOCK_USER, email: login }
     const res = NextResponse.json({ user })
-    res.cookies.set('session', JSON.stringify({
+    res.cookies.set('session', signSession({
       uid: user.uid,
       partner_id: user.partner_id,
       commercial_partner_id: user.commercial_partner_id,
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const res = NextResponse.json({ user })
-    res.cookies.set('session', JSON.stringify({
+    res.cookies.set('session', signSession({
       uid: auth.uid,
       partner_id: partner.id,
       commercial_partner_id: partner.commercial_partner_id[0],
