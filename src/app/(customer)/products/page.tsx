@@ -201,7 +201,7 @@ export default function ProductsPage() {
           </div>
         )}
 
-        <Pagination page={page} total={total} perPage={PER_PAGE} onChange={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
+        <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
       </div>
     </div>
   )

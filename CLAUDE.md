@@ -36,22 +36,32 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 - **Region**: `sin1` (Singapore) — set in `vercel.json` and `src/app/layout.tsx`
 - Deploy: `npx vercel --prod --token <token>`
 
-## Caching (server-side, module memory)
+## Caching
 | Cache | TTL | Location |
 |-------|-----|----------|
-| Admin session token | 30 min | `admin-session.ts` |
-| Products (per pricelist+domain) | 5 min | `odoo-helpers.ts` `_productCache` |
-| Website published settings | 5 min | `odoo-helpers.ts` `_websiteSettingsCache` |
-| Categories | 5 min | `categories/route.ts` `_cache` |
-| Hide-OOS setting | 5 min | `odoo-helpers.ts` `_hideOosCache` |
+| Admin session token | 30 min | `admin-session.ts` (module memory) |
+| Products (per pricelist+domain) | 5 min | `odoo-helpers.ts` `_productCache` (module memory) |
+| Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
+| Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
+| Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
 
 Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odoo data changes.
+`bustWebsiteSettingsCache()` calls `revalidateTag` to also clear the Next.js Data Cache.
 
 ## Mock mode
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
 Mock data is never complete — do not treat mock behaviour as ground truth for real Odoo.
 
+## Admin panel auth
+- Login at `/admin/login` with Odoo email + Odoo password.
+- Credentials are verified via `/jsonrpc` `authenticate` (works on SaaS; `/web/session/authenticate` rejects API keys).
+- Session cookie = HMAC-SHA256 of `SESSION_SECRET` (falls back to `'dev'` if not set). Cookie TTL: 8 hours.
+- `verifyAdminToken` always checks the HMAC token first, then Supabase JWT if Supabase is configured.
+- If Supabase env vars are partially set in Vercel (e.g. SERVICE_ROLE_KEY set but ANON_KEY not), the HMAC path still works.
+- Diagnostic endpoint: `/api/odoo-ping` (no auth required — remove when no longer needed).
+
 ## Known issues / follow-ups
-- PDF download uses `Authorization: Bearer <apikey>` — not confirmed working on Odoo.com SaaS report endpoint.
-- Cache is per Vercel instance. High traffic may need Vercel KV for shared cache.
-- Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to eliminate ~250ms EU round trip.
+- PDF download: `ir.attachment` strategy implemented but not confirmed working end-to-end on SaaS.
+- `_productCache` is still per Vercel instance (not shared). High traffic → consider Vercel KV.
+- Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
+- `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).

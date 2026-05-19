@@ -28,12 +28,13 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
   const totalPages = Math.ceil(total / perPage)
   if (totalPages <= 1) return null
 
+  const go = (p: number) => { onChange(p); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   const window = buildWindow(page, totalPages)
 
   return (
     <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
       <button
-        onClick={() => onChange(page - 1)}
+        onClick={() => go(page - 1)}
         disabled={page === 0}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
@@ -48,7 +49,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
         ) : (
           <button
             key={item}
-            onClick={() => onChange(item)}
+            onClick={() => go(item as number)}
             className={`flex items-center justify-center h-10 w-10 rounded-lg text-sm font-medium transition-colors ${
               item === page
                 ? 'bg-brand-700 text-white'
@@ -61,7 +62,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
       )}
 
       <button
-        onClick={() => onChange(page + 1)}
+        onClick={() => go(page + 1)}
         disabled={page >= totalPages - 1}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
