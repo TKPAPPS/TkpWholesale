@@ -26,19 +26,22 @@ function isSupabaseConfigured(): boolean {
 }
 
 export async function verifyAdminToken(token: string): Promise<{ email: string } | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  // Always accept the Odoo-derived dev token — works regardless of Supabase config.
+  // This avoids a split-brain: login uses ANON_KEY to detect Supabase, but the old
+  // verify used SERVICE_ROLE_KEY; if they differed in Vercel the token was always rejected.
+  const adminEmail = process.env.ODOO_ADMIN_LOGIN
+  if (adminEmail && token === devAdminToken()) return { email: adminEmail }
 
-  if (!isSupabaseConfigured()) {
-    const adminEmail = process.env.ODOO_ADMIN_LOGIN
-    if (adminEmail && token === devAdminToken()) return { email: adminEmail }
-    return null
+  // If Supabase is fully configured, also accept valid Supabase JWTs.
+  if (isSupabaseConfigured()) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const supabase = createClient(url!, key!, { auth: { persistSession: false } })
+    const { data: { user }, error } = await supabase.auth.getUser(token)
+    if (!error && user?.email) return { email: user.email }
   }
 
-  const supabase = createClient(url!, key!, { auth: { persistSession: false } })
-  const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user?.email) return null
-  return { email: user.email }
+  return null
 }
 
 // Create the dev admin session token (used by the login route)
