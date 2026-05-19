@@ -505,17 +505,23 @@ export async function fetchOdooCategories(sessionId: string) {
   const visible = enCats.filter(c => !hiddenSet.has(c.id))
 
   type CategoryNode = { id: number; name: string; name_he: string; parent_id: number | null; children: CategoryNode[] }
-  const buildTree = (parentId: number | null): CategoryNode[] => {
-    return visible
-      .filter(c => (parentId === null ? !c.parent_id : c.parent_id && c.parent_id[0] === parentId))
-      .map(c => ({
-        id: c.id,
-        name: c.name,
-        name_he: heMap.get(c.id)?.name ?? c.name,
-        parent_id: c.parent_id ? c.parent_id[0] : null,
-        children: buildTree(c.id),
-      }))
+
+  // Build parent→children map once (O(n)) instead of filtering the array per node (O(n²))
+  const childMap = new Map<number | null, typeof visible>()
+  for (const c of visible) {
+    const pid = c.parent_id ? c.parent_id[0] : null
+    if (!childMap.has(pid)) childMap.set(pid, [])
+    childMap.get(pid)!.push(c)
   }
+
+  const buildTree = (parentId: number | null): CategoryNode[] =>
+    (childMap.get(parentId) ?? []).map(c => ({
+      id: c.id,
+      name: c.name,
+      name_he: heMap.get(c.id)?.name ?? c.name,
+      parent_id: parentId,
+      children: buildTree(c.id),
+    }))
 
   return buildTree(null)
 }

@@ -60,7 +60,9 @@ export async function GET(req: NextRequest) {
       parsed.pricelist_id ?? undefined,
     )
 
-    return NextResponse.json({ products, total, page, per_page: perPage })
+    return NextResponse.json({ products, total, page, per_page: perPage }, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
+    })
   } catch (err) {
     invalidateOdooSession()
     console.error('products error:', err)

@@ -39,10 +39,17 @@ export async function GET(req: NextRequest) {
     if (dateFrom) domain.push(['date_order', '>=', dateFrom])
     if (dateTo) domain.push(['date_order', '<=', dateTo + ' 23:59:59'])
 
-    const allOrders = await searchRead(sessionId, 'sale.order', domain,
-      ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line', 'delivery_status'],
-      { order: 'date_order desc' },
-    ) as { id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[]; delivery_status?: string }[]
+    const { callKw } = await import('@/lib/odoo/client')
+
+    const FIELDS = ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line', 'delivery_status']
+
+    // Count + page in parallel — avoids fetching all orders just to slice
+    const [total, rawOrders] = await Promise.all([
+      callKw(sessionId, 'sale.order', 'search_count', [domain], {}) as Promise<number>,
+      searchRead(sessionId, 'sale.order', domain, FIELDS, {
+        order: 'date_order desc', limit: perPage, offset: page * perPage,
+      }) as Promise<{ id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[]; delivery_status?: string }[]>,
+    ])
 
     const STATE_LABELS: Record<string, string> = {
       draft: 'Quotation', sent: 'Sent', sale: 'Confirmed', done: 'Completed', cancel: 'Cancelled',
@@ -51,7 +58,7 @@ export async function GET(req: NextRequest) {
       pending: 'Confirmed', partial: 'Partially Shipped', full: 'Delivered',
     }
 
-    const orders = allOrders.map(o => {
+    const orders = rawOrders.map(o => {
       const deliveryStatus = o.delivery_status ?? null
       const stateLabel = deliveryStatus
         ? DELIVERY_LABELS[deliveryStatus] ?? STATE_LABELS[o.state] ?? o.state
@@ -69,9 +76,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const total = orders.length
-    const paged = orders.slice(page * perPage, page * perPage + perPage)
-    return NextResponse.json({ orders: paged, total, page, per_page: perPage })
+    return NextResponse.json({ orders, total, page, per_page: perPage })
   } catch (err) {
     invalidateOdooSession()
     console.error('orders error:', err)

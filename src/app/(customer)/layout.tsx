@@ -16,6 +16,9 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
 
   useEffect(() => {
     initLang()
+    // Fire cart fetch immediately — it uses the session cookie directly
+    // and doesn't need the auth result. Runs in parallel with auth check.
+    fetchCart()
     fetch('/api/auth/me')
       .then((res) => {
         if (!res.ok) throw new Error('not authenticated')
@@ -24,7 +27,6 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       .then((user) => {
         setUser(user)
         setLang(user.lang === 'he_IL' ? 'he' : 'en')
-        fetchCart()
       })
       .catch(() => {
         router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))

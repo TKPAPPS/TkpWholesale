@@ -19,8 +19,10 @@ export async function GET(req: NextRequest) {
   const parsed = parseSession(req)
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
+  const CACHE_HEADERS = { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' }
+
   if (_cache && Date.now() < _cache.expires) {
-    return NextResponse.json(_cache.data)
+    return NextResponse.json(_cache.data, { headers: CACHE_HEADERS })
   }
 
   try {
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
     const categories = await fetchOdooCategories(sessionId)
     const data = { categories }
     _cache = { data, expires: Date.now() + 5 * 60_000 }
-    return NextResponse.json(data)
+    return NextResponse.json(data, { headers: CACHE_HEADERS })
   } catch (err) {
     invalidateOdooSession()
     console.error('categories error:', err)
