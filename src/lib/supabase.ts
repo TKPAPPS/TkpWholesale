@@ -30,8 +30,6 @@ export async function verifyAdminToken(token: string): Promise<{ email: string }
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!isSupabaseConfigured()) {
-    // Production must never reach here without Supabase configured
-    if (process.env.NODE_ENV === 'production') return null
     const adminEmail = process.env.ODOO_ADMIN_LOGIN
     if (adminEmail && token === devAdminToken()) return { email: adminEmail }
     return null

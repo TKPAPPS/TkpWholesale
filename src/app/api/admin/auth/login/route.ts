@@ -22,11 +22,8 @@ export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Supabase not configured — fall back to Odoo admin credentials in dev only.
+  // Supabase not configured — fall back to Odoo admin credentials.
   if (!url || !anonKey || url.includes('your-project')) {
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Admin auth not configured.' }, { status: 500 })
-    }
     const adminEmail = process.env.ODOO_ADMIN_LOGIN
     const adminPassword = process.env.ODOO_ADMIN_API_KEY
     if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) {
