@@ -22,16 +22,17 @@ export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Supabase not configured — fall back to Odoo admin credentials.
+  // Supabase not configured — verify against Odoo using the user's actual Odoo password.
   if (!url || !anonKey || url.includes('your-project')) {
-    const adminEmail = process.env.ODOO_ADMIN_LOGIN
-    const adminPassword = process.env.ODOO_ADMIN_API_KEY
-    if (!adminEmail || !adminPassword || email !== adminEmail || password !== adminPassword) {
+    try {
+      const { odooAuthenticate } = await import('@/lib/odoo/client')
+      await odooAuthenticate(email, password)
+      const res = NextResponse.json({ ok: true, email })
+      setSessionCookie(res, devAdminToken())
+      return res
+    } catch {
       return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
     }
-    const res = NextResponse.json({ ok: true, email, dev: true })
-    setSessionCookie(res, devAdminToken())
-    return res
   }
 
   const supabase = createClient(url, anonKey, { auth: { persistSession: false } })
