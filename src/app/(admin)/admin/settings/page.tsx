@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Eye, EyeOff, Save } from 'lucide-react'
 
@@ -21,6 +22,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [settings, setSettings] = useState<PortalSettings | null>(null)
   const [draft, setDraft] = useState<PortalSettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -30,11 +32,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch('/api/admin/settings')
-      .then((r) => r.json())
-      .then((d) => { setSettings(d); setDraft(d) })
+      .then((r) => {
+        if (r.status === 401) { router.replace('/admin/login'); return null }
+        return r.json()
+      })
+      .then((d) => { if (d) { setSettings(d); setDraft(d) } })
       .catch(() => setError('Could not load settings from Odoo.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [router])
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(draft)
 
@@ -49,6 +54,7 @@ export default function SettingsPage() {
         body: JSON.stringify(draft),
       })
       const data = await res.json()
+      if (res.status === 401) { router.replace('/admin/login'); return }
       if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`)
       setSettings(draft)
       setSaved(true)
