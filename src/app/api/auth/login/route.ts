@@ -1,8 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_USER } from '@/lib/odoo/mock/data'
 import { signSession } from '@/lib/odoo/session'
+import { checkRateLimit, clientIp, RateLimitConfigError } from '@/lib/rate-limit'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
+const WIN = '15 m' as const
+const WIN_MS = 15 * 60 * 1000
+
+async function applyRateLimit(req: NextRequest, identifier: string): Promise<NextResponse | null> {
+  const ip = clientIp(req)
+  try {
+    const [ipRes, idRes] = await Promise.all([
+      checkRateLimit('customer', 'ip', ip, 10, WIN, WIN_MS),
+      checkRateLimit('customer', 'identifier', identifier, 6, WIN, WIN_MS),
+    ])
+    const hit = ipRes.limited ? ipRes : idRes.limited ? idRes : null
+    if (!hit) return null
+    const res = NextResponse.json(
+      { error: 'RATE_LIMITED', message: 'Too many login attempts. Please try again later.' },
+      { status: 429 },
+    )
+    res.headers.set('Retry-After', String(hit.retryAfter))
+    return res
+  } catch (err) {
+    if (err instanceof RateLimitConfigError) {
+      return NextResponse.json({ error: 'SERVICE_UNAVAILABLE', message: 'Service temporarily unavailable.' }, { status: 503 })
+    }
+    console.warn('[rate-limit] Unexpected error — failing open:', (err as Error).message ?? err)
+    return null
+  }
+}
 
 export async function POST(req: NextRequest) {
   const { login, password } = await req.json()
@@ -10,6 +37,9 @@ export async function POST(req: NextRequest) {
   if (!login || !password) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Email and password required.' }, { status: 401 })
   }
+
+  const limited = await applyRateLimit(req, login)
+  if (limited) return limited
 
   if (USE_MOCK) {
     // --- MOCK MODE ---
