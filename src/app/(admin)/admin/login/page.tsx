@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <form onSubmit={handleLogin} className="space-y-4">
             <Input id="email" type="email" label="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input id="password" type="password" label="API Key" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input id="password" type="password" label="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full" loading={loading}>Sign In</Button>
           </form>
