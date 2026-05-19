@@ -1,10 +1,23 @@
 import { createClient } from '@supabase/supabase-js'
 import { createHmac } from 'crypto'
 
-// Dev-mode admin token derived from SESSION_SECRET.
-// Only valid when Supabase is not configured and NODE_ENV !== 'production'.
+// Same production requirement as the customer session secret.
+// Throws in production if SESSION_SECRET is missing or too short.
+function getAdminSecret(): string {
+  const secret = process.env.SESSION_SECRET
+  if (process.env.NODE_ENV === 'production') {
+    if (!secret || secret.length < 32) {
+      throw new Error('SESSION_SECRET must be set in production (min 32 chars)')
+    }
+    return secret
+  }
+  return secret ?? 'dev'
+}
+
+// HMAC token for admin sessions when Supabase is not configured.
+// Throws in production if SESSION_SECRET is not properly configured.
 function devAdminToken(): string {
-  return createHmac('sha256', process.env.SESSION_SECRET ?? 'dev').update('admin').digest('hex')
+  return createHmac('sha256', getAdminSecret()).update('admin').digest('hex')
 }
 
 // Server-side client using the service role key — never imported in client components.
@@ -26,11 +39,17 @@ function isSupabaseConfigured(): boolean {
 }
 
 export async function verifyAdminToken(token: string): Promise<{ email: string } | null> {
-  // Always accept the Odoo-derived dev token — works regardless of Supabase config.
-  // This avoids a split-brain: login uses ANON_KEY to detect Supabase, but the old
-  // verify used SERVICE_ROLE_KEY; if they differed in Vercel the token was always rejected.
+  // Check the HMAC dev token first — works regardless of Supabase config.
+  // If SESSION_SECRET is unavailable in production, devAdminToken() throws;
+  // we catch it and fall through (fail closed — HMAC path unavailable).
   const adminEmail = process.env.ODOO_ADMIN_LOGIN
-  if (adminEmail && token === devAdminToken()) return { email: adminEmail }
+  if (adminEmail) {
+    try {
+      if (token === devAdminToken()) return { email: adminEmail }
+    } catch {
+      // SESSION_SECRET not configured in production — HMAC path unavailable
+    }
+  }
 
   // If Supabase is fully configured, also accept valid Supabase JWTs.
   if (isSupabaseConfigured()) {

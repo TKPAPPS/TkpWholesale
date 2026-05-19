@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-05-19 (Security Fix Pack 1 — hardening follow-up)
+
+### Security
+- **Production fail-closed for SESSION_SECRET** — `getSecret()` (customer) and `getAdminSecret()` (admin HMAC) now throw if `SESSION_SECRET` is missing or shorter than 32 chars when `NODE_ENV === 'production'`. Login no longer issues cookies signed with the `'dev'` fallback in production. `verifySession` and `verifyAdminToken` catch the throw and return null (unauthenticated), not a crash. Local dev keeps the `'dev'` fallback unchanged.
+
+### Files changed
+- `src/lib/odoo/session.ts` — `getSecret()` throws in production if SECRET missing/short; `verifySession` catches and returns null
+- `src/lib/supabase.ts` — `getAdminSecret()` same production check; `devAdminToken()` uses it; `verifyAdminToken` wraps HMAC check in try/catch
+
+---
+
 ## 2026-05-19 (Security Fix Pack 1)
 
 ### Security
