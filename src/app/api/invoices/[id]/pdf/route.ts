@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { callKw } = await import('@/lib/odoo/client')
+    const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     // Verify ownership
     const moves = await callKw(sessionId, 'account.move', 'read', [[id]], {
@@ -35,10 +35,23 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 
-    // Render PDF via JSON-RPC using the admin API key.
-    // The /report/pdf/ HTTP endpoint requires auth='user' (session cookie) which
-    // doesn't work with API keys on Odoo SaaS. JSON-RPC execute_kw works instead.
-    // Odoo encodes returned bytes as latin-1 strings in JSON; Buffer 'binary' reverses that.
+    // Strategy 1: read existing ir.attachment (Odoo always stores invoice PDFs here
+    // when an invoice is posted/sent; datas is base64 in JSON-RPC → reliable).
+    const attachments = await searchRead(sessionId, 'ir.attachment', [
+      ['res_model', '=', 'account.move'],
+      ['res_id', '=', id],
+      ['mimetype', '=', 'application/pdf'],
+    ], ['id', 'datas', 'name'], { limit: 1, order: 'write_date desc' })
+
+    if (attachments.length > 0 && attachments[0].datas) {
+      const buf = Buffer.from(attachments[0].datas as string, 'base64')
+      if (buf[0] === 0x25) { // starts with '%' → valid PDF
+        return buildPdfResponse(buf, `invoice-${id}.pdf`)
+      }
+    }
+
+    // Strategy 2: render via JSON-RPC execute_kw (bypasses HTTP auth).
+    // Odoo may encode returned bytes as base64 or latin-1; detect by PDF magic bytes.
     const result = await callKw(
       sessionId,
       'ir.actions.report',
@@ -47,19 +60,32 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       {},
     ) as [string, string]
 
-    const pdfBuffer = Buffer.from(result[0], 'binary')
+    const pdfBuffer = decodePdf(result[0])
+    if (!pdfBuffer) throw new Error('render_qweb_pdf returned unreadable data')
 
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="invoice-${id}.pdf"`,
-        'Cache-Control': 'no-store',
-      },
-    })
+    return buildPdfResponse(pdfBuffer, `invoice-${id}.pdf`)
   } catch (err) {
     invalidateOdooSession()
     console.error('invoice PDF error:', err)
-    return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not generate PDF.' }, { status: 503 })
+    return NextResponse.json({ error: 'PDF_ERROR', message: 'Could not generate PDF.' }, { status: 503 })
   }
+}
+
+function decodePdf(data: string): Buffer | null {
+  const b64 = Buffer.from(data, 'base64')
+  if (b64[0] === 0x25 && b64[1] === 0x50) return b64 // %P
+  const bin = Buffer.from(data, 'binary')
+  if (bin[0] === 0x25 && bin[1] === 0x50) return bin
+  return null
+}
+
+function buildPdfResponse(buf: Buffer, filename: string) {
+  return new NextResponse(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    },
+  })
 }
