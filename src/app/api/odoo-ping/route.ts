@@ -55,5 +55,28 @@ export async function GET() {
     authResult = { status: 'fetch_error', error: e instanceof Error ? e.message : String(e) }
   }
 
-  return NextResponse.json({ config, http: httpStatus, auth: authResult })
+  // Test 3: check available websites
+  let websiteResult: { status: string; websites?: { id: number; name: string }[]; error?: string } = { status: 'not tested' }
+  if (authResult.status === 'ok' && authResult.uid) {
+    try {
+      const res2 = await fetch(`${url}/jsonrpc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call', id: 2,
+          params: {
+            service: 'object', method: 'execute_kw',
+            args: [db, authResult.uid, apikey, 'website', 'search_read', [[]], { fields: ['id', 'name'], limit: 10 }],
+          },
+        }),
+      })
+      const j2 = (await res2.json()) as { result?: { id: number; name: string }[]; error?: { message: string } }
+      if (j2.error) websiteResult = { status: 'error', error: j2.error.message }
+      else websiteResult = { status: 'ok', websites: j2.result }
+    } catch (e: unknown) {
+      websiteResult = { status: 'fetch_error', error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  return NextResponse.json({ config, http: httpStatus, auth: authResult, websites: websiteResult })
 }
