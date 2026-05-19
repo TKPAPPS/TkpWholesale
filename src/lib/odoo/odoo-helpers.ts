@@ -606,8 +606,16 @@ export async function readCart(sessionId: string, orderId: number): Promise<Cart
 }
 
 export async function findCart(sessionId: string, partnerId: number): Promise<number | null> {
+  // Only pick up portal-created carts (website_id match) that are less than 7 days old.
+  // Without this, stale manually-created quotations from months ago get reused as carts.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const carts = await searchRead(sessionId, 'sale.order',
-    [['partner_id', '=', partnerId], ['state', '=', 'draft']],
+    [
+      ['partner_id', '=', partnerId],
+      ['state', '=', 'draft'],
+      ['website_id', '=', WEBSITE_ID],
+      ['date_order', '>=', sevenDaysAgo],
+    ],
     ['id'],
     { limit: 1, order: 'id desc' },
   ) as unknown as { id: number }[]

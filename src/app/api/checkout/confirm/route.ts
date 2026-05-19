@@ -66,10 +66,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address not valid.' }, { status: 400 })
     }
 
-    // Write delivery address and note, then confirm
+    // Write delivery address, note, and stamp date_order to now (prevents stale draft dates)
+    const nowUtc = new Date().toISOString().slice(0, 19).replace('T', ' ')
     await callKw(sessionId, 'sale.order', 'write', [[cartId], {
       partner_shipping_id: delivery_address_id,
       note: note ?? '',
+      date_order: nowUtc,
     }], {})
 
     await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
