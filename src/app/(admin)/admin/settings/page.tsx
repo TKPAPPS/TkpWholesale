@@ -48,12 +48,13 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
       })
-      if (!res.ok) throw new Error('save failed')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`)
       setSettings(draft)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
-    } catch {
-      setError('Could not save settings. Check Odoo connectivity.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save settings.')
     } finally {
       setSaving(false)
     }
