@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-05-20 (Batch 2C — Admin responsive sidebar)
+
+### Changed
+- **Admin sidebar is now responsive** — the fixed `w-48` sidebar is hidden below the `md` (768px) breakpoint. Desktop and tablet `md+` retain the existing sidebar layout with no visual change.
+- **Mobile admin top bar** — on `< md`, a sticky white header renders with a hamburger button (aria-label: "Open navigation menu") and the "Admin" title.
+- **Mobile admin drawer** — tapping the hamburger slides in a `w-64 max-w-[85vw]` panel from the left. The panel contains the same nav items and logout as the desktop sidebar. The drawer closes via: close button (aria-label: "Close navigation menu"), backdrop click, or clicking any nav link.
+- **Body scroll locked** while mobile drawer is open (same pattern as customer category drawer).
+- **Active-link logic unchanged** — both desktop sidebar and mobile drawer use the same `exact`/`startsWith` logic.
+- **Admin login page unchanged** — `if (pathname === '/admin/login') return <>{children}</>` still short-circuits layout rendering.
+
+### Files changed
+- `src/app/(admin)/layout.tsx` — added `mobileOpen` state, `useEffect` for body overflow, mobile top bar `<header>`, mobile backdrop, mobile drawer panel; `<aside>` changed from `flex` to `hidden md:flex`; `<main>` wrapped in `<div class="flex-1 flex flex-col min-w-0">` content column; `Menu` and `X` added to lucide imports
+
+### Verification
+- `npx tsc --noEmit` — no errors
+- `npm run build` — clean build, 50 pages, no warnings
+- `npm run lint` — ESLint not configured; skipped
+- `GET /login` → HTTP 200 ✓
+- `GET /api/auth/me` (no session) → `{"error":"NOT_AUTHENTICATED"}` ✓
+- `GET /api/odoo-ping` → HTTP 404 ✓
+- `GET /` → HTTP 307 → `/products` ✓
+- `GET /admin` (no session) → HTTP 307 → `/admin/login` ✓
+
+### Known limitations / follow-ups
+- Browser/mobile testing not available. Layout verified by code review only.
+- No focus-trap in the mobile drawer. Tab key can reach content behind the backdrop. No existing focus-trap pattern in the project.
+- Admin area is still English-only (no RTL support). The mobile drawer uses `start-0` (logical property) for positioning, which is RTL-aware, but admin itself does not switch direction.
+
+---
+
 ## 2026-05-20 (Batch 2A+2B — Layout, mobile, cart images)
 
 ### Fixed

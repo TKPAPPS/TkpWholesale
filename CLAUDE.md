@@ -52,6 +52,15 @@ Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odo
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
 Mock data is never complete — do not treat mock behaviour as ground truth for real Odoo.
 
+## Admin layout (responsive)
+- `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
+- **Desktop `md+`**: fixed `w-48` sidebar on the left; `<main>` is `flex-1 p-6 overflow-auto`.
+- **Mobile `< md`**: sidebar is hidden (`hidden md:flex`). A `<header>` top bar with hamburger button appears. Hamburger opens a slide-in `w-64` drawer (same nav items + logout as desktop sidebar).
+- `<main>` is now wrapped in `<div class="flex-1 flex flex-col min-w-0">` — this wrapper is required for the mobile top bar + main to stack correctly.
+- `mobileOpen` state + `useEffect` locks `document.body.overflow` when drawer is open (same pattern as `MobileCategoryDrawer`).
+- `/admin/login` short-circuits the layout — no sidebar or drawer is rendered on the login page.
+- Admin drawer uses `start-0` (logical position) so it is RTL-aware, but admin itself does not switch language direction.
+
 ## Admin panel auth
 - Login at `/admin/login` with Odoo email + Odoo password.
 - Credentials are verified via `/jsonrpc` `authenticate` (works on SaaS; `/web/session/authenticate` rejects API keys).
