@@ -61,7 +61,10 @@ export async function checkRateLimit(
 
   const url = process.env.UPSTASH_REDIS_REST_URL
   const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) throw new RateLimitConfigError()
+  if (!url || !token) {
+    // Upstash not configured — skip rate limiting rather than blocking login
+    return { limited: false, retryAfter: 0 }
+  }
 
   try {
     const redis = new Redis({ url, token })
