@@ -11,7 +11,7 @@ import { ProductCard } from '@/components/products/ProductCard'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { t } from '@/lib/i18n/translations'
-import { Package, ClipboardList, Heart, Sparkles, Zap, ShoppingCart, RefreshCw, ChevronRight } from 'lucide-react'
+import { Package, ClipboardList, Heart, Sparkles, ShoppingCart, RefreshCw, ChevronRight } from 'lucide-react'
 
 const STATE_STEP: Record<string, number> = { draft: 0, sent: 1, sale: 2, done: 3 }
 
@@ -73,11 +73,6 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500 mt-0.5">{user?.pricelist_name && <span className="text-amber-600 font-medium">{user.pricelist_name}</span>}</p>
         </div>
         <div className="flex gap-3">
-          <Link href="/quick-order">
-            <Button size="sm" variant="secondary">
-              <Zap className="h-4 w-4 me-1.5" /> {t(lang, 'nav.quickOrder')}
-            </Button>
-          </Link>
           <Link href="/products">
             <Button size="sm">
               <Package className="h-4 w-4 me-1.5" /> {t(lang, 'nav.products')}

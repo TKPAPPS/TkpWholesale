@@ -1,34 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { devAdminToken } from '@/lib/supabase'
-import { checkRateLimit, clientIp, RateLimitConfigError } from '@/lib/rate-limit'
-
-const WIN = '15 m' as const
-const WIN_MS = 15 * 60 * 1000
-
-async function applyRateLimit(req: NextRequest, email: string): Promise<NextResponse | null> {
-  const ip = clientIp(req)
-  try {
-    const [ipRes, emailRes] = await Promise.all([
-      checkRateLimit('admin', 'ip', ip, 5, WIN, WIN_MS),
-      checkRateLimit('admin', 'email', email, 3, WIN, WIN_MS),
-    ])
-    const hit = ipRes.limited ? ipRes : emailRes.limited ? emailRes : null
-    if (!hit) return null
-    const res = NextResponse.json(
-      { error: 'RATE_LIMITED', message: 'Too many login attempts. Please try again later.' },
-      { status: 429 },
-    )
-    res.headers.set('Retry-After', String(hit.retryAfter))
-    return res
-  } catch (err) {
-    if (err instanceof RateLimitConfigError) {
-      return NextResponse.json({ error: 'SERVICE_UNAVAILABLE', message: 'Service temporarily unavailable.' }, { status: 503 })
-    }
-    console.warn('[rate-limit] Unexpected error — failing open:', (err as Error).message ?? err)
-    return null
-  }
-}
 
 function setSessionCookie(res: NextResponse, token: string) {
   res.cookies.set('admin_session', token, {
@@ -46,9 +18,6 @@ export async function POST(req: NextRequest) {
   if (!email || !password) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Email and password required.' }, { status: 401 })
   }
-
-  const limited = await applyRateLimit(req, email)
-  if (limited) return limited
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY

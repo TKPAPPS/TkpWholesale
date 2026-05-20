@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-05-20 (Batch 1 — Navigation, routing, search, cleanup)
+
+### Changed
+- **Root `/` redirects to `/products`** — the public marketing landing page is removed. Unauthenticated users hitting `/products` are redirected to `/login` by the customer layout; after login they land on `/products`.
+- **Recently Ordered removed from nav** — link removed from desktop and mobile customer navbar. The `/recently-ordered` page and `/api/recently-ordered` route remain intact.
+- **Quick Order removed from dashboard** — the Quick Order CTA button removed from `/dashboard`. The `/quick-order` page and its APIs remain intact.
+- **Product search clears category filter** — typing in the products page search now clears the selected category so results are not silently AND-filtered by the current category selection.
+- **Search result cap raised to 50** — `/api/search` now returns up to 50 products (was 20). Both English and Hebrew are searched in parallel via Odoo; Hebrew results depend on Odoo translation data being populated.
+- **Admin login error message sanitised** — the `SERVER_MISCONFIGURATION` error no longer exposes internal doc paths or env var names. Now shows: "Server configuration error. Please contact the administrator."
+
+### Removed
+- **Upstash-based login rate limiting removed** — `@upstash/redis`, `@upstash/ratelimit`, and `src/lib/rate-limit.ts` removed. Customer and admin login routes no longer depend on any external rate-limit infrastructure. Rate limiting remains a recommended future security improvement (see Known issues).
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` removed from `.env.local.example`.
+
+### Files changed
+- `src/app/(public)/page.tsx` — replaced with server-side redirect to `/products`
+- `src/components/layout/Navbar.tsx` — removed Recently Ordered from `navLinks`; removed unused `Clock` import
+- `src/app/(customer)/dashboard/page.tsx` — removed Quick Order button; removed unused `Zap` import
+- `src/app/(customer)/products/page.tsx` — `handleSearchInput` now calls `setSelectedCategory(null)` when query is non-empty
+- `src/app/api/search/route.ts` — `fetchOdooProducts` limit raised from 20 to 50
+- `src/app/(admin)/admin/login/page.tsx` — sanitised `SERVER_MISCONFIGURATION` error message
+- `src/app/api/auth/login/route.ts` — removed `applyRateLimit` and all rate-limit imports
+- `src/app/api/admin/auth/login/route.ts` — removed `applyRateLimit` and all rate-limit imports
+- `src/lib/rate-limit.ts` — deleted
+- `package.json` — removed `@upstash/redis`, `@upstash/ratelimit`
+- `.env.local.example` — removed Upstash env vars
+
+### Known limitations
+- Hebrew search works only if Odoo has Hebrew translations populated for `product.template.name`. If translations are absent for a product, that product will not appear in Hebrew-language search results. This is a data quality constraint in Odoo, not a code issue.
+- Auth endpoint rate limiting is deferred. Recommended for a future security batch if the portal becomes more publicly accessible.
+
+---
+
 ## 2026-05-19 (Security Fix Pack 2 — rate limiting)
 
 ### Security

@@ -98,6 +98,7 @@ export default function ProductsPage() {
 
   const handleSearchInput = (value: string) => {
     setSearch(value)
+    if (value.trim()) setSelectedCategory(null)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
       setPage(0)

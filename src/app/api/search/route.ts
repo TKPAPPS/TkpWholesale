@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const { products, total } = await fetchOdooProducts(
       sessionId,
       [['id', 'in', allIds]],
-      { limit: 20 },
+      { limit: 50 },
       parsed.pricelist_id ?? undefined,
     )
 

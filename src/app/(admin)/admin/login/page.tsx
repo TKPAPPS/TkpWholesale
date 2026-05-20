@@ -26,7 +26,7 @@ export default function AdminLoginPage() {
       if (!res.ok) {
         const data = await res.json()
         if (data.error === 'SERVER_MISCONFIGURATION') {
-          setError('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY to .env.local — see docs/local-setup-status.md.')
+          setError('Server configuration error. Please contact the administrator.')
         } else {
           setError(data.message ?? 'Login failed.')
         }
