@@ -3,15 +3,13 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, Settings, FileText, ScrollText, ShieldCheck, Activity, Tag, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Settings, FileText, Activity, Tag, LogOut, Menu, X } from 'lucide-react'
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
   { href: '/admin/categories', label: 'Categories', icon: Tag },
   { href: '/admin/content', label: 'Content', icon: FileText },
-  { href: '/admin/logs', label: 'Logs', icon: ScrollText },
-  { href: '/admin/audit', label: 'Audit', icon: ShieldCheck },
   { href: '/admin/health', label: 'API Health', icon: Activity },
 ]
 

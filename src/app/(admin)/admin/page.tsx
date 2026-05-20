@@ -70,6 +70,7 @@ export default function AdminDashboard() {
   }
 
   const deleteAnnouncement = async (id: number) => {
+    if (!window.confirm('Delete this announcement?')) return
     await fetch(`/api/admin/announcements?id=${id}`, { method: 'DELETE' })
     setAnnouncements((prev) => prev.filter((a) => a.id !== id))
   }

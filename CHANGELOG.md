@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05-20 (Batch 3A — Admin nav cleanup, announcement delete confirmation)
+
+### Changed
+- **Logs and Audit removed from admin nav** — both entries removed from `navItems` in `(admin)/layout.tsx`. Desktop sidebar and mobile drawer both use this array, so both are updated by the single change. Route files at `/admin/logs` and `/admin/audit` are kept intact (accessible by direct URL).
+- **Announcement delete confirmation** — clicking the delete button on an announcement now calls `window.confirm('Delete this announcement?')` before sending the DELETE request. No modal library added.
+
+### Files changed
+- `src/app/(admin)/layout.tsx` — removed `{ href: '/admin/logs', ... }` and `{ href: '/admin/audit', ... }` from `navItems`; removed `ScrollText` and `ShieldCheck` from lucide-react import
+- `src/app/(admin)/admin/page.tsx` — added `if (!window.confirm('Delete this announcement?')) return` guard to `deleteAnnouncement`
+
+### Verification performed
+- `npx tsc --noEmit` — no errors
+- `npm run build` — clean build, 50 pages, no warnings
+
+### Results
+- Build output confirms `/admin/logs` and `/admin/audit` routes still exist (148 B pages — their stub pages) but they are no longer linked from any nav element
+- Admin login page, settings, categories, content, health, and dashboard routes unaffected
+
+### Edge cases checked
+- Both desktop sidebar and mobile drawer render from the same `navItems` array — one removal covers both
+- `/admin/logs` and `/admin/audit` pages remain accessible via direct URL (not deleted)
+- Announcement delete with `window.confirm` cancel path: returns early, fetch never called, UI unchanged
+- `ScrollText` and `ShieldCheck` are not used anywhere else in `layout.tsx` — safe to remove from import
+
+### Optimization notes
+- No runtime impact. `navItems` is a module-level constant; smaller array = marginally less work per render (negligible).
+
+### Documentation updated
+- This CHANGELOG entry
+
+### Known risks or follow-ups
+- `/admin/logs` and `/admin/audit` are still reachable by direct URL and are protected by `src/middleware.ts` (requires valid `admin_session` cookie). No security concern.
+- `window.confirm` is not keyboard-accessible in the same way a custom modal would be, but is consistent with admin-only use and avoids adding a modal dependency.
+- Focus-trap for admin mobile drawer remains unimplemented (no existing project pattern).
+
+---
+
 ## 2026-05-20 (Batch 2C — Admin responsive sidebar)
 
 ### Changed
