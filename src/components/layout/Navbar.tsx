@@ -14,6 +14,27 @@ import { useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { Product } from '@/types'
 
+function CartLineImage({ src }: { src: string }) {
+  const [imgError, setImgError] = useState(false)
+  if (!src || imgError) {
+    return (
+      <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+        <Package className="h-5 w-5 text-gray-300" />
+      </div>
+    )
+  }
+  return (
+    <Image
+      src={src}
+      alt=""
+      width={40}
+      height={40}
+      className="rounded-lg object-contain bg-gray-50 shrink-0"
+      onError={() => setImgError(true)}
+    />
+  )
+}
+
 export function Navbar() {
   const { lang } = useLangStore()
   const { user } = useAuthStore()
@@ -171,14 +192,7 @@ export function Navbar() {
                           <ul className="space-y-3 max-h-64 overflow-y-auto">
                             {cart.lines.slice(0, 6).map((line) => (
                               <li key={line.line_id} className="flex items-center gap-3">
-                                <Image
-                                  src={line.product_image_url}
-                                  alt=""
-                                  width={40}
-                                  height={40}
-                                  className="rounded-lg object-contain bg-gray-50 shrink-0"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                                />
+                                <CartLineImage src={line.product_image_url} />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-gray-900 truncate">
                                     {lang === 'he' ? line.product_name_he : line.product_name}

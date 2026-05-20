@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-05-20 (Batch 2A+2B — Layout, mobile, cart images)
+
+### Fixed
+- **Product card quantity selector on mobile** — added a `size="sm"` variant to `QuantitySelector` (`h-7 w-7` buttons, `w-6` input; total 80px). Product cards now use this variant so the `+` button is no longer clipped by `overflow-hidden` on 2-column mobile grids (375px+). Default size is unchanged; all other usages (cart page, etc.) are unaffected.
+- **Mobile category drawer RTL animation** — in Hebrew/RTL mode the drawer panel is positioned at `start-0` (= `right: 0`). The closed state now uses `translate-x-full` in RTL (slides off-screen right) instead of `-translate-x-full` (was incorrectly sliding left). LTR English behaviour is unchanged.
+- **Cart hover image fallback** — replaced the inline `onError`→`display:none` handler in the Navbar cart popover with a stable `CartLineImage` sub-component. The component holds its own `imgError` state. When `product_image_url` is empty or the image request fails (including mock mode where the proxy always returns 502), a 40×40 placeholder with a Package icon is shown instead. Layout is stable whether or not images load. Full cart page (`CartItem.tsx`) already had this pattern; now consistent everywhere.
+- **Admin health page table overflow** — wrapped the health check table in `overflow-x-auto`. Added `min-w-[500px]` to the `<table>` and `whitespace-nowrap` to all cells so long Odoo endpoint URLs render on one line and the table scrolls horizontally rather than clipping.
+- **Admin categories page table overflow** — same pattern: `overflow-x-auto` wrapper, `min-w-[400px]` table, `min-w-[140px]` on the Category column, `whitespace-nowrap` on Scope/Shown/Children headers. Tree indentation (`paddingLeft`) is preserved.
+
+### Files changed
+- `src/components/products/QuantitySelector.tsx` — added `size?: 'sm' | 'md'` prop; default `'md'` preserves existing behaviour
+- `src/components/products/ProductCard.tsx` — pass `size="sm"` to `QuantitySelector`
+- `src/components/layout/MobileCategoryDrawer.tsx` — import `useLangStore`; use `isRtl` flag to choose `translate-x-full` vs `-translate-x-full` for closed state
+- `src/components/layout/Navbar.tsx` — add `CartLineImage` component; replace inline `onError` handler with `<CartLineImage src={line.product_image_url} />`
+- `src/app/(admin)/admin/health/page.tsx` — `overflow-x-auto` wrapper + `min-w-[500px]` + `whitespace-nowrap`
+- `src/app/(admin)/admin/categories/page.tsx` — `overflow-x-auto` wrapper + `min-w-[400px]` + column constraints
+
+### Verification
+- `npx tsc --noEmit` — no errors
+- `npm run build` — clean build, 50 pages generated, no warnings
+- `npm run lint` — ESLint not configured (interactive prompt); skipped
+- `GET /` → HTTP 307 → `/products` ✓
+- `GET /login` → HTTP 200 ✓
+- `GET /api/auth/me` (no session) → `{"error":"NOT_AUTHENTICATED"}` (401) ✓
+- `GET /api/odoo-ping` → HTTP 404 ✓
+- `GET /api/images/product/10/128` (no session) → HTTP 401 ✓
+
+### Known limitations / follow-ups
+- Batch 2C (admin responsive sidebar / hamburger menu) is not implemented. Admin sidebar is still always visible with no mobile breakpoint. This remains an open follow-up.
+- Browser testing not available. Mobile layout verified by code inspection and width calculations only.
+- `product_name_he` in cart lines is not separately fetched from Odoo — Hebrew UI shows English names in cart dropdown. Out of scope for this batch; tracked in CLAUDE.md known issues.
+
+---
+
 ## 2026-05-20 (Batch 1 — Navigation, routing, search, cleanup)
 
 ### Changed

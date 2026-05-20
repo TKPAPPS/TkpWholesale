@@ -202,28 +202,30 @@ export default function CategoriesPage() {
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Scope</th>
-                <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Shown</th>
-                <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Children</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tree.map(node => (
-                <CategoryRow
-                  key={node.id}
-                  node={node}
-                  depth={0}
-                  hiddenIds={hiddenIds}
-                  onToggle={toggle}
-                  onToggleSubtree={toggleSubtree}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[400px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider min-w-[140px]">Category</th>
+                  <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Scope</th>
+                  <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Shown</th>
+                  <th className="text-center py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Children</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tree.map(node => (
+                  <CategoryRow
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    hiddenIds={hiddenIds}
+                    onToggle={toggle}
+                    onToggleSubtree={toggleSubtree}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

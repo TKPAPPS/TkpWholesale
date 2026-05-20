@@ -124,7 +124,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
         )}
 
         <div className="flex items-center gap-2 pt-1">
-          <QuantitySelector value={qty} onChange={setQty} className="flex-1" />
+          <QuantitySelector value={qty} onChange={setQty} size="sm" className="flex-1" />
           <Button
             size="sm"
             onClick={addToCart}

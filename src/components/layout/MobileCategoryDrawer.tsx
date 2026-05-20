@@ -4,6 +4,7 @@ import { X, SlidersHorizontal } from 'lucide-react'
 import { Category } from '@/types'
 import { Sidebar } from './Sidebar'
 import { cn } from '@/lib/utils'
+import { useLangStore } from '@/store/langStore'
 
 interface MobileCategoryDrawerProps {
   open: boolean
@@ -14,6 +15,9 @@ interface MobileCategoryDrawerProps {
 }
 
 export function MobileCategoryDrawer({ open, onClose, categories, selectedCategoryId, onSelect }: MobileCategoryDrawerProps) {
+  const { lang } = useLangStore()
+  const isRtl = lang === 'he'
+
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'
     else document.body.style.overflow = ''
@@ -33,11 +37,11 @@ export function MobileCategoryDrawer({ open, onClose, categories, selectedCatego
         onClick={onClose}
       />
 
-      {/* Drawer panel */}
+      {/* Drawer panel — in RTL (Hebrew) `start-0` = right:0, so closed state slides right */}
       <div
         className={cn(
           'fixed top-0 start-0 h-full w-72 bg-white z-50 lg:hidden shadow-xl transition-transform duration-300 ease-in-out overflow-y-auto',
-          open ? 'translate-x-0' : '-translate-x-full',
+          open ? 'translate-x-0' : isRtl ? 'translate-x-full' : '-translate-x-full',
         )}
       >
         <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
