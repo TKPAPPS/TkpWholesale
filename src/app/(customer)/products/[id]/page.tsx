@@ -88,6 +88,7 @@ export default function ProductDetailPage() {
               className="object-contain"
               onError={() => setImgError(true)}
               priority
+              unoptimized
             />
           ) : (
             <Package className="h-32 w-32 text-gray-200" />

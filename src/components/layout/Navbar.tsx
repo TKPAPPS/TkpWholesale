@@ -31,6 +31,7 @@ function CartLineImage({ src }: { src: string }) {
       height={40}
       className="rounded-lg object-contain bg-gray-50 shrink-0"
       onError={() => setImgError(true)}
+      unoptimized
     />
   )
 }
@@ -338,6 +339,7 @@ export function Navbar() {
                             <Image
                               src={p.image_url} alt="" fill className="object-contain" sizes="40px"
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                              unoptimized
                             />
                           </div>
                           <div className="flex-1 min-w-0">

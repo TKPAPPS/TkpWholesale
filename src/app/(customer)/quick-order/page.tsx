@@ -135,7 +135,8 @@ export default function QuickOrderPage() {
                   <div className="h-10 w-10 rounded-lg bg-gray-50 overflow-hidden shrink-0 relative">
                     {!imgErrors.has(p.template_id) ? (
                       <Image src={p.image_url} alt="" fill className="object-contain" sizes="40px"
-                        onError={() => setImgErrors(prev => new Set(Array.from(prev).concat(p.template_id)))} />
+                        onError={() => setImgErrors(prev => new Set(Array.from(prev).concat(p.template_id)))}
+                        unoptimized />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">—</div>
                     )}
@@ -175,7 +176,8 @@ export default function QuickOrderPage() {
                     <div className="h-10 w-10 rounded-lg bg-gray-50 overflow-hidden shrink-0 relative">
                       {!imgErrors.has(row.product.template_id) ? (
                         <Image src={row.product.image_url} alt="" fill className="object-contain" sizes="40px"
-                          onError={() => setImgErrors(prev => new Set(Array.from(prev).concat(row.product.template_id)))} />
+                          onError={() => setImgErrors(prev => new Set(Array.from(prev).concat(row.product.template_id)))}
+                          unoptimized />
                       ) : null}
                     </div>
                     <div className="min-w-0">

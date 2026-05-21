@@ -65,6 +65,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className="object-contain group-hover:scale-105 transition-transform duration-300"
             onError={() => setImgError(true)}
+            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
