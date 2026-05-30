@@ -252,7 +252,7 @@ export function bustCategoriesCache() { revalidateTag('odoo-categories') }
 
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
-async function fetchWebsitePublishedSettings(_sessionId: string): Promise<Map<number, boolean>> {
+export async function fetchWebsitePublishedSettings(_sessionId: string): Promise<Map<number, boolean>> {
   const raw = await _fetchWebsiteSettings(WEBSITE_ID)
   return new Map<number, boolean>(raw)
 }

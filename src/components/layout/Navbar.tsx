@@ -12,7 +12,7 @@ import { LanguageSwitcher } from './LanguageSwitcher'
 import { Logo } from './Logo'
 import { useRouter, usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import type { Product } from '@/types'
+import type { SearchHit } from '@/types'
 
 function CartLineImage({ src }: { src: string }) {
   const [imgError, setImgError] = useState(false)
@@ -38,7 +38,7 @@ function CartLineImage({ src }: { src: string }) {
 
 export function Navbar() {
   const { lang } = useLangStore()
-  const { user } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const cart = useCartStore((s) => s.cart)
   const lineCount = useCartStore((s) => s.lineCount())
   const router = useRouter()
@@ -50,7 +50,7 @@ export function Navbar() {
   // Global search
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<Product[]>([])
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,6 +115,7 @@ export function Navbar() {
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
+    setUser(null)
     router.push('/login')
   }
 

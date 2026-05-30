@@ -68,6 +68,19 @@ export interface CartLine {
   warnings: string[]
 }
 
+// Lightweight result type for the global search overlay.
+// Skips pricelist adjustment, categories, and full tax calculation.
+export interface SearchHit {
+  id: number
+  template_id: number
+  name: string
+  name_he: string
+  sku: string
+  image_url: string
+  currency: string
+  packaging_options: Pick<PackagingOption, 'id' | 'name' | 'qty' | 'price_per_pack_incl_tax' | 'is_default'>[]
+}
+
 export interface Cart {
   cart_id: number
   state: 'draft' | 'sent' | 'sale' | 'done' | 'cancel'

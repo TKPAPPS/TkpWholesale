@@ -10,11 +10,14 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { user, isLoading, setUser, setLoading } = useAuthStore()
+  const { user, isLoading, setUser, setLoading, hydrate } = useAuthStore()
   const { setLang } = useLangStore()
   const fetchCart = useCartStore((s) => s.fetchCart)
 
   useEffect(() => {
+    // Hydrate from sessionStorage first — returning users with a valid cached
+    // session skip the full-screen spinner. Cookie is still validated below.
+    hydrate()
     initLang()
     // Fire cart fetch immediately — it uses the session cookie directly
     // and doesn't need the auth result. Runs in parallel with auth check.
