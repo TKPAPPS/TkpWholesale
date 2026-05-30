@@ -44,13 +44,15 @@ export default function DashboardPage() {
     setReordering(orderId)
     try {
       const detail = await fetch(`/api/orders/${orderId}`).then(r => r.json())
-      for (const line of detail.lines ?? []) {
-        await fetch('/api/cart/lines', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
-        })
-      }
+      await Promise.allSettled(
+        (detail.lines ?? []).map((line: { template_id: number; packaging_id: number; packaging_qty: number }) =>
+          fetch('/api/cart/lines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
+          })
+        )
+      )
       router.push('/cart')
     } finally {
       setReordering(null)

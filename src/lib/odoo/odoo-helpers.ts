@@ -327,40 +327,35 @@ export async function fetchOdooProducts(
 
   const heMap = new Map(heRaw.map(p => [p.id, p]))
 
-  // Fetch pricelist.item records for this page's products + any global rules.
-  // Fetching only the current page's template IDs keeps this call fast (24 items max).
-  // Falls back silently to list_price if the fetch fails so products always load.
-  const plPriceMap = new Map<number, number>()
-  if (pricelistId && enRaw.length > 0) {
-    try {
-      const templateIds = enRaw.map(p => p.id)
-      const plItems = await callKw(
-        sessionId,
-        'product.pricelist.item',
-        'search_read',
-        [[
-          ['pricelist_id', '=', pricelistId],
-          '|',
-          ['applied_on', '=', '3_global'],
-          ['product_tmpl_id', 'in', templateIds],
-        ]],
-        { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
-                   'compute_price', 'percent_price', 'price_discount',
-                   'fixed_price', 'price_surcharge', 'min_quantity'] },
-      ) as OdooPricelistItem[]
-      buildPlPriceMap(enRaw, plItems).forEach((price, id) => plPriceMap.set(id, price))
-    } catch (err) {
-      console.warn('Pricelist item fetch failed, falling back to list_price:', err)
-    }
-  }
-
-  // Collect all packaging IDs and tax IDs
+  // Derive all IDs needed for the next batch from enRaw
+  const templateIds = enRaw.map(p => p.id)
   const allPackagingIds = Array.from(new Set(enRaw.flatMap(p => p.packaging_ids)))
   const allTaxIds = Array.from(new Set(enRaw.flatMap(p => p.taxes_id)))
   const allCatIds = Array.from(new Set(enRaw.flatMap(p => p.public_categ_ids)))
 
-  // Batch fetch packaging, taxes, and categories in parallel
-  const [packagings, taxes, enCats, heCats] = await Promise.all([
+  // Fetch pricelist items, packagings, taxes, and categories all in parallel.
+  // Pricelist items only need templateIds (from enRaw); packagings/taxes/cats also
+  // only need enRaw — so all five calls are independent and can run together.
+  const [rawPlItems, packagings, taxes, enCats, heCats] = await Promise.all([
+    pricelistId && templateIds.length > 0
+      ? (callKw(
+          sessionId,
+          'product.pricelist.item',
+          'search_read',
+          [[
+            ['pricelist_id', '=', pricelistId],
+            '|',
+            ['applied_on', '=', '3_global'],
+            ['product_tmpl_id', 'in', templateIds],
+          ]],
+          { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
+                     'compute_price', 'percent_price', 'price_discount',
+                     'fixed_price', 'price_surcharge', 'min_quantity'] },
+        ) as unknown as Promise<OdooPricelistItem[]>).catch((err) => {
+          console.warn('Pricelist item fetch failed, falling back to list_price:', err)
+          return [] as OdooPricelistItem[]
+        })
+      : Promise.resolve([] as OdooPricelistItem[]),
     allPackagingIds.length > 0
       ? callKw(sessionId, 'product.packaging', 'read', [allPackagingIds], {
           fields: ['id', 'name', 'qty', 'product_id', 'sales'],
@@ -382,6 +377,9 @@ export async function fetchOdooProducts(
         }) as unknown as Promise<{ id: number; name: string }[]>
       : Promise.resolve([] as { id: number; name: string }[]),
   ])
+
+  const plPriceMap = new Map<number, number>()
+  buildPlPriceMap(enRaw, rawPlItems).forEach((price, id) => plPriceMap.set(id, price))
 
   const packMap = new Map(packagings.map(p => [p.id, p]))
   const taxMap = new Map(taxes.map(t => [t.id, t]))

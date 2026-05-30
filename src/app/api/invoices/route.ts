@@ -51,7 +51,15 @@ export async function GET(req: NextRequest) {
       'amount_total', 'amount_residual', 'payment_state', 'currency_id',
       'invoice_line_ids']
 
-    const [total, rows, allResiduals] = await Promise.all([
+    // outstandingDomain intentionally omits the filter param — outstanding balance
+    // is always across all posted invoices regardless of the current page filter.
+    const outstandingDomain: unknown[] = [
+      ['move_type', '=', 'out_invoice'],
+      ['commercial_partner_id', '=', parsed.commercial_partner_id],
+      ['state', '=', 'posted'],
+    ]
+
+    const [total, rows, outstandingGroups] = await Promise.all([
       callKw(sessionId, 'account.move', 'search_count', [baseDomain], {}) as Promise<number>,
       searchRead(sessionId, 'account.move', baseDomain, FIELDS, {
         order: 'invoice_date desc', limit: PER_PAGE, offset: page * PER_PAGE,
@@ -60,14 +68,14 @@ export async function GET(req: NextRequest) {
         amount_total: number; amount_residual: number; payment_state: string;
         currency_id: [number, string]; invoice_line_ids: number[]
       }[]>,
-      // Fetch total outstanding across ALL invoices (not just this page)
-      searchRead(sessionId, 'account.move',
-        [['move_type', '=', 'out_invoice'], ['commercial_partner_id', '=', parsed.commercial_partner_id], ['state', '=', 'posted']],
-        ['amount_residual'], { limit: 500 },
+      // read_group returns one aggregated row — avoids fetching up to 500 records just for a SUM
+      callKw(sessionId, 'account.move', 'read_group',
+        [outstandingDomain, ['amount_residual:sum'], []],
+        { lazy: false },
       ) as Promise<{ amount_residual: number }[]>,
     ])
 
-    const totalOutstanding = allResiduals.reduce((s, r) => s + r.amount_residual, 0)
+    const totalOutstanding = outstandingGroups[0]?.amount_residual ?? 0
     const currency = rows[0]?.currency_id[1] ?? 'THB'
 
     const invoices = rows.map((r) => ({
@@ -83,7 +91,9 @@ export async function GET(req: NextRequest) {
       line_count: r.invoice_line_ids.length,
     }))
 
-    return NextResponse.json({ invoices, total, total_outstanding: totalOutstanding, currency })
+    return NextResponse.json({ invoices, total, total_outstanding: totalOutstanding, currency }, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
+    })
   } catch (err) {
     invalidateOdooSession()
     console.error('invoices list error:', err)

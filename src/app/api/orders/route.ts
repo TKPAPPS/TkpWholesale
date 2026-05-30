@@ -76,7 +76,9 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ orders, total, page, per_page: perPage })
+    return NextResponse.json({ orders, total, page, per_page: perPage }, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
+    })
   } catch (err) {
     invalidateOdooSession()
     console.error('orders error:', err)
