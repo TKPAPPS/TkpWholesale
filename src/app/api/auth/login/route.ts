@@ -16,15 +16,19 @@ export async function POST(req: NextRequest) {
     if (!login.includes('@')) {
       return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
     }
-    const user = { ...MOCK_USER, email: login }
-    const res = NextResponse.json({ user })
-    res.cookies.set('session', signSession({
-      uid: user.uid,
-      partner_id: user.partner_id,
-      commercial_partner_id: user.commercial_partner_id,
-      odoo_session_id: 'mock',
-    }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 8 * 60 * 60, path: '/' })
-    return res
+    try {
+      const user = { ...MOCK_USER, email: login }
+      const res = NextResponse.json({ user })
+      res.cookies.set('session', signSession({
+        uid: user.uid,
+        partner_id: user.partner_id,
+        commercial_partner_id: user.commercial_partner_id,
+        odoo_session_id: 'mock',
+      }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 8 * 60 * 60, path: '/' })
+      return res
+    } catch {
+      return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server configuration error. Please contact the administrator.' }, { status: 503 })
+    }
   }
 
   // --- REAL ODOO MODE ---

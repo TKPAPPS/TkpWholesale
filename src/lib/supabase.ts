@@ -1,23 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { createHmac } from 'crypto'
-
-// Same production requirement as the customer session secret.
-// Throws in production if SESSION_SECRET is missing or too short.
-function getAdminSecret(): string {
-  const secret = process.env.SESSION_SECRET
-  if (process.env.NODE_ENV === 'production') {
-    if (!secret || secret.length < 32) {
-      throw new Error('SESSION_SECRET must be set in production (min 32 chars)')
-    }
-    return secret
-  }
-  return secret ?? 'dev'
-}
+import { getSecret } from '@/lib/odoo/session'
 
 // HMAC token for admin sessions when Supabase is not configured.
 // Throws in production if SESSION_SECRET is not properly configured.
 function devAdminToken(): string {
-  return createHmac('sha256', getAdminSecret()).update('admin').digest('hex')
+  return createHmac('sha256', getSecret()).update('admin').digest('hex')
 }
 
 // Server-side client using the service role key — never imported in client components.

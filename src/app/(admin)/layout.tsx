@@ -13,6 +13,11 @@ const navItems = [
   { href: '/admin/health', label: 'API Health', icon: Activity },
 ]
 
+function isActive(pathname: string, href: string, exact?: boolean): boolean {
+  if (exact) return pathname === href
+  return pathname.startsWith(href) && href !== '/admin'
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -42,7 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <nav className="flex-1 py-2">
           {navItems.map(({ href, label, icon: Icon, exact }) => {
-            const active = exact ? pathname === href : pathname.startsWith(href) && href !== '/admin'
+            const active = isActive(pathname, href, exact)
             return (
               <Link
                 key={href}
@@ -115,7 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
         <nav className="flex-1 py-2 overflow-y-auto">
           {navItems.map(({ href, label, icon: Icon, exact }) => {
-            const active = exact ? pathname === href : pathname.startsWith(href) && href !== '/admin'
+            const active = isActive(pathname, href, exact)
             return (
               <Link
                 key={href}

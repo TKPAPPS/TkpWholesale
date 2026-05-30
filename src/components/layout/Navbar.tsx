@@ -54,6 +54,7 @@ export function Navbar() {
   const [searchLoading, setSearchLoading] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchAbortRef = useRef<AbortController | null>(null)
 
   const openSearch = () => {
     setSearchOpen(true)
@@ -75,14 +76,25 @@ export function Navbar() {
     return () => window.removeEventListener('keydown', handler)
   }, [searchOpen])
 
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+      if (searchAbortRef.current) searchAbortRef.current.abort()
+    }
+  }, [])
+
   const handleGlobalSearch = (value: string) => {
     setSearchQ(value)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     if (!value.trim()) { setSearchResults([]); return }
     searchDebounceRef.current = setTimeout(async () => {
+      if (searchAbortRef.current) searchAbortRef.current.abort()
+      const controller = new AbortController()
+      searchAbortRef.current = controller
       setSearchLoading(true)
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`)
+        const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`, { signal: controller.signal })
+        if (!res.ok) { setSearchResults([]); return }
         const data = await res.json()
         setSearchResults(data.results?.slice(0, 6) ?? [])
       } catch {

@@ -24,11 +24,17 @@ export async function POST(req: NextRequest) {
 
   // Supabase not configured — verify via Odoo /jsonrpc (works with regular passwords on SaaS).
   if (!url || !anonKey || url.includes('your-project')) {
+    let token: string
+    try {
+      token = devAdminToken()
+    } catch {
+      return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server configuration error. Please contact the administrator.' }, { status: 503 })
+    }
     try {
       const { adminAuthenticate } = await import('@/lib/odoo/client')
       await adminAuthenticate(email, password)
       const res = NextResponse.json({ ok: true, email })
-      setSessionCookie(res, devAdminToken())
+      setSessionCookie(res, token)
       return res
     } catch {
       return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })

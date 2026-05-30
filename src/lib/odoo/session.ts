@@ -17,7 +17,7 @@ export interface OdooSession {
 // Throws if the requirement is not met — callers that issue cookies should let
 // this propagate (fail the request); callers that only verify should catch it
 // and return null (treat as unauthenticated).
-function getSecret(): string {
+export function getSecret(): string {
   const secret = process.env.SESSION_SECRET
   if (process.env.NODE_ENV === 'production') {
     if (!secret || secret.length < 32) {
