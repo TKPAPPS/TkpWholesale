@@ -2,11 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CATEGORIES } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { unstable_cache, revalidateTag } from 'next/cache'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
-// Categories change rarely — cache for 5 minutes per serverless instance
-let _cache: { data: unknown; expires: number } | null = null
+// Categories change rarely — shared across all Vercel instances via Data Cache.
+// Follows the same pattern as _fetchWebsiteSettings in odoo-helpers.ts.
+const _fetchCategories = unstable_cache(
+  async () => {
+    const sessionId = await getOdooSession()
+    const { fetchOdooCategories } = await import('@/lib/odoo/odoo-helpers')
+    return fetchOdooCategories(sessionId)
+  },
+  ['odoo-categories'],
+  { revalidate: 300, tags: ['odoo-categories'] },
+)
+
 
 export async function GET(req: NextRequest) {
   const session = req.cookies.get('session')?.value
@@ -19,19 +30,11 @@ export async function GET(req: NextRequest) {
   const parsed = parseSession(req)
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const CACHE_HEADERS = { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' }
-
-  if (_cache && Date.now() < _cache.expires) {
-    return NextResponse.json(_cache.data, { headers: CACHE_HEADERS })
-  }
-
   try {
-    const sessionId = await getOdooSession()
-    const { fetchOdooCategories } = await import('@/lib/odoo/odoo-helpers')
-    const categories = await fetchOdooCategories(sessionId)
-    const data = { categories }
-    _cache = { data, expires: Date.now() + 5 * 60_000 }
-    return NextResponse.json(data, { headers: CACHE_HEADERS })
+    const categories = await _fetchCategories()
+    return NextResponse.json({ categories }, {
+      headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' },
+    })
   } catch (err) {
     invalidateOdooSession()
     console.error('categories error:', err)

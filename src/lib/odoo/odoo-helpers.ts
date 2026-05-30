@@ -248,6 +248,8 @@ export function bustWebsiteSettingsCache() {
   revalidateTag('odoo-hide-oos')
 }
 
+export function bustCategoriesCache() { revalidateTag('odoo-categories') }
+
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
 async function fetchWebsitePublishedSettings(_sessionId: string): Promise<Map<number, boolean>> {
@@ -266,17 +268,25 @@ export async function fetchOdooProducts(
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
   pricelistId?: number | null,
+  newArrivalsAfter?: string,
 ): Promise<{ products: Product[]; total: number }> {
-  const cacheKey = `${pricelistId ?? 0}:${opts.limit ?? 100}:${opts.offset ?? 0}:${opts.order ?? ''}:${JSON.stringify(domain)}`
+  const cacheKey = `${pricelistId ?? 0}:${opts.limit ?? 100}:${opts.offset ?? 0}:${opts.order ?? ''}:${newArrivalsAfter ?? ''}:${JSON.stringify(domain)}`
   const hit = _productCache.get(cacheKey)
   if (hit && Date.now() < hit.expires) return hit.data
 
-  // Step 1: fetch website settings and the portal hide-OOS toggle in parallel
-  const [websiteSettingsMap, hideOos] = await Promise.all([
+  // Round 1: fetch website settings, hide-OOS toggle, and (if new_arrivals) recently
+  // published IDs all in parallel — avoids a sequential preflight on the new_arrivals path.
+  const [websiteSettingsMap, hideOos, recentIds] = await Promise.all([
     fetchWebsitePublishedSettings(sessionId),
     getHideOutOfStock(sessionId),
+    newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
   ])
   if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
+
+  // Merge new-arrivals ID filter into the caller's domain
+  const effectiveDomain: unknown[] = recentIds
+    ? recentIds.length > 0 ? [['id', 'in', recentIds], ...domain] : domain
+    : domain
 
   const publishedIds = Array.from(websiteSettingsMap.keys())
   let baseDomain: unknown[]
@@ -301,14 +311,14 @@ export async function fetchOdooProducts(
       ['id', 'in', noOosIds],
       ['qty_available', '>', 0],
       ['type', 'in', ['consu', 'storable']],
-      ...domain,
+      ...effectiveDomain,
     ]
   } else {
     // hide-OOS toggle off: show all published products regardless of stock
     baseDomain = [
       ['id', 'in', publishedIds],
       ['type', 'in', ['consu', 'storable']],
-      ...domain,
+      ...effectiveDomain,
     ]
   }
 

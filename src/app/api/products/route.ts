@@ -33,17 +33,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, fetchRecentlyPublishedIds } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
 
     const domain: unknown[] = []
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
 
-    // For new arrivals, filter by when the product was published to our website
-    // (product.website.settings.create_date), not the template's create_date.
-    if (sort === 'new_arrivals' && createdAfter) {
-      const recentIds = await fetchRecentlyPublishedIds(sessionId, createdAfter)
-      if (recentIds.length > 0) domain.push(['id', 'in', recentIds])
-    } else if (createdAfter) {
+    // For non-new-arrivals createdAfter, filter by product template create_date directly.
+    // For new_arrivals, fetchRecentlyPublishedIds runs in parallel inside fetchOdooProducts.
+    if (createdAfter && sort !== 'new_arrivals') {
       domain.push(['create_date', '>=', createdAfter])
     }
 
@@ -58,6 +55,7 @@ export async function GET(req: NextRequest) {
       domain,
       { limit: perPage, offset: page * perPage, order: odooSort },
       parsed.pricelist_id ?? undefined,
+      sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
     )
 
     return NextResponse.json({ products, total, page, per_page: perPage }, {

@@ -33,16 +33,15 @@ export default function ProductsPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    fetch('/api/categories')
-      .then((r) => r.json())
-      .then((d) => setCategories(d.categories ?? []))
-    fetch('/api/favorites')
-      .then((r) => r.json())
-      .then((d) => {
-        const ids = (d.favorites ?? []).map((p: { template_id: number }) => p.template_id)
-        setFavoriteIds(new Set(ids))
-      })
-      .catch(() => {})
+    Promise.all([
+      fetch('/api/categories').then(r => r.json()),
+      fetch('/api/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
+    ]).then(([cats, favs]) => {
+      setCategories(cats.categories ?? [])
+      setFavoriteIds(new Set(
+        (favs.favorites ?? []).map((p: { template_id: number }) => p.template_id)
+      ))
+    })
   }, [])
 
   useEffect(() => {

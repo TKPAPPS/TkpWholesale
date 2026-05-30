@@ -15,20 +15,31 @@ const STYLES = {
   success: { bg: 'bg-green-50 border-green-100',  text: 'text-green-800', Icon: CheckCircle },
 }
 
+// Module-level cache so multiple mounts (client-side navigation) skip the fetch.
+let _fetched = false
+let _cached: Announcement | null = null
+
 export function AnnouncementBanner() {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null)
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
+    if (_fetched) {
+      if (_cached && !localStorage.getItem(`dismissed-announcement-${_cached.id}`)) {
+        setAnnouncement(_cached)
+      }
+      return
+    }
     fetch('/api/announcements')
       .then(r => r.json())
       .then(d => {
-        if (d.announcement) {
-          const key = `dismissed-announcement-${d.announcement.id}`
-          if (!localStorage.getItem(key)) setAnnouncement(d.announcement)
+        _fetched = true
+        _cached = d.announcement ?? null
+        if (_cached && !localStorage.getItem(`dismissed-announcement-${_cached.id}`)) {
+          setAnnouncement(_cached)
         }
       })
-      .catch(() => {})
+      .catch(() => { _fetched = true })
   }, [])
 
   if (!announcement || dismissed) return null
