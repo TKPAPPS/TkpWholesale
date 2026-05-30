@@ -6,6 +6,7 @@ import { Product, Order } from '@/types'
 import { useAuthStore } from '@/store/authStore'
 import { useCartStore } from '@/store/cartStore'
 import { useLangStore } from '@/store/langStore'
+import { useToastStore } from '@/store/toastStore'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ProductCard } from '@/components/products/ProductCard'
 import { Button } from '@/components/ui/Button'
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   const { lang } = useLangStore()
   const cart = useCartStore((s) => s.cart)
   const lineCount = useCartStore((s) => s.lineCount())
+  const showToast = useToastStore((s) => s.show)
 
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [favorites, setFavorites] = useState<Product[]>([])
@@ -44,15 +46,17 @@ export default function DashboardPage() {
     setReordering(orderId)
     try {
       const detail = await fetch(`/api/orders/${orderId}`).then(r => r.json())
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         (detail.lines ?? []).map((line: { template_id: number; packaging_id: number; packaging_qty: number }) =>
           fetch('/api/cart/lines', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
-          })
+          }).then(r => { if (!r.ok) throw new Error('failed') })
         )
       )
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (failed > 0) showToast(`${failed} item${failed > 1 ? 's' : ''} could not be added to cart`, 'error')
       router.push('/cart')
     } finally {
       setReordering(null)

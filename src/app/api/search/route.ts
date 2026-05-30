@@ -52,21 +52,24 @@ export async function GET(req: NextRequest) {
 
     if (allIds.length === 0) return NextResponse.json({ results: [], query: q, total: 0 })
 
-    // Round 2: template details + Hebrew names + packagings in parallel
-    // Skips pricelist lookup, categories, hide-OOS, and full tax pipeline —
-    // the search overlay only shows name, SKU, and a price preview.
+    // Cap to 20 IDs — the overlay shows 6; fetching 100 templates for 6 results wastes bandwidth
+    const topIds = allIds.slice(0, 20)
+
+    // Round 2: template details (EN + HE) in parallel — skips pricelist, categories,
+    // hide-OOS, and the full tax pipeline. Price shown is list_price × packaging qty
+    // (a preview, not pricelist-adjusted).
     const [enTemplates, heTemplates] = await Promise.all([
-      callKw(sessionId, 'product.template', 'read', [allIds],
-        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids', 'taxes_id'] },
-      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[]; taxes_id: number[] }[]>,
-      callKw(sessionId, 'product.template', 'read', [allIds],
+      callKw(sessionId, 'product.template', 'read', [topIds],
+        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids'] },
+      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[] }[]>,
+      callKw(sessionId, 'product.template', 'read', [topIds],
         { fields: ['id', 'name'], context: { lang: 'he_IL' } },
       ) as Promise<{ id: number; name: string }[]>,
     ])
 
     const heMap = new Map(heTemplates.map(t => [t.id, t.name]))
 
-    // Collect all packaging IDs and fetch in one call
+    // Round 3: fetch all packagings for the matched templates in one call
     const packagingIds = Array.from(new Set(enTemplates.flatMap(t => t.packaging_ids)))
     const packagings = packagingIds.length > 0
       ? await callKw(sessionId, 'product.packaging', 'read', [packagingIds],
@@ -81,6 +84,8 @@ export async function GET(req: NextRequest) {
         .map(id => packMap.get(id))
         .filter((p): p is NonNullable<typeof p> => !!p && p.sales)
 
+      // price_per_pack_incl_tax here is list_price × qty — a preview price only,
+      // not pricelist-adjusted and not guaranteed to be tax-inclusive.
       const packagingOptions = salesPkgs.map((pkg, idx) => ({
         id: pkg.id,
         name: pkg.name,
@@ -105,7 +110,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ results, query: q, total: results.length })
+    return NextResponse.json({ results, query: q, total: allIds.length })
   } catch (err) {
     invalidateOdooSession()
     console.error('search error:', err)

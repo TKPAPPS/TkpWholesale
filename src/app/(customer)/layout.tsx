@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { useLangStore, initLang } from '@/store/langStore'
@@ -14,10 +14,11 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   const { setLang } = useLangStore()
   const fetchCart = useCartStore((s) => s.fetchCart)
 
+  // useLayoutEffect runs synchronously before the browser paints, so returning
+  // users who have a cached session never see the spinner flash.
+  useLayoutEffect(() => { hydrate() }, [])
+
   useEffect(() => {
-    // Hydrate from sessionStorage first — returning users with a valid cached
-    // session skip the full-screen spinner. Cookie is still validated below.
-    hydrate()
     initLang()
     // Fire cart fetch immediately — it uses the session cookie directly
     // and doesn't need the auth result. Runs in parallel with auth check.

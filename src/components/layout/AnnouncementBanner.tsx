@@ -39,7 +39,7 @@ export function AnnouncementBanner() {
           setAnnouncement(_cached)
         }
       })
-      .catch(() => { _fetched = true })
+      .catch(() => { /* retry on next mount */ })
   }, [])
 
   if (!announcement || dismissed) return null

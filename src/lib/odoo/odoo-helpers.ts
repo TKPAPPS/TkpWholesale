@@ -284,9 +284,10 @@ export async function fetchOdooProducts(
   if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
   // Merge new-arrivals ID filter into the caller's domain
-  const effectiveDomain: unknown[] = recentIds
-    ? recentIds.length > 0 ? [['id', 'in', recentIds], ...domain] : domain
-    : domain
+  let effectiveDomain: unknown[] = domain
+  if (recentIds && recentIds.length > 0) {
+    effectiveDomain = [['id', 'in', recentIds], ...domain]
+  }
 
   const publishedIds = Array.from(websiteSettingsMap.keys())
   let baseDomain: unknown[]
