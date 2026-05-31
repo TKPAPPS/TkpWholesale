@@ -49,9 +49,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     invalidateAdminSession()
     console.error('admin settings POST error:', err)
-    return NextResponse.json({
-      error: 'ODOO_UNAVAILABLE',
-      message: err instanceof Error ? err.message : String(err),
-    }, { status: 503 })
+    return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }
 }

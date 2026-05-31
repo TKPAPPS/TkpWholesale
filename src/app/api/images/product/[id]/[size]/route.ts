@@ -15,8 +15,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     return new NextResponse(null, { status: 401 })
   }
 
+  const id = Number(params.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    return new NextResponse(null, { status: 400 })
+  }
+
   const field = SIZE_MAP[params.size] ?? 'image_512'
-  const url = `${ODOO_URL}/web/image/product.template/${params.id}/${field}`
+  const url = `${ODOO_URL}/web/image/product.template/${id}/${field}`
 
   const headers: Record<string, string> = { Accept: 'image/*' }
   try {

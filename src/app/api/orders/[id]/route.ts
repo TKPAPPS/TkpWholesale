@@ -10,6 +10,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   const id = Number(params.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
+  }
 
   if (USE_MOCK) {
     if (id !== 789) return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })

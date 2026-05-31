@@ -38,8 +38,8 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   if (!await auth(req)) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
   const { searchParams } = req.nextUrl
-  const id = searchParams.get('id')
-  if (!id) return NextResponse.json({ error: 'MISSING_ID' }, { status: 400 })
+  const id = Number(searchParams.get('id'))
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: 'MISSING_ID' }, { status: 400 })
   const supabase = createServerClient()
   await supabase.from('announcements').delete().eq('id', id)
   return NextResponse.json({ ok: true })

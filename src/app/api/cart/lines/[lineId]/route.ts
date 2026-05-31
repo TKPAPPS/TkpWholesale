@@ -45,7 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   const { packaging_qty } = await req.json()
-  if (!packaging_qty || packaging_qty <= 0) {
+  if (!Number.isInteger(packaging_qty) || packaging_qty <= 0) {
     return NextResponse.json({ error: 'INVALID_QTY' }, { status: 400 })
   }
 
@@ -60,6 +60,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     const { readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
+    if (!Number.isInteger(lineId) || lineId <= 0) {
+      return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
+    }
     const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
@@ -103,6 +106,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { lineId: s
     const { readCart } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
+    if (!Number.isInteger(lineId) || lineId <= 0) {
+      return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
+    }
     const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 

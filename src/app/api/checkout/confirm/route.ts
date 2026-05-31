@@ -10,8 +10,12 @@ export async function POST(req: NextRequest) {
 
   const { delivery_address_id, note } = await req.json()
 
-  if (!delivery_address_id) {
+  if (!Number.isInteger(delivery_address_id) || delivery_address_id <= 0) {
     return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address is required.' }, { status: 400 })
+  }
+
+  if (note !== undefined && (typeof note !== 'string' || note.length > 2000)) {
+    return NextResponse.json({ error: 'INVALID_NOTE', message: 'Note must be a string under 2000 characters.' }, { status: 400 })
   }
 
   if (USE_MOCK) {

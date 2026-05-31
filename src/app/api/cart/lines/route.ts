@@ -11,7 +11,8 @@ export async function POST(req: NextRequest) {
 
   const { product_id, packaging_id, packaging_qty } = await req.json()
 
-  if (!product_id || packaging_qty == null || packaging_qty <= 0) {
+  if (!Number.isInteger(product_id) || product_id <= 0 ||
+      !Number.isInteger(packaging_qty) || packaging_qty <= 0) {
     return NextResponse.json({ error: 'INVALID_QTY', message: 'packaging_qty must be a positive integer.' }, { status: 400 })
   }
 
@@ -22,15 +23,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, lookupPricelistPrice, fetchWebsitePublishedSettings } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
-    // Run all three independent operations in parallel
-    const [pkgInfo, priceUnit, cartId] = await Promise.all([
+    // Run all independent operations in parallel, including published-status check
+    const [pkgInfo, priceUnit, cartId, publishedMap] = await Promise.all([
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
       lookupPricelistPrice(sessionId, parsed.pricelist_id, product_id),
       getOrCreateCart(sessionId, parsed.partner_id, parsed.pricelist_id),
+      fetchWebsitePublishedSettings(sessionId),
     ])
+
+    // Reject orders for products not published on the portal
+    if (!publishedMap.has(product_id)) {
+      return NextResponse.json({ error: 'PRODUCT_NOT_AVAILABLE' }, { status: 404 })
+    }
 
     if (!pkgInfo) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
