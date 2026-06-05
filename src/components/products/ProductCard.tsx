@@ -20,10 +20,11 @@ interface ProductCardProps {
 
 export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const { lang } = useLangStore()
+  const addLineOptimistic = useCartStore((s) => s.addLineOptimistic)
+  const setCart = useCartStore((s) => s.setCart)
   const fetchCart = useCartStore((s) => s.fetchCart)
   const showToast = useToastStore((s) => s.show)
   const [qty, setQty] = useState(1)
-  const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
   const [imgError, setImgError] = useState(false)
 
@@ -32,25 +33,30 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const price = defaultPkg?.price_per_pack_incl_tax ?? 0
   const unitPrice = defaultPkg?.price_per_unit_incl_tax ?? 0
 
-  const addToCart = async () => {
+  const addToCart = () => {
     if (!defaultPkg) return
-    setAdding(true)
-    try {
-      await fetch('/api/cart/lines', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // product_id = template_id (the API validates packaging against this template)
-        body: JSON.stringify({ product_id: product.template_id, packaging_id: defaultPkg.id, packaging_qty: qty }),
+    // Optimistic: update the cart instantly, then sync to Odoo in the background.
+    addLineOptimistic(product, defaultPkg, qty)
+    setAdded(true)
+    setTimeout(() => setAdded(false), 2000)
+    showToast(`${name} added to cart`)
+
+    fetch('/api/cart/lines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // product_id = template_id (the API validates packaging against this template)
+      body: JSON.stringify({ product_id: product.template_id, packaging_id: defaultPkg.id, packaging_qty: qty }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        // Reconcile with Odoo's real cart (correct ids, prices, taxes).
+        setCart(await res.json())
       })
-      setAdded(true)
-      setTimeout(() => setAdded(false), 2000)
-      fetchCart()
-      showToast(`${name} added to cart`)
-    } catch {
-      showToast('Could not add to cart. Please try again.', 'error')
-    } finally {
-      setAdding(false)
-    }
+      .catch(() => {
+        // Resync from the server so the optimistic line is undone.
+        fetchCart()
+        showToast('Could not add to cart. Please try again.', 'error')
+      })
   }
 
   return (
@@ -129,7 +135,6 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
           <Button
             size="sm"
             onClick={addToCart}
-            loading={adding}
             disabled={!product.sellable}
             className="shrink-0 min-w-[40px]"
           >

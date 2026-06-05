@@ -24,10 +24,11 @@ export default function ProductDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [selectedPkg, setSelectedPkg] = useState<PackagingOption | null>(null)
   const [qty, setQty] = useState(1)
-  const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
   const [favorited, setFavorited] = useState(false)
   const fetchCart = useCartStore((s) => s.fetchCart)
+  const addLineOptimistic = useCartStore((s) => s.addLineOptimistic)
+  const setCart = useCartStore((s) => s.setCart)
   const showToast = useToastStore((s) => s.show)
   const [imgError, setImgError] = useState(false)
 
@@ -49,19 +50,27 @@ export default function ProductDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const addToCart = async () => {
+  const addToCart = () => {
     if (!product || !selectedPkg) return
-    setAdding(true)
-    await fetch('/api/cart/lines', {
+    // Optimistic: update the cart instantly, then sync to Odoo in the background.
+    addLineOptimistic(product, selectedPkg, qty)
+    setAdded(true)
+    setTimeout(() => setAdded(false), 2000)
+    showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
+
+    fetch('/api/cart/lines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: product.template_id, packaging_id: selectedPkg.id, packaging_qty: qty }),
     })
-    setAdded(true)
-    setTimeout(() => setAdded(false), 2000)
-    fetchCart()
-    showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
-    setAdding(false)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setCart(await res.json())
+      })
+      .catch(() => {
+        fetchCart()
+        showToast('Could not add to cart. Please try again.', 'error')
+      })
   }
 
   if (loading) return <LoadingSpinner />
@@ -143,7 +152,7 @@ export default function ProductDetailPage() {
           {/* Add to cart */}
           <div className="flex items-center gap-3">
             <QuantitySelector value={qty} onChange={setQty} className="w-32" />
-            <Button onClick={addToCart} loading={adding} disabled={!product.sellable} size="lg" className="flex-1">
+            <Button onClick={addToCart} disabled={!product.sellable} size="lg" className="flex-1">
               <ShoppingCart className="h-4 w-4 me-2" />
               {added ? 'Added!' : t(lang, 'products.addToCart')}
             </Button>

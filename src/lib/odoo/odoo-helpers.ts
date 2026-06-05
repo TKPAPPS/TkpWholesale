@@ -123,16 +123,24 @@ export async function lookupPricelistPrice(
 ): Promise<number | null> {
   if (!pricelistId) return null
   try {
-    const items = await callKw(sessionId, 'product.pricelist.item', 'search_read',
-      [[
-        ['pricelist_id', '=', pricelistId],
-        '|',
-        ['applied_on', '=', '3_global'],
-        ['product_tmpl_id', '=', templateId],
-      ]],
-      { fields: ['id', 'applied_on', 'compute_price', 'percent_price', 'price_discount',
-                 'fixed_price', 'price_surcharge', 'min_quantity'] },
-    ) as OdooPricelistItem[]
+    // Fetch the pricelist items and the template list_price in parallel — the
+    // list_price is only needed for percentage/formula rules, but fetching it
+    // upfront saves a serial Odoo round-trip (~250ms EU) on that path.
+    const [items, tmpl] = await Promise.all([
+      callKw(sessionId, 'product.pricelist.item', 'search_read',
+        [[
+          ['pricelist_id', '=', pricelistId],
+          '|',
+          ['applied_on', '=', '3_global'],
+          ['product_tmpl_id', '=', templateId],
+        ]],
+        { fields: ['id', 'applied_on', 'compute_price', 'percent_price', 'price_discount',
+                   'fixed_price', 'price_surcharge', 'min_quantity'] },
+      ) as Promise<OdooPricelistItem[]>,
+      callKw(sessionId, 'product.template', 'read', [[templateId]],
+        { fields: ['list_price'] },
+      ) as Promise<{ list_price: number }[]>,
+    ])
 
     const applicable = items.filter(it => it.min_quantity <= 1)
     if (applicable.length === 0) return null
@@ -143,10 +151,7 @@ export async function lookupPricelistPrice(
 
     if (best.compute_price === 'fixed') return best.fixed_price
 
-    // percentage / formula — need list_price to compute the discount
-    const tmpl = await callKw(sessionId, 'product.template', 'read', [[templateId]],
-      { fields: ['list_price'] },
-    ) as { list_price: number }[]
+    // percentage / formula — uses list_price to compute the discount
     return applyPricelistItem(best, tmpl[0]?.list_price ?? 0)
   } catch (err) {
     console.warn('lookupPricelistPrice error:', err)

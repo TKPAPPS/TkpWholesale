@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, lookupPricelistPrice, fetchWebsitePublishedSettings } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, lookupPricelistPrice, fetchWebsitePublishedSettings, readCart } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     // Run all independent operations in parallel, including published-status check
@@ -72,8 +72,10 @@ export async function POST(req: NextRequest) {
       await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
     }
 
-    // Return immediately — client calls fetchCart() separately to refresh the cart display
-    return NextResponse.json({ ok: true })
+    // Return the updated cart so the client reconciles in one round-trip
+    // (no separate GET /api/cart needed).
+    const cart = await readCart(sessionId, cartId)
+    return NextResponse.json(cart)
   } catch (err) {
     invalidateOdooSession()
     console.error('cart lines POST error:', err)
