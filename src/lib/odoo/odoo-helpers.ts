@@ -472,7 +472,7 @@ export async function fetchOdooProducts(
       sku: raw.default_code || '',
       description: typeof raw.description_sale === 'string' ? raw.description_sale : '',
       description_he: typeof he?.description_sale === 'string' ? he.description_sale : '',
-      image_url: `/api/images/product/${raw.id}/512`,
+      image_url: `/api/images/product/${raw.id}/256`,
       categories: raw.public_categ_ids.map(cid => ({
         id: cid,
         name: enCatMap.get(cid)?.name ?? '',

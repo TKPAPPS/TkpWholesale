@@ -41,7 +41,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'private, max-age=86400',
+        // public so Vercel's CDN caches the proxied image at the edge: the first
+        // visitor warms it, everyone after skips the Odoo round-trip.
+        'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
       },
     })
   } catch {
