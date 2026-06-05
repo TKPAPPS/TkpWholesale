@@ -213,12 +213,50 @@ const _fetchHideOos = unstable_cache(
 
 export function bustHideOosCache() { revalidateTag('odoo-hide-oos') }
 
-async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
+export async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
   try {
     return await _fetchHideOos()
   } catch {
     return true  // safe default: hide OOS products
   }
+}
+
+// Build the Odoo domain that decides which published products are visible,
+// mirroring the website's stock rules. Shared by the product listing and the
+// search route so both apply identical visibility:
+//   hideOos on  → (allows OOS) OR (in stock), limited to stockable/consumable types
+//   hideOos off → all published products
+// `extra` is ANDed on (implicit AND across top-level terms) — e.g. a name/sku
+// match for search, or the new-arrivals id filter for the listing.
+export function buildVisibilityDomain(
+  settingsMap: Map<number, boolean>,   // templateId -> allow_out_of_stock_order
+  hideOos: boolean,
+  extra: unknown[] = [],
+): unknown[] {
+  if (hideOos) {
+    const oosIds: number[] = []
+    const noOosIds: number[] = []
+    settingsMap.forEach((allowOos, id) => {
+      if (allowOos) oosIds.push(id)
+      else noOosIds.push(id)
+    })
+    // Prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms.
+    // (id in oosIds) OR (id in noOosIds AND qty_available > 0), AND stockable type.
+    return [
+      '|',
+      ['id', 'in', oosIds],
+      '&',
+      ['id', 'in', noOosIds],
+      ['qty_available', '>', 0],
+      ['type', 'in', ['consu', 'storable']],
+      ...extra,
+    ]
+  }
+  return [
+    ['id', 'in', Array.from(settingsMap.keys())],
+    ['type', 'in', ['consu', 'storable']],
+    ...extra,
+  ]
 }
 
 export async function fetchRecentlyPublishedIds(sessionId: string, publishedAfter: string): Promise<number[]> {
@@ -294,39 +332,8 @@ export async function fetchOdooProducts(
     effectiveDomain = [['id', 'in', recentIds], ...domain]
   }
 
-  const publishedIds = Array.from(websiteSettingsMap.keys())
-  let baseDomain: unknown[]
-
-  if (hideOos) {
-    // Split into two buckets:
-    //   oosIds  — OOS allowed → always visible regardless of stock
-    //   noOosIds — OOS not allowed → only visible when qty_available > 0
-    const oosIds: number[] = []
-    const noOosIds: number[] = []
-    Array.from(websiteSettingsMap.entries()).forEach(([id, allowOos]) => {
-      if (allowOos) oosIds.push(id)
-      else noOosIds.push(id)
-    })
-
-    // Domain: (id in oosIds) OR (id in noOosIds AND qty_available > 0)
-    // Odoo prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms.
-    baseDomain = [
-      '|',
-      ['id', 'in', oosIds],
-      '&',
-      ['id', 'in', noOosIds],
-      ['qty_available', '>', 0],
-      ['type', 'in', ['consu', 'storable']],
-      ...effectiveDomain,
-    ]
-  } else {
-    // hide-OOS toggle off: show all published products regardless of stock
-    baseDomain = [
-      ['id', 'in', publishedIds],
-      ['type', 'in', ['consu', 'storable']],
-      ...effectiveDomain,
-    ]
-  }
+  // Visibility rules (published + stock) — shared with the search route.
+  const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, effectiveDomain)
 
   // Run count + EN + HE fetches all in parallel — count doesn't affect which products we fetch
   const [count, enRaw, heRaw] = await Promise.all([

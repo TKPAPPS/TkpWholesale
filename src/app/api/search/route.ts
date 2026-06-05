@@ -27,30 +27,35 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, buildVisibilityDomain } = await import('@/lib/odoo/odoo-helpers')
 
-    // Round 1: search EN + HE + fetch published IDs (cached) in parallel
-    const skuDomain = ['default_code', 'ilike', q]
-    const [enResults, heResults, websiteMap] = await Promise.all([
-      searchRead(sessionId, 'product.template',
-        // Flat OR domain: name OR sku. Note the operator '|' is a sibling of the
-        // two leaves, not nested in an extra list — Odoo rejects the nested form
-        // with "Invalid field product.template.|".
-        ['|', ['name', 'ilike', q], skuDomain],
-        ['id'], { limit: 50, context: { lang: 'en_US' } },
-      ) as Promise<{ id: number }[]>,
-      searchRead(sessionId, 'product.template',
-        [['name', 'ilike', q]],
-        ['id'], { limit: 50, context: { lang: 'he_IL' } },
-      ) as Promise<{ id: number }[]>,
+    // Resolve visibility rules first (both cached) so the name/sku search itself
+    // is restricted to published + in-stock products — same rules as the listing,
+    // so hidden out-of-stock products never appear in search.
+    const [websiteMap, hideOos] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
+      getHideOutOfStock(sessionId),
     ])
 
-    // Deduplicate and filter to only published products
-    const publishedIds = new Set(websiteMap.keys())
+    // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
+    // visibility domain. '|' is a sibling of the two leaves, not nested in an
+    // extra list — Odoo rejects the nested form with "Invalid field ...|".
+    const skuDomain = ['default_code', 'ilike', q]
+    const enDomain = buildVisibilityDomain(websiteMap, hideOos, ['|', ['name', 'ilike', q], skuDomain])
+    const heDomain = buildVisibilityDomain(websiteMap, hideOos, [['name', 'ilike', q]])
+    const [enResults, heResults] = await Promise.all([
+      searchRead(sessionId, 'product.template', enDomain,
+        ['id'], { limit: 50, context: { lang: 'en_US' } },
+      ) as Promise<{ id: number }[]>,
+      searchRead(sessionId, 'product.template', heDomain,
+        ['id'], { limit: 50, context: { lang: 'he_IL' } },
+      ) as Promise<{ id: number }[]>,
+    ])
+
+    // Deduplicate (results are already published + in-stock-visible via the domain)
     const idSet = new Set<number>()
-    enResults.forEach((p: { id: number }) => { if (publishedIds.has(p.id)) idSet.add(p.id) })
-    heResults.forEach((p: { id: number }) => { if (publishedIds.has(p.id)) idSet.add(p.id) })
+    enResults.forEach((p: { id: number }) => idSet.add(p.id))
+    heResults.forEach((p: { id: number }) => idSet.add(p.id))
     const allIds = Array.from(idSet)
 
     if (allIds.length === 0) return NextResponse.json({ results: [], query: q, total: 0 })
