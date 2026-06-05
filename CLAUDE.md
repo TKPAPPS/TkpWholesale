@@ -44,13 +44,41 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
 | Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
+| Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |
 
 Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odoo data changes.
 `bustWebsiteSettingsCache()` calls `revalidateTag` to also clear the Next.js Data Cache.
 
+The image proxy `Cache-Control` is `public` so Vercel's CDN caches each proxied
+Odoo image at the edge (first visitor warms it, the rest skip the Odoo
+round-trip). Note: a `public` edge cache means the CDN can serve a cached image
+to an unauthenticated request even though the route itself is session-gated —
+acceptable for product photos, not for anything sensitive. Product-grid cards
+request `image_256`; the product detail page uses `image_512`.
+
 ## Mock mode
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
 Mock data is never complete — do not treat mock behaviour as ground truth for real Odoo.
+
+## Cart behaviour (optimistic)
+- **Add to cart is optimistic.** `ProductCard` and the product detail page call
+  `addLineOptimistic(product, pkg, qty)` on the `cartStore` to update the local
+  cart instantly (merge-or-append + total recompute), then fire
+  `POST /api/cart/lines` in the background. They do NOT await it for UI feedback.
+- **Reconcile / rollback:** on a 2xx the handler calls `setCart(responseCart)` to
+  replace the optimistic state with Odoo's real cart; on failure it calls
+  `fetchCart()` to resync (undoing the optimistic line) and shows an error toast.
+- **`POST /api/cart/lines` returns the full cart** (via `readCart`), not
+  `{ ok: true }` — so the client reconciles in one round-trip with no separate
+  `GET /api/cart`. Other callers (dashboard, order reorder, quick-order) ignore
+  the body and call `fetchCart()` themselves, so the richer response is backward
+  compatible. Caveat: because `readCart` now runs inside the POST, a read failure
+  after a successful line write surfaces to the client as a generic failure.
+- Optimistic prices use the card's tax-inclusive pack price, not the customer's
+  pricelist `price_unit`; they are approximate until the server reconciles.
+- `lookupPricelistPrice` fetches the pricelist items and the template `list_price`
+  in parallel (the `list_price` read is now unconditional, even for fixed-price
+  customers) to save a serial Odoo hop on the percentage/formula path.
 
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
