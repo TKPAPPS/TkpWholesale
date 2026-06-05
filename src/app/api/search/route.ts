@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
     const skuDomain = ['default_code', 'ilike', q]
     const [enResults, heResults, websiteMap] = await Promise.all([
       searchRead(sessionId, 'product.template',
-        [['|', ['name', 'ilike', q], skuDomain]],
+        // Flat OR domain: name OR sku. Note the operator '|' is a sibling of the
+        // two leaves, not nested in an extra list — Odoo rejects the nested form
+        // with "Invalid field product.template.|".
+        ['|', ['name', 'ilike', q], skuDomain],
         ['id'], { limit: 50, context: { lang: 'en_US' } },
       ) as Promise<{ id: number }[]>,
       searchRead(sessionId, 'product.template',
