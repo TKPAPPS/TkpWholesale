@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOdooSession } from '@/lib/odoo/admin-session'
-import { parseSession } from '@/lib/odoo/session'
 
 const ODOO_URL = process.env.ODOO_URL!
 const SIZE_MAP: Record<string, string> = {
@@ -10,11 +9,12 @@ const SIZE_MAP: Record<string, string> = {
   '1024': 'image_1024',
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string; size: string } }) {
-  if (!parseSession(req)) {
-    return new NextResponse(null, { status: 401 })
-  }
-
+// Intentionally NOT session-gated. Two reasons: (1) the same images are already
+// public on Odoo's own /web/image endpoint and are served CDN-public via the
+// Cache-Control below, so gating added no real protection; (2) the Vercel image
+// optimizer fetches this route server-side without the user's session cookie, so a
+// 401 gate would break <Image> optimization. Product photos are non-sensitive.
+export async function GET(_req: NextRequest, { params }: { params: { id: string; size: string } }) {
   const id = Number(params.id)
   if (!Number.isInteger(id) || id <= 0) {
     return new NextResponse(null, { status: 400 })

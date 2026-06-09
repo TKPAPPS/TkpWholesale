@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const perPage = Number(searchParams.get('per_page') ?? 24)
   const sort = searchParams.get('sort') ?? 'name'
   const createdAfter = searchParams.get('created_after') ?? null   // ISO date string e.g. 2025-05-01
+  const lang = searchParams.get('lang') === 'he' ? 'he' : 'en'     // read only the active language
 
   if (USE_MOCK) {
     let products = MOCK_PRODUCTS.filter((p) => p.sellable || !p.in_stock)
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
       { limit: perPage, offset: page * perPage, order: odooSort },
       parsed.pricelist_id ?? undefined,
       sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
+      lang,
     )
 
     return NextResponse.json({ products, total, page, per_page: perPage }, {

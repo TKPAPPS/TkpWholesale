@@ -300,117 +300,131 @@ export async function fetchWebsitePublishedSettings(_sessionId: string): Promise
   return new Map<number, boolean>(raw)
 }
 
-// 60-second in-memory cache for product list results, keyed by pricelist + domain + pagination.
-// Shared across requests in the same Vercel instance — each instance warms independently.
-const _productCache = new Map<string, { data: { products: Product[]; total: number }; expires: number }>()
+export function bustProductCache() { revalidateTag('odoo-products') }
 
-export function bustProductCache() { _productCache.clear() }
+// Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
+// ALL Vercel instances and surviving cold starts, unlike the previous per-instance Map.
+// The Odoo admin session is fetched inside (not passed in) so the rotating session token
+// never becomes part of the cache key. Keyed by domain + pagination + pricelist + lang +
+// new-arrivals window via the serialized arguments. revalidate = 5 min; bust via tag.
+const _fetchProductsCached = unstable_cache(
+  async (
+    domainJson: string,
+    optsJson: string,
+    pricelistId: number,       // 0 = no pricelist
+    newArrivalsAfter: string,  // '' = not a new-arrivals query
+    lang: 'en' | 'he' | 'both',
+  ): Promise<{ products: Product[]; total: number }> => {
+    const domain: unknown[] = JSON.parse(domainJson)
+    const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
+    const sessionId = await getOdooSession()
 
-export async function fetchOdooProducts(
-  sessionId: string,
-  domain: unknown[],
-  opts: { limit?: number; offset?: number; order?: string } = {},
-  pricelistId?: number | null,
-  newArrivalsAfter?: string,
-): Promise<{ products: Product[]; total: number }> {
-  const cacheKey = `${pricelistId ?? 0}:${opts.limit ?? 100}:${opts.offset ?? 0}:${opts.order ?? ''}:${newArrivalsAfter ?? ''}:${JSON.stringify(domain)}`
-  const hit = _productCache.get(cacheKey)
-  if (hit && Date.now() < hit.expires) return hit.data
+    // Round 1: fetch website settings, hide-OOS toggle, and (if new_arrivals) recently
+    // published IDs all in parallel — avoids a sequential preflight on the new_arrivals path.
+    const [websiteSettingsMap, hideOos, recentIds] = await Promise.all([
+      fetchWebsitePublishedSettings(sessionId),
+      getHideOutOfStock(sessionId),
+      newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
+    ])
+    if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
-  // Round 1: fetch website settings, hide-OOS toggle, and (if new_arrivals) recently
-  // published IDs all in parallel — avoids a sequential preflight on the new_arrivals path.
-  const [websiteSettingsMap, hideOos, recentIds] = await Promise.all([
-    fetchWebsitePublishedSettings(sessionId),
-    getHideOutOfStock(sessionId),
-    newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
-  ])
-  if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
+    // Merge new-arrivals ID filter into the caller's domain
+    let effectiveDomain: unknown[] = domain
+    if (recentIds && recentIds.length > 0) {
+      effectiveDomain = [['id', 'in', recentIds], ...domain]
+    }
 
-  // Merge new-arrivals ID filter into the caller's domain
-  let effectiveDomain: unknown[] = domain
-  if (recentIds && recentIds.length > 0) {
-    effectiveDomain = [['id', 'in', recentIds], ...domain]
-  }
+    // Visibility rules (published + stock) — shared with the search route.
+    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, effectiveDomain)
 
-  // Visibility rules (published + stock) — shared with the search route.
-  const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, effectiveDomain)
+    // The product listing renders one language at a time and refetches on language
+    // switch, so reading both EN + HE is wasted Odoo work. Read the active language
+    // only (numeric fields like price/packaging aren't translated, so the he_IL
+    // context still returns correct data). 'both' keeps the old dual-read for callers
+    // that need EN as canonical alongside HE.
+    const fetchBoth = lang === 'both'
+    const primaryLang = lang === 'he' ? 'he_IL' : 'en_US'
 
-  // Run count + EN + HE fetches all in parallel — count doesn't affect which products we fetch
-  const [count, enRaw, heRaw] = await Promise.all([
-    callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
-    searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
-      ...opts, context: { lang: 'en_US' }
-    }) as unknown as Promise<OdooProduct[]>,
-    searchRead(sessionId, 'product.template', baseDomain, ['id', 'name', 'description_sale'], {
-      ...opts, context: { lang: 'he_IL' }
-    }) as unknown as Promise<{ id: number; name: string; description_sale: string | false }[]>,
-  ])
+    // Run count + primary read (+ HE read only when 'both') all in parallel.
+    const [count, primaryRaw, heRaw] = await Promise.all([
+      callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
+      searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
+        ...opts, context: { lang: primaryLang }
+      }) as unknown as Promise<OdooProduct[]>,
+      fetchBoth
+        ? searchRead(sessionId, 'product.template', baseDomain, ['id', 'name', 'description_sale'], {
+            ...opts, context: { lang: 'he_IL' }
+          }) as unknown as Promise<{ id: number; name: string; description_sale: string | false }[]>
+        : Promise.resolve([] as { id: number; name: string; description_sale: string | false }[]),
+    ])
 
-  if (enRaw.length === 0) return { products: [], total: count }
+    if (primaryRaw.length === 0) return { products: [], total: count }
 
-  const heMap = new Map(heRaw.map(p => [p.id, p]))
+    const heMap = new Map(heRaw.map(p => [p.id, p]))
 
-  // Derive all IDs needed for the next batch from enRaw
-  const templateIds = enRaw.map(p => p.id)
-  const allPackagingIds = Array.from(new Set(enRaw.flatMap(p => p.packaging_ids)))
-  const allTaxIds = Array.from(new Set(enRaw.flatMap(p => p.taxes_id)))
-  const allCatIds = Array.from(new Set(enRaw.flatMap(p => p.public_categ_ids)))
+    // Derive all IDs needed for the next batch from the primary read
+    const templateIds = primaryRaw.map(p => p.id)
+    const allPackagingIds = Array.from(new Set(primaryRaw.flatMap(p => p.packaging_ids)))
+    const allTaxIds = Array.from(new Set(primaryRaw.flatMap(p => p.taxes_id)))
+    const allCatIds = Array.from(new Set(primaryRaw.flatMap(p => p.public_categ_ids)))
 
-  // Fetch pricelist items, packagings, taxes, and categories all in parallel.
-  // Pricelist items only need templateIds (from enRaw); packagings/taxes/cats also
-  // only need enRaw — so all five calls are independent and can run together.
-  const [rawPlItems, packagings, taxes, enCats, heCats] = await Promise.all([
-    pricelistId && templateIds.length > 0
-      ? (callKw(
-          sessionId,
-          'product.pricelist.item',
-          'search_read',
-          [[
-            ['pricelist_id', '=', pricelistId],
-            '|',
-            ['applied_on', '=', '3_global'],
-            ['product_tmpl_id', 'in', templateIds],
-          ]],
-          { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
-                     'compute_price', 'percent_price', 'price_discount',
-                     'fixed_price', 'price_surcharge', 'min_quantity'] },
-        ) as unknown as Promise<OdooPricelistItem[]>).catch((err) => {
-          console.warn('Pricelist item fetch failed, falling back to list_price:', err)
-          return [] as OdooPricelistItem[]
-        })
-      : Promise.resolve([] as OdooPricelistItem[]),
-    allPackagingIds.length > 0
-      ? callKw(sessionId, 'product.packaging', 'read', [allPackagingIds], {
-          fields: ['id', 'name', 'qty', 'product_id', 'sales'],
-        }) as unknown as Promise<OdooPackaging[]>
-      : Promise.resolve([] as OdooPackaging[]),
-    allTaxIds.length > 0
-      ? callKw(sessionId, 'account.tax', 'read', [allTaxIds], {
-          fields: ['id', 'name', 'amount', 'price_include'],
-        }) as unknown as Promise<OdooTax[]>
-      : Promise.resolve([] as OdooTax[]),
-    allCatIds.length > 0
-      ? callKw(sessionId, 'product.public.category', 'read', [allCatIds], {
-          fields: ['id', 'name'], context: { lang: 'en_US' }
-        }) as unknown as Promise<{ id: number; name: string }[]>
-      : Promise.resolve([] as { id: number; name: string }[]),
-    allCatIds.length > 0
-      ? callKw(sessionId, 'product.public.category', 'read', [allCatIds], {
-          fields: ['id', 'name'], context: { lang: 'he_IL' }
-        }) as unknown as Promise<{ id: number; name: string }[]>
-      : Promise.resolve([] as { id: number; name: string }[]),
-  ])
+    // Fetch pricelist items, packagings, taxes, and categories all in parallel.
+    // Categories are read once in the primary language (+ HE only when 'both').
+    const [rawPlItems, packagings, taxes, primaryCats, heCats] = await Promise.all([
+      pricelistId && templateIds.length > 0
+        ? (callKw(
+            sessionId,
+            'product.pricelist.item',
+            'search_read',
+            [[
+              ['pricelist_id', '=', pricelistId],
+              '|',
+              ['applied_on', '=', '3_global'],
+              ['product_tmpl_id', 'in', templateIds],
+            ]],
+            { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
+                       'compute_price', 'percent_price', 'price_discount',
+                       'fixed_price', 'price_surcharge', 'min_quantity'] },
+          ) as unknown as Promise<OdooPricelistItem[]>).catch((err) => {
+            console.warn('Pricelist item fetch failed, falling back to list_price:', err)
+            return [] as OdooPricelistItem[]
+          })
+        : Promise.resolve([] as OdooPricelistItem[]),
+      allPackagingIds.length > 0
+        ? callKw(sessionId, 'product.packaging', 'read', [allPackagingIds], {
+            fields: ['id', 'name', 'qty', 'product_id', 'sales'],
+          }) as unknown as Promise<OdooPackaging[]>
+        : Promise.resolve([] as OdooPackaging[]),
+      allTaxIds.length > 0
+        ? callKw(sessionId, 'account.tax', 'read', [allTaxIds], {
+            fields: ['id', 'name', 'amount', 'price_include'],
+          }) as unknown as Promise<OdooTax[]>
+        : Promise.resolve([] as OdooTax[]),
+      allCatIds.length > 0
+        ? callKw(sessionId, 'product.public.category', 'read', [allCatIds], {
+            fields: ['id', 'name'], context: { lang: primaryLang }
+          }) as unknown as Promise<{ id: number; name: string }[]>
+        : Promise.resolve([] as { id: number; name: string }[]),
+      fetchBoth && allCatIds.length > 0
+        ? callKw(sessionId, 'product.public.category', 'read', [allCatIds], {
+            fields: ['id', 'name'], context: { lang: 'he_IL' }
+          }) as unknown as Promise<{ id: number; name: string }[]>
+        : Promise.resolve([] as { id: number; name: string }[]),
+    ])
 
-  const plPriceMap = new Map<number, number>()
-  buildPlPriceMap(enRaw, rawPlItems).forEach((price, id) => plPriceMap.set(id, price))
+    const plPriceMap = new Map<number, number>()
+    buildPlPriceMap(primaryRaw, rawPlItems).forEach((price, id) => plPriceMap.set(id, price))
 
-  const packMap = new Map(packagings.map(p => [p.id, p]))
-  const taxMap = new Map(taxes.map(t => [t.id, t]))
-  const enCatMap = new Map(enCats.map(c => [c.id, c]))
-  const heCatMap = new Map(heCats.map(c => [c.id, c]))
+    const packMap = new Map(packagings.map(p => [p.id, p]))
+    const taxMap = new Map(taxes.map(t => [t.id, t]))
+    const primaryCatMap = new Map(primaryCats.map(c => [c.id, c]))
+    // When not reading HE separately, the primary-language names stand in for both.
+    const heCatMap = fetchBoth ? new Map(heCats.map(c => [c.id, c])) : primaryCatMap
 
-  const products: Product[] = enRaw.map(raw => {
-    const he = heMap.get(raw.id)
+    const products: Product[] = primaryRaw.map(raw => {
+      // In single-language mode the primary read already holds the right names, so the
+      // HE-specific fields fall back to it; in 'both' mode we use the dedicated HE read.
+      const he = fetchBoth ? heMap.get(raw.id) : raw
 
     // Deduplicate taxes by (amount, price_include) — Odoo can assign the same
     // fiscal-position tax multiple times via multi-company or fiscal mapping
@@ -487,7 +501,7 @@ export async function fetchOdooProducts(
       image_url: `/api/images/product/${raw.id}/256`,
       categories: raw.public_categ_ids.map(cid => ({
         id: cid,
-        name: enCatMap.get(cid)?.name ?? '',
+        name: primaryCatMap.get(cid)?.name ?? '',
         name_he: heCatMap.get(cid)?.name ?? '',
       })),
       uom_name: raw.uom_id[1] ?? '',
@@ -501,11 +515,33 @@ export async function fetchOdooProducts(
     }
   })
 
-  const result = { products, total: count }
-  // Evict oldest entry if cache grows too large (>200 entries)
-  if (_productCache.size >= 200) _productCache.delete(_productCache.keys().next().value!)
-  _productCache.set(cacheKey, { data: result, expires: Date.now() + 5 * 60_000 })
-  return result
+    return { products, total: count }
+  },
+  ['odoo-products'],
+  { revalidate: 300, tags: ['odoo-products'] },
+)
+
+// Public entry point. `lang` selects which language(s) to read from Odoo:
+//   'en' / 'he' — read only that language (the product listing refetches on switch);
+//   'both'      — read EN as canonical plus HE (default, for callers that need both).
+// `sessionId` is accepted for backward compatibility but is no longer used here — the
+// cached implementation fetches its own admin session so the rotating token stays out
+// of the cache key.
+export async function fetchOdooProducts(
+  _sessionId: string,
+  domain: unknown[],
+  opts: { limit?: number; offset?: number; order?: string } = {},
+  pricelistId?: number | null,
+  newArrivalsAfter?: string,
+  lang: 'en' | 'he' | 'both' = 'both',
+): Promise<{ products: Product[]; total: number }> {
+  return _fetchProductsCached(
+    JSON.stringify(domain),
+    JSON.stringify(opts),
+    pricelistId ?? 0,
+    newArrivalsAfter ?? '',
+    lang,
+  )
 }
 
 // ─── Category helpers ─────────────────────────────────────────────────────────
