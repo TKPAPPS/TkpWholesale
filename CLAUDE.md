@@ -40,21 +40,32 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Cache | TTL | Location |
 |-------|-----|----------|
 | Admin session token | 30 min | `admin-session.ts` (module memory) |
-| Products (per pricelist+domain) | 5 min | `odoo-helpers.ts` `_productCache` (module memory) |
+| Products (per pricelist+domain+pagination+lang) | 5 min | `odoo-helpers.ts` `_fetchProductsCached` (`unstable_cache` — shared across Vercel instances, survives cold starts) |
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
 | Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
 | Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |
 
 Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odoo data changes.
-`bustWebsiteSettingsCache()` calls `revalidateTag` to also clear the Next.js Data Cache.
+All three (`bustProductCache`, `bustWebsiteSettingsCache`, `bustHideOosCache`) call
+`revalidateTag` to clear the shared Next.js Data Cache. `bustProductCache()` clears
+the `odoo-products` tag.
 
-The image proxy `Cache-Control` is `public` so Vercel's CDN caches each proxied
-Odoo image at the edge (first visitor warms it, the rest skip the Odoo
-round-trip). Note: a `public` edge cache means the CDN can serve a cached image
-to an unauthenticated request even though the route itself is session-gated —
-acceptable for product photos, not for anything sensitive. Product-grid cards
-request `image_256`; the product detail page uses `image_512`.
+The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
+The product listing and new-arrivals strip refetch on language switch, so reading both
+EN + HE was wasted Odoo work; `fetchOdooProducts` defaults to `lang='both'` only for
+callers (favorites, recently-ordered, product detail) that still need EN as canonical
+alongside HE.
+
+The image proxy is **not session-gated** — the same images are already public on Odoo's
+own `/web/image` endpoint and are served CDN-public via `Cache-Control: public`, so the
+gate added no real protection, and removing it lets the Vercel image optimizer fetch the
+route server-side (it has no session cookie). `<Image>` is now optimized (AVIF/WebP,
+resized) everywhere — `unoptimized` was removed from the product grid, detail page, cart,
+quick-order, and navbar mini-cart. Product-grid cards request `image_256`; the product
+detail page uses `image_512`; thumbnails use `image_128`. Note: a `public` edge cache
+serves cached images to unauthenticated requests — acceptable for product photos, not for
+anything sensitive.
 
 ## Mock mode
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
@@ -105,7 +116,7 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 
 ## Known issues / follow-ups
 - PDF download: `ir.attachment` strategy implemented but not confirmed working end-to-end on SaaS.
-- `_productCache` is still per Vercel instance (not shared). High traffic → consider Vercel KV.
+- Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
 - `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).
 - Auth endpoint rate limiting is deferred — recommended for a future security batch if the portal becomes more publicly accessible.

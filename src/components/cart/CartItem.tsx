@@ -64,7 +64,6 @@ export function CartItem({ line, currency }: CartItemProps) {
             height={56}
             className="object-contain rounded-lg"
             onError={() => setImgError(true)}
-            unoptimized
           />
         ) : (
           <Package className="h-7 w-7 text-gray-300" />
