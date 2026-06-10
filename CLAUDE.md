@@ -52,7 +52,7 @@ All three (`bustProductCache`, `bustWebsiteSettingsCache`, `bustHideOosCache`) c
 the `odoo-products` tag.
 
 The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
-The product listing and new-arrivals strip refetch on language switch, so reading both
+The `/products` and `/new-arrivals` pages refetch on language switch, so reading both
 EN + HE was wasted Odoo work; `fetchOdooProducts` defaults to `lang='both'` only for
 callers (favorites, recently-ordered, product detail) that still need EN as canonical
 alongside HE.
@@ -122,3 +122,4 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - Auth endpoint rate limiting is deferred — recommended for a future security batch if the portal becomes more publicly accessible.
 - Hebrew product search depends on Odoo translation data being populated for `product.template.name`. Missing translations = no Hebrew results for that product.
 - `/recently-ordered` and `/quick-order` pages are accessible by URL but are not linked from any navigation.
+- Customer top-nav (`Navbar.tsx` `navLinks`, shared by desktop + mobile): Products, New Arrivals, Favorites, Orders, Invoices. New Arrivals is a top-level menu item linking to `/new-arrivals` (it used to render as a strip at the top of `/products`; that strip was removed). Active state is `pathname.startsWith(href)`.

@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText } from 'lucide-react'
+import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
@@ -120,6 +120,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
+    { href: '/new-arrivals', label: t(lang, 'newArrivals.title'), icon: Sparkles },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: Package },
     { href: '/invoices', label: t(lang, 'invoices.title'), icon: FileText },
