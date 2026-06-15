@@ -1,0 +1,153 @@
+/* On-brand slide styling for the TKP Wholesale onboarding video.
+   Rendered at 1920x1080 @2x. RTL / Hebrew (Rubik). */
+
+:root {
+  --brand: #bf3d76;
+  --brand-dark: #6b1535;
+  --brand-darker: #3d0c1d;
+  --brand-light: #e5a0bd;
+  --brand-50: #fdf5f7;
+  --gold: #c8a84b;
+  --gold-light: #e8d58a;
+  --ink: #1f1320;
+  --muted: #6b5560;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  font-family: 'Rubik', system-ui, sans-serif;
+  direction: rtl;
+}
+
+.slide {
+  width: 1920px;
+  height: 1080px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- logo ---------- */
+.logo svg { display: block; direction: ltr; }
+.logo-white svg { filter: brightness(0) invert(1); }
+
+/* ---------- title + cta (brand background) ---------- */
+.slide--title, .slide--cta {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 30%, #7d1a40 0%, var(--brand-dark) 45%, var(--brand-darker) 100%);
+  color: #fff;
+  gap: 38px;
+}
+.slide--title .logo svg, .slide--cta .logo svg { width: 560px; height: auto; }
+.slide--title h1, .slide--cta h1 {
+  font-size: 92px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.05;
+}
+.slide--title .sub, .slide--cta .sub {
+  font-size: 38px;
+  font-weight: 400;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.slide--cta h1 { color: var(--gold-light); }
+.rule {
+  width: 120px; height: 6px; border-radius: 3px;
+  background: var(--gold);
+}
+
+/* ---------- section (bullets) ---------- */
+.slide--section {
+  background: linear-gradient(135deg, var(--brand-50) 0%, #fff 60%);
+  padding: 130px 150px;
+  justify-content: center;
+  gap: 26px;
+}
+.slide--section .kicker { font-size: 30px; color: var(--brand); font-weight: 600; letter-spacing: 2px; }
+.slide--section h1 { font-size: 86px; font-weight: 700; color: var(--brand-dark); line-height: 1.05; }
+.slide--section .sub { font-size: 40px; color: var(--muted); margin-bottom: 18px; }
+.slide--section ul { list-style: none; display: flex; flex-direction: column; gap: 30px; margin-top: 14px; }
+.slide--section li {
+  font-size: 44px; color: var(--ink); font-weight: 500;
+  display: flex; align-items: center; gap: 26px;
+}
+.slide--section li::before {
+  content: ''; flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px;
+  background: var(--gold); box-shadow: 0 0 0 7px rgba(200,168,75,.18);
+}
+.slide--section .corner-logo { position: absolute; bottom: 70px; left: 150px; }
+.slide--section .corner-logo svg { width: 260px; height: auto; opacity: .85; }
+
+/* ---------- shot (header bar + framed screenshot) ---------- */
+.slide--shot { background: linear-gradient(160deg, #fbf3f6 0%, #f3e6ec 100%); }
+.shot-header {
+  display: flex; align-items: center; gap: 34px;
+  padding: 60px 90px 30px;
+}
+.shot-header .logo svg { width: 230px; height: auto; flex: 0 0 auto; }
+.shot-header .divider { width: 3px; height: 84px; background: var(--brand-light); border-radius: 2px; }
+.shot-header .titles { display: flex; flex-direction: column; gap: 8px; }
+.shot-header h1 { font-size: 64px; font-weight: 700; color: var(--brand-dark); line-height: 1; }
+.shot-header .sub { font-size: 34px; color: var(--muted); font-weight: 400; }
+
+.shot-stage {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 10px 90px 80px;
+}
+.browser {
+  background: #fff;
+  border-radius: 22px;
+  box-shadow: 0 40px 90px -30px rgba(61,12,29,.45), 0 0 0 1px rgba(107,21,53,.06);
+  overflow: hidden;
+  max-width: 1640px;
+  max-height: 820px;
+  display: flex; flex-direction: column;
+}
+.browser .bar {
+  height: 52px; background: #f4eef0; display: flex; align-items: center; gap: 12px;
+  padding: 0 22px; flex: 0 0 auto; direction: ltr;
+}
+.browser .bar .dot { width: 15px; height: 15px; border-radius: 50%; }
+.browser .bar .dot.r { background: #ec6a5e; }
+.browser .bar .dot.y { background: #f4bf4f; }
+.browser .bar .dot.g { background: #61c554; }
+.browser .bar .url {
+  margin-left: auto; margin-right: 14px; height: 30px; min-width: 360px;
+  background: #fff; border-radius: 8px; border: 1px solid #e3d7dc;
+  display: flex; align-items: center; padding: 0 14px;
+  font-size: 15px; color: #9a8893; font-family: 'Rubik', sans-serif;
+}
+/* screenshot shown WHOLE, never cropped */
+.browser img { display: block; width: 100%; height: auto; max-height: 768px; object-fit: contain; background: #fff; }
+
+/* ---------- subtitle overlay (transparent PNG, baked over video) ---------- */
+body.subtitle { background: transparent; }
+.subwrap {
+  position: absolute; inset: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: 64px;
+}
+.subbox {
+  max-width: 1480px;
+  background: rgba(43, 9, 21, 0.82);
+  border-bottom: 5px solid var(--gold);
+  border-radius: 16px;
+  padding: 24px 44px;
+  text-align: center;
+  box-shadow: 0 18px 50px -18px rgba(0,0,0,.6);
+}
+.subbox p {
+  color: #fff;
+  font-family: 'Rubik', sans-serif;
+  font-weight: 500;
+  font-size: 42px;
+  line-height: 1.32;
+  text-shadow: 0 2px 6px rgba(0,0,0,.4);
+}

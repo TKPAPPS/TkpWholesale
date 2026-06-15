@@ -1,0 +1,16 @@
+{
+  "name": "tkp-onboarding-video",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Code-rendered Hebrew onboarding video for the TKP Wholesale B2B portal.",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "slides": "node render_slides.mjs",
+    "srt": "node build_srt.mjs",
+    "build": "bash build.sh"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}
