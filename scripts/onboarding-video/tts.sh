@@ -14,9 +14,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUDIO="$DIR/assets/audio"
 mkdir -p "$AUDIO"
 
+# NOTE: only eleven_v3 supports Hebrew (he). The multilingual/turbo/flash models
+# do NOT, and will mispronounce Hebrew into an unrecognizable language.
 VOICE="${VOICE:-Carmit (Enhanced)}"
 ELEVEN_VOICE_ID="${ELEVEN_VOICE_ID:-EXAVITQu4vr4xnSDxMaL}"
-ELEVEN_MODEL="${ELEVEN_MODEL:-eleven_multilingual_v2}"
+ELEVEN_MODEL="${ELEVEN_MODEL:-eleven_v3}"
 
 if [ -n "${ELEVEN_API_KEY:-}" ]; then
   echo "  engine: ElevenLabs ($ELEVEN_MODEL, voice $ELEVEN_VOICE_ID)"
@@ -40,7 +42,7 @@ for id in $IDS; do
       process.stdout.write(JSON.stringify({
         text,
         model_id: process.env.ELEVEN_MODEL,
-        voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true }
+        language_code: "he"
       }));
     ' "$txt")
     mp3="$AUDIO/$id.mp3"
