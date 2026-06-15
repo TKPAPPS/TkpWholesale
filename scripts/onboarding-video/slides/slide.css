@@ -35,8 +35,8 @@ html, body {
 .logo svg { display: block; direction: ltr; }
 .logo-white svg { filter: brightness(0) invert(1); }
 
-/* ---------- title + cta (brand background) ---------- */
-.slide--title, .slide--cta {
+/* ---------- title + cta + closing (brand background) ---------- */
+.slide--title, .slide--cta, .slide--closing {
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -44,20 +44,26 @@ html, body {
   color: #fff;
   gap: 38px;
 }
-.slide--title .logo svg, .slide--cta .logo svg { width: 560px; height: auto; }
-.slide--title h1, .slide--cta h1 {
+.slide--title .logo svg, .slide--cta .logo svg, .slide--closing .logo svg { width: 560px; height: auto; }
+.slide--closing .logo svg { width: 480px; }
+.slide--title h1, .slide--cta h1, .slide--closing h1 {
   font-size: 92px;
   font-weight: 700;
   letter-spacing: -1px;
   line-height: 1.05;
 }
-.slide--title .sub, .slide--cta .sub {
+.slide--title .sub, .slide--cta .sub, .slide--closing .sub {
   font-size: 38px;
   font-weight: 400;
   color: var(--gold-light);
   letter-spacing: 1px;
 }
-.slide--cta h1 { color: var(--gold-light); }
+.slide--cta h1, .slide--closing h1 { color: var(--gold-light); }
+.slide--closing .closing-foot {
+  position: absolute; bottom: 64px; left: 0; right: 0;
+  text-align: center; direction: ltr;
+  font-size: 26px; color: rgba(255,255,255,.55); letter-spacing: 2px;
+}
 .rule {
   width: 120px; height: 6px; border-radius: 3px;
   background: var(--gold);

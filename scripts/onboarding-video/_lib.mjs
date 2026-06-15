@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export const TAIL = 0.6 // seconds the slide lingers after narration ends
+export const HEAD = 0.45 // quiet beat before narration starts (less rushed)
+export const TAIL = 1.2 // seconds the slide lingers after narration ends
+export const XFADE = 0.5 // crossfade duration between slides
 
 export function loadContent() {
   const raw = readFileSync(resolve(__dirname, 'content.he.json'), 'utf8')
@@ -63,17 +65,17 @@ function cli() {
   }
 
   if (cmd === 'segments') {
-    // print "id<TAB>narrationDuration<TAB>segmentDuration" in slide order
+    // print "id<TAB>head<TAB>narrationDuration<TAB>segmentDuration" in slide order
     const dur = JSON.parse(
       readFileSync(resolve(audioDir, 'timings.json'), 'utf8')
     )
     const out = slides
       .map((s) => {
         const n = dur[s.id] ?? 3
-        return `${s.id}\t${n.toFixed(3)}\t${(n + TAIL).toFixed(3)}`
+        return `${s.id}\t${HEAD.toFixed(3)}\t${n.toFixed(3)}\t${(HEAD + n + TAIL).toFixed(3)}`
       })
       .join('\n')
-    process.stdout.write(out)
+    process.stdout.write(out + '\n') // trailing newline so `while read` gets the last line
     return
   }
 

@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadContent, wrap, TAIL } from './_lib.mjs'
+import { loadContent, wrap, HEAD, TAIL } from './_lib.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const AUDIO = resolve(__dirname, 'assets/audio')
@@ -25,12 +25,12 @@ let cursor = 0
 const cues = []
 slides.forEach((s, i) => {
   const d = dur[s.id] ?? 3
-  const start = cursor
-  const end = cursor + d // subtitle visible during narration only
+  const start = cursor + HEAD
+  const end = start + d // subtitle visible during narration only
   cues.push(
     `${i + 1}\n${fmt(start)} --> ${fmt(end)}\n${wrap(s.narration).join('\n')}\n`
   )
-  cursor += d + TAIL
+  cursor += HEAD + d + TAIL
 })
 
 writeFileSync(resolve(AUDIO, 'subs.srt'), cues.join('\n'), 'utf8')

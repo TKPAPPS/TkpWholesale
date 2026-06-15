@@ -61,6 +61,15 @@ function slideBody(s) {
       <div class="logo logo-white">${LOGO}</div>
     </div>`
   }
+  if (s.type === 'closing') {
+    return `<div class="slide slide--closing">
+      <div class="logo logo-white">${LOGO}</div>
+      <div class="rule"></div>
+      <h1>${esc(s.heading)}</h1>
+      <div class="sub">${esc(s.sub || '')}</div>
+      <div class="closing-foot">tkp-wholesale.vercel.app</div>
+    </div>`
+  }
   if (s.type === 'section') {
     const bullets = (s.bullets || [])
       .map((b) => `<li>${esc(b)}</li>`)
