@@ -2,7 +2,7 @@
 // acrossfade), then write to the Desktop.
 
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
@@ -11,7 +11,12 @@ import { loadContent, XFADE } from './_lib.mjs'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SEG = resolve(__dirname, 'assets/segments')
 const AUDIO = resolve(__dirname, 'assets/audio')
-const OUT = process.env.OUT || resolve(homedir(), 'Desktop/tkp-wholesale-onboarding-he.mp4')
+
+// Always a NEW, timestamped file in ~/media (never overwrite) unless OUT is set.
+const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+const MEDIA = resolve(homedir(), 'media')
+mkdirSync(MEDIA, { recursive: true })
+const OUT = process.env.OUT || resolve(MEDIA, `tkp-wholesale-onboarding-he-${stamp}.mp4`)
 
 const { slides } = loadContent()
 const dur = JSON.parse(readFileSync(resolve(AUDIO, 'timings.json'), 'utf8'))

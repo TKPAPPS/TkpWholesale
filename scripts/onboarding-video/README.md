@@ -32,8 +32,9 @@ run `bash tts.sh && node build_srt.mjs && node render_slides.mjs && bash assembl
 
 `build.sh` installs `puppeteer-core`, starts the app's dev server if it isn't already
 running, captures the screens, generates narration + subtitles, renders the slides,
-assembles the MP4, and opens it. The final file lands at
-`~/Desktop/tkp-wholesale-onboarding-he.mp4`.
+assembles the MP4, and opens it. Each run writes a NEW, timestamped file to
+`~/media/tkp-wholesale-onboarding-he-<YYYYMMDD-HHMMSS>.mp4` (never overwrites).
+Override the path with the `OUT` env var.
 
 ## What each piece does
 | File | Role |

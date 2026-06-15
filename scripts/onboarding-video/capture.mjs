@@ -98,54 +98,102 @@ async function main() {
   console.log('logged in, now at', page.url())
   await forceHebrew() // ensure RTL persists post-login
 
-  // 3) Catalogue
+  // --- flow helpers ---
+  // The products toolbar search is a controlled React input; synthetic keystrokes
+  // don't register, so set the value via the native setter + bubbling input event.
+  // Target the widest visible placeholder input (the full-width toolbar search).
+  const typeSearch = async (q) => {
+    await page.waitForSelector('input[placeholder]', { timeout: 8000 })
+    await page.evaluate((val) => {
+      const input = Array.from(document.querySelectorAll('input[placeholder]'))
+        .filter((i) => i.offsetParent !== null)
+        .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0]
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+      setter.call(input, val)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }, q)
+    await sleep(2300)
+  }
+  const clearCart = async () => {
+    try {
+      await go('/cart')
+      await toHebrew()
+      await sleep(900)
+      await page.evaluate(() => {
+        const b = Array.from(document.querySelectorAll('button')).find((x) =>
+          /נקה עגלה|רוקן|clear cart|הסר הכל/i.test(x.textContent || ''))
+        if (b) b.click()
+      })
+      await sleep(1200)
+      await page.evaluate(() => {
+        const b = Array.from(document.querySelectorAll('button')).find((x) =>
+          /אישור|כן|מחק|confirm|yes/i.test(x.textContent || ''))
+        if (b) b.click()
+      })
+      await sleep(1400)
+    } catch (e) { console.warn('  clearCart skipped:', e.message) }
+  }
+
+  // Start from a clean cart so the cart shot shows only the demo item.
+  console.log('clearing cart...')
+  await clearCart()
+
+  // 3) Catalogue — sort by "recently ordered" to surface popular products
   console.log('catalogue...')
   await go('/products')
   await toHebrew()
-  await sleep(1200)
+  await sleep(800)
+  try { await page.select('select', 'recently_ordered'); await sleep(1900) }
+  catch (e) { console.warn('  sort select skipped:', e.message) }
   await shoot('products.png')
 
-  // 4) Search — type into the search field, capture results
-  console.log('search...')
+  // 4) Search — use the global search overlay (clean results list, no stock badges;
+  // the products-grid search endpoint marks every result out-of-stock).
+  console.log('search overlay (Bamba)...')
   try {
-    const searchSel = 'input[type="search"], input[placeholder]'
-    await page.waitForSelector(searchSel, { timeout: 5000 })
-    await page.click(searchSel)
-    await page.type(searchSel, 'שמן', { delay: 40 })
-    await sleep(1800)
-  } catch (e) {
-    console.warn('  search field not found, capturing catalogue as-is:', e.message)
-  }
+    await page.evaluate(() => {
+      const b = document.querySelector('button[aria-label="Search"]')
+      if (b) b.click()
+    })
+    await page.waitForSelector('.fixed.inset-0 input', { timeout: 6000 })
+    await sleep(400)
+    await page.evaluate((val) => {
+      const input = document.querySelector('.fixed.inset-0 input')
+      if (!input) return
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+      setter.call(input, val)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }, 'Bamba')
+    await sleep(2300)
+  } catch (e) { console.warn('  search overlay failed:', e.message) }
   await shoot('search.png')
+  await page.keyboard.press('Escape').catch(() => {})
+  await sleep(400)
 
-  // 5) Product detail — open the first product card
-  console.log('product detail...')
-  await go('/products')
-  await toHebrew()
-  await sleep(800)
-  const productHref = await page.evaluate(() => {
-    const a = document.querySelector('a[href*="/products/"]')
+  // 5) Product detail — the Bamba 25 gr example (in stock)
+  console.log('product detail (Bamba 25 gr)...')
+  await typeSearch('Bamba')
+  let bambaHref = await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a[href*="/products/"]'))
+    const byText = (re) => links.find((a) => re.test(a.textContent || ''))
+    const a = byText(/Bamba.*25\s*gr|במבה.*25/i) || byText(/Bamba|במבה/i)
     return a ? a.getAttribute('href') : null
   })
-  if (productHref) {
-    await go(productHref)
-    await toHebrew()
-    await sleep(1200)
-  } else {
-    console.warn('  no product link found; capturing catalogue instead')
-  }
+  if (!bambaHref) { bambaHref = '/products/2691'; console.warn('  using known Bamba 25gr id 2691') }
+  await go(bambaHref); await toHebrew(); await sleep(1200)
   await shoot('product.png')
 
-  // Best-effort: add this product to the cart so the cart/checkout shots are populated.
+  // Add Bamba to the cart so the cart/checkout shots are populated and relevant.
   let addedToCart = false
   try {
     const clicked = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'))
-      const add = btns.find((b) => /הוסף|add to cart|לעגלה/i.test(b.textContent || ''))
-      if (add) { add.click(); return true }
+      const add = Array.from(document.querySelectorAll('button')).find((b) =>
+        /הוסף לעגלה|הוסף|add to cart|לעגלה/i.test(b.textContent || ''))
+      if (add && !add.disabled) { add.click(); return true }
       return false
     })
-    if (clicked) { addedToCart = true; await sleep(2500) }
+    if (clicked) { addedToCart = true; await sleep(2800) }
   } catch (e) {
     console.warn('  add-to-cart skipped:', e.message)
   }
@@ -185,30 +233,9 @@ async function main() {
   await sleep(1200)
   await shoot('newarrivals.png')
 
-  // 11) Favorites (extras, optional)
-  console.log('favorites...')
-  await go('/favorites')
-  await toHebrew()
-  await sleep(1000)
-  await shoot('favorites.png')
-
-  // Cleanup: remove the line we optimistically added, leaving the account clean.
-  if (addedToCart) {
-    console.log('cleaning up cart line added for the demo...')
-    try {
-      await go('/cart')
-      await sleep(1000)
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button'))
-        const clear = btns.find((b) => /רוקן|clear|הסר הכל|מחק/i.test(b.textContent || ''))
-        if (clear) clear.click()
-      })
-      await sleep(2000)
-      console.log('  cart cleanup attempted')
-    } catch (e) {
-      console.warn('  cart cleanup failed (remove the demo line manually):', e.message)
-    }
-  }
+  // Cleanup: clear the cart, leaving the account as we found it.
+  console.log('cleanup...')
+  if (addedToCart) await clearCart()
 
   await browser.close()
   console.log('Done. Screenshots in', OUT)

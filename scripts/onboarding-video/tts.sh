@@ -17,7 +17,8 @@ mkdir -p "$AUDIO"
 # NOTE: only eleven_v3 supports Hebrew (he). The multilingual/turbo/flash models
 # do NOT, and will mispronounce Hebrew into an unrecognizable language.
 VOICE="${VOICE:-Carmit (Enhanced)}"
-ELEVEN_VOICE_ID="${ELEVEN_VOICE_ID:-EXAVITQu4vr4xnSDxMaL}"
+# Default male narrator "Eric - Smooth, Trustworthy". Swap via ELEVEN_VOICE_ID.
+ELEVEN_VOICE_ID="${ELEVEN_VOICE_ID:-cjVigY5qzO86Huf0OWal}"
 ELEVEN_MODEL="${ELEVEN_MODEL:-eleven_v3}"
 
 if [ -n "${ELEVEN_API_KEY:-}" ]; then

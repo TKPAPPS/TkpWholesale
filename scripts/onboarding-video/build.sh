@@ -14,6 +14,11 @@ BASE_URL="${BASE_URL:-http://localhost:3000}"
 : "${PASSWORD:?Set PASSWORD to the customer password}"
 export LOGIN PASSWORD BASE_URL
 
+# Always write a NEW, timestamped file to ~/media (never overwrite).
+MEDIA="$HOME/media"
+mkdir -p "$MEDIA"
+export OUT="${OUT:-$MEDIA/tkp-wholesale-onboarding-he-$(date +%Y%m%d-%H%M%S).mp4}"
+
 echo "==> 1/6 deps"
 [ -d "$DIR/node_modules/puppeteer-core" ] || (cd "$DIR" && npm install --no-audit --no-fund)
 
@@ -48,6 +53,5 @@ node "$DIR/render_slides.mjs"
 echo "==> 6/6 assemble video"
 bash "$DIR/assemble.sh"
 
-OUT="${OUT:-$HOME/Desktop/tkp-wholesale-onboarding-he.mp4}"
 [ -f "$OUT" ] && open "$OUT"
-echo "Done."
+echo "Done. -> $OUT"
