@@ -42,6 +42,7 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Admin session token | 30 min | `admin-session.ts` (module memory) |
 | Products (per pricelist+domain+pagination+lang) | 5 min | `odoo-helpers.ts` `_fetchProductsCached` (`unstable_cache` — shared across Vercel instances, survives cold starts) |
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
+| In-stock template ids | 2 min | `odoo-helpers.ts` `_fetchInStockIds` (`unstable_cache` — shared) — avoids per-request `qty_available` compute |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
 | Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
 | Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |
@@ -50,6 +51,16 @@ Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odo
 All three (`bustProductCache`, `bustWebsiteSettingsCache`, `bustHideOosCache`) call
 `revalidateTag` to clear the shared Next.js Data Cache. `bustProductCache()` clears
 the `odoo-products` tag.
+
+**Stock visibility is resolved against a cached id set, never an inline `qty_available`
+filter.** `qty_available` is a non-stored computed field, so a `['qty_available','>',0]`
+term forces Odoo to compute live stock for the whole catalog (~600ms per cold request).
+`buildVisibilityDomain` instead takes the cached in-stock id set (`getInStockIds`) and
+emits a plain `['id','in',[...]]` domain (~60ms). The visible set is identical to the old
+filter (verified); stock display is up to ~2 min stale and checkout still validates real
+stock. `buildVisibilityDomain` is shared by the listing and the search route, so both must
+pass the in-stock set. A `null` set (lookup failed) means "do not hide on stock" so a
+transient failure shows products rather than emptying the catalog.
 
 The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
 The `/products` and `/new-arrivals` pages refetch on language switch, so reading both

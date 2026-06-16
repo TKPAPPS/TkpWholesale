@@ -231,23 +231,22 @@ export async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
 export function buildVisibilityDomain(
   settingsMap: Map<number, boolean>,   // templateId -> allow_out_of_stock_order
   hideOos: boolean,
+  inStockIds: Set<number> | null,      // in-stock template ids; null = stock unknown
   extra: unknown[] = [],
 ): unknown[] {
   if (hideOos) {
-    const oosIds: number[] = []
-    const noOosIds: number[] = []
+    // Resolve stock in JS against the cached in-stock set instead of via a
+    // `qty_available > 0` SQL term (which forces Odoo to compute live stock for the
+    // whole catalog, ~600ms). The result is a single `id in [...]` list — ~60ms.
+    // Show a product if it allows OOS ordering, or it's in stock. If the in-stock set
+    // is unavailable (null), don't filter on stock so a transient failure shows the
+    // catalog rather than emptying it.
+    const visibleIds: number[] = []
     settingsMap.forEach((allowOos, id) => {
-      if (allowOos) oosIds.push(id)
-      else noOosIds.push(id)
+      if (allowOos || inStockIds === null || inStockIds.has(id)) visibleIds.push(id)
     })
-    // Prefix notation: '|' consumes next 2 terms; '&' consumes next 2 terms.
-    // (id in oosIds) OR (id in noOosIds AND qty_available > 0), AND stockable type.
     return [
-      '|',
-      ['id', 'in', oosIds],
-      '&',
-      ['id', 'in', noOosIds],
-      ['qty_available', '>', 0],
+      ['id', 'in', visibleIds],
       ['type', 'in', ['consu', 'storable']],
       ...extra,
     ]
@@ -300,6 +299,37 @@ export async function fetchWebsitePublishedSettings(_sessionId: string): Promise
   return new Map<number, boolean>(raw)
 }
 
+// Cache the set of in-stock template ids. Filtering by `qty_available > 0` inline is
+// the single most expensive Odoo query in the product path (~600ms), because
+// qty_available is a NON-STORED computed field, so Odoo recomputes live stock for the
+// whole catalog on every cold request. We compute the in-stock id list once per short
+// window (shared across all Vercel instances) and then filter the product query by a
+// plain `id in [...]` list, which is ~60ms. Stock display becomes up to ~2 min stale,
+// consistent with the 5-min product cache; checkout still validates real stock.
+const _fetchInStockIds = unstable_cache(
+  async (): Promise<number[]> => {
+    const sessionId = await getOdooSession()
+    return await callKw(sessionId, 'product.template', 'search',
+      [[['qty_available', '>', 0], ['type', 'in', ['consu', 'storable']]]], {},
+    ) as number[]
+  },
+  ['odoo-instock-ids'],
+  { revalidate: 120, tags: ['odoo-instock-ids'] },
+)
+
+export function bustInStockCache() { revalidateTag('odoo-instock-ids') }
+
+// Returns the set of in-stock template ids, or null if the lookup failed. Callers
+// treat null as "stock unknown — do not hide on stock" so a transient failure shows
+// products rather than emptying the catalog.
+export async function getInStockIds(): Promise<Set<number> | null> {
+  try {
+    return new Set(await _fetchInStockIds())
+  } catch {
+    return null
+  }
+}
+
 export function bustProductCache() { revalidateTag('odoo-products') }
 
 // Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
@@ -319,11 +349,13 @@ const _fetchProductsCached = unstable_cache(
     const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
     const sessionId = await getOdooSession()
 
-    // Round 1: fetch website settings, hide-OOS toggle, and (if new_arrivals) recently
-    // published IDs all in parallel — avoids a sequential preflight on the new_arrivals path.
-    const [websiteSettingsMap, hideOos, recentIds] = await Promise.all([
+    // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and (if
+    // new_arrivals) recently published IDs all in parallel — avoids a sequential
+    // preflight, and all four are cached so cold requests rarely pay the full cost.
+    const [websiteSettingsMap, hideOos, inStockIds, recentIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
+      getInStockIds(),
       newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
     ])
     if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
@@ -335,7 +367,7 @@ const _fetchProductsCached = unstable_cache(
     }
 
     // Visibility rules (published + stock) — shared with the search route.
-    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, effectiveDomain)
+    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, effectiveDomain)
 
     // The product listing renders one language at a time and refetches on language
     // switch, so reading both EN + HE is wasted Odoo work. Read the active language
