@@ -75,6 +75,15 @@ and checkout note max length. Shape + defaults + clamping live in `src/lib/site-
 were previously hardcoded, so behaviour is unchanged until an admin overrides one. The invoices
 **API** reads `invoicesPerPage` server-side so its page size matches the client's pagination.
 
+**Admin product controls** (`/admin/products`): per-product *show/hide* on the portal via
+`b2b_portal.hidden_product_ids` (excluded in `buildVisibilityDomain`, keeps the product
+published in Odoo) and a *publish* toggle that writes `product.website.settings.is_published`
+for `WEBSITE_ID` (`setProductPublished`). **Cache coherence:** the product listing is cached
+under `odoo-products` and resolves hide-OOS / published-settings / hidden-products *inside*
+that cached function, so `bustHideOosCache`, `bustWebsiteSettingsCache`, and
+`bustHiddenProductsCache` each also `revalidateTag('odoo-products')` — otherwise an admin
+change wouldn't reach the storefront for up to 5 min.
+
 The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
 The `/products` and `/new-arrivals` pages refetch on language switch, so reading both
 EN + HE was wasted Odoo work; `fetchOdooProducts` defaults to `lang='both'` only for

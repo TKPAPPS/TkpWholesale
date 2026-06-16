@@ -27,24 +27,25 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, buildVisibilityDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, buildVisibilityDomain } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
-    // is restricted to published + in-stock products — same rules as the listing,
-    // so hidden out-of-stock products never appear in search. Stock is resolved
-    // against the cached in-stock id set, not a slow `qty_available` SQL term.
-    const [websiteMap, hideOos, inStockIds] = await Promise.all([
+    // is restricted to published + in-stock + not-admin-hidden products — same rules
+    // as the listing. Stock is resolved against the cached in-stock id set, not a
+    // slow `qty_available` SQL term.
+    const [websiteMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
+      getHiddenProductIds(),
     ])
 
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
     // extra list — Odoo rejects the nested form with "Invalid field ...|".
     const skuDomain = ['default_code', 'ilike', q]
-    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, ['|', ['name', 'ilike', q], skuDomain])
-    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, [['name', 'ilike', q]])
+    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, ['|', ['name', 'ilike', q], skuDomain])
+    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, [['name', 'ilike', q]])
     const [enResults, heResults] = await Promise.all([
       searchRead(sessionId, 'product.template', enDomain,
         ['id'], { limit: 50, context: { lang: 'en_US' } },

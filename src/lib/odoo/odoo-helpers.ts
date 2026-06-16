@@ -212,7 +212,10 @@ const _fetchHideOos = unstable_cache(
   { revalidate: 60, tags: ['odoo-hide-oos'] },
 )
 
-export function bustHideOosCache() { revalidateTag('odoo-hide-oos') }
+// The product LISTING is cached under 'odoo-products' and resolves hide-OOS,
+// published settings, and hidden-products INSIDE that cached function. So changing
+// any of those must also bust 'odoo-products', or the listing stays stale up to 5 min.
+export function bustHideOosCache() { revalidateTag('odoo-hide-oos'); revalidateTag('odoo-products') }
 
 export async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
   try {
@@ -233,6 +236,7 @@ export function buildVisibilityDomain(
   settingsMap: Map<number, boolean>,   // templateId -> allow_out_of_stock_order
   hideOos: boolean,
   inStockIds: Set<number> | null,      // in-stock template ids; null = stock unknown
+  hiddenIds: Set<number>,              // admin-hidden template ids (always excluded)
   extra: unknown[] = [],
 ): unknown[] {
   if (hideOos) {
@@ -241,9 +245,10 @@ export function buildVisibilityDomain(
     // whole catalog, ~600ms). The result is a single `id in [...]` list — ~60ms.
     // Show a product if it allows OOS ordering, or it's in stock. If the in-stock set
     // is unavailable (null), don't filter on stock so a transient failure shows the
-    // catalog rather than emptying it.
+    // catalog rather than emptying it. Admin-hidden products are never shown.
     const visibleIds: number[] = []
     settingsMap.forEach((allowOos, id) => {
+      if (hiddenIds.has(id)) return
       if (allowOos || inStockIds === null || inStockIds.has(id)) visibleIds.push(id)
     })
     return [
@@ -252,8 +257,9 @@ export function buildVisibilityDomain(
       ...extra,
     ]
   }
+  const publishedVisible = Array.from(settingsMap.keys()).filter(id => !hiddenIds.has(id))
   return [
-    ['id', 'in', Array.from(settingsMap.keys())],
+    ['id', 'in', publishedVisible],
     ['type', 'in', ['consu', 'storable']],
     ...extra,
   ]
@@ -289,6 +295,7 @@ const _fetchWebsiteSettings = unstable_cache(
 export function bustWebsiteSettingsCache() {
   revalidateTag('odoo-website-settings')
   revalidateTag('odoo-hide-oos')
+  revalidateTag('odoo-products')
 }
 
 export function bustCategoriesCache() { revalidateTag('odoo-categories') }
@@ -434,7 +441,7 @@ const _fetchHiddenProductIds = unstable_cache(
   ['odoo-hidden-products'],
   { revalidate: 300, tags: ['odoo-hidden-products'] },
 )
-export function bustHiddenProductsCache() { revalidateTag('odoo-hidden-products') }
+export function bustHiddenProductsCache() { revalidateTag('odoo-hidden-products'); revalidateTag('odoo-products') }
 export async function getHiddenProductIds(): Promise<Set<number>> {
   try { return new Set(await _fetchHiddenProductIds()) } catch { return new Set() }
 }
@@ -442,6 +449,24 @@ export function readHiddenProductIdsUncached() { return readIdListParam(HIDDEN_P
 export async function writeHiddenProductIds(ids: number[]): Promise<void> {
   await writeIdListParam(HIDDEN_PRODUCTS_KEY, ids)
   bustHiddenProductsCache()
+}
+
+// Set a template's per-website published flag in product.website.settings (the
+// source of truth for what's on this website), creating the row if absent. This is
+// the "true publish" control; bust the website-settings cache so it takes effect.
+export async function setProductPublished(templateId: number, published: boolean): Promise<void> {
+  const sessionId = await getOdooSession()
+  const existing = await callKw(sessionId, 'product.website.settings', 'search',
+    [[['website_id', '=', WEBSITE_ID], ['product_tmpl_id', '=', templateId]]], { limit: 1 },
+  ) as number[]
+  if (existing.length > 0) {
+    await callKw(sessionId, 'product.website.settings', 'write', [existing, { is_published: published }], {})
+  } else {
+    await callKw(sessionId, 'product.website.settings', 'create',
+      [{ website_id: WEBSITE_ID, product_tmpl_id: templateId, is_published: published }], {},
+    )
+  }
+  bustWebsiteSettingsCache()
 }
 
 // Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
@@ -464,10 +489,11 @@ const _fetchProductsCached = unstable_cache(
     // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and (if
     // new_arrivals) recently published IDs all in parallel — avoids a sequential
     // preflight, and all four are cached so cold requests rarely pay the full cost.
-    const [websiteSettingsMap, hideOos, inStockIds, recentIds] = await Promise.all([
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, recentIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
+      getHiddenProductIds(),
       newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
     ])
     if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
@@ -478,8 +504,8 @@ const _fetchProductsCached = unstable_cache(
       effectiveDomain = [['id', 'in', recentIds], ...domain]
     }
 
-    // Visibility rules (published + stock) — shared with the search route.
-    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, effectiveDomain)
+    // Visibility rules (published + stock + admin hide) — shared with the search route.
+    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, effectiveDomain)
 
     // The product listing renders one language at a time and refetches on language
     // switch, so reading both EN + HE is wasted Odoo work. Read the active language
