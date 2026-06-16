@@ -1,7 +1,8 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles } from 'lucide-react'
+import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList } from 'lucide-react'
+import { NavCategories, NavOrders } from './NavMenus'
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
@@ -118,13 +119,18 @@ export function Navbar() {
     router.push('/login')
   }
 
+  // Full flat list used by the mobile hamburger (overflow / long tail).
   const navLinks = [
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
     { href: '/new-arrivals', label: t(lang, 'newArrivals.title'), icon: Sparkles },
+    { href: '/quick-order', label: t(lang, 'nav.quickOrder'), icon: Zap },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
-    { href: '/orders', label: t(lang, 'nav.orders'), icon: Package },
+    { href: '/orders', label: t(lang, 'nav.orders'), icon: ClipboardList },
+    { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: RotateCcw },
     { href: '/invoices', label: t(lang, 'invoices.title'), icon: FileText },
   ]
+  // Desktop shows these as flat links; Categories + Orders are dropdowns.
+  const desktopPrimary = navLinks.slice(0, 3) // Products, New Arrivals, Quick Order
 
   return (
     <>
@@ -137,9 +143,10 @@ export function Navbar() {
               <Logo className="h-10 w-auto" />
             </Link>
 
-            {/* Desktop nav */}
+            {/* Desktop nav: Categories ▾ · Products · New Arrivals · Quick Order · Orders ▾ · Favorites */}
             <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
-              {navLinks.map(({ href, label }) => {
+              <NavCategories />
+              {desktopPrimary.map(({ href, label }) => {
                 const active = pathname.startsWith(href)
                 return (
                   <Link
@@ -147,15 +154,23 @@ export function Navbar() {
                     href={href}
                     className={cn(
                       'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                      active
-                        ? 'text-brand-700 bg-brand-50'
-                        : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
+                      active ? 'text-brand-700 bg-brand-50' : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
                     )}
                   >
                     {label}
                   </Link>
                 )
               })}
+              <NavOrders />
+              <Link
+                href="/favorites"
+                className={cn(
+                  'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                  pathname.startsWith('/favorites') ? 'text-brand-700 bg-brand-50' : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
+                )}
+              >
+                {t(lang, 'nav.favorites')}
+              </Link>
             </nav>
 
             {/* Right actions */}

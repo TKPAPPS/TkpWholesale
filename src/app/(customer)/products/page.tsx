@@ -1,7 +1,9 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { Product, Category } from '@/types'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Product } from '@/types'
 import { useLangStore } from '@/store/langStore'
+import { useCategoriesStore } from '@/store/categoriesStore'
 import { t } from '@/lib/i18n/translations'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileCategoryDrawer, MobileCategoryButton } from '@/components/layout/MobileCategoryDrawer'
@@ -13,14 +15,19 @@ import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { Search, Package, Star } from 'lucide-react'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
-export default function ProductsPage() {
+function ProductsContent() {
   const { lang } = useLangStore()
   const PER_PAGE = useSiteSettingsStore((s) => s.settings.productsPerPage)
-  const [categories, setCategories] = useState<Category[]>([])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const categories = useCategoriesStore((s) => s.categories)
+  // Category is driven by the URL (?category=) so it can be linked from anywhere
+  // (navbar dropdown, deep links) and stays consistent.
+  const categoryParam = searchParams.get('category')
+  const selectedCategory = categoryParam ? Number(categoryParam) : null
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [sort, setSort] = useState<'name' | 'price' | 'recently_ordered'>('name')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -31,16 +38,14 @@ export default function ProductsPage() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/categories').then(r => r.json()),
-      fetch('/api/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
-    ]).then(([cats, favs]) => {
-      setCategories(cats.categories ?? [])
-      setFavoriteIds(new Set(
+    fetch('/api/favorites').then(r => r.json()).catch(() => ({ favorites: [] }))
+      .then((favs) => setFavoriteIds(new Set(
         (favs.favorites ?? []).map((p: { template_id: number }) => p.template_id)
-      ))
-    })
+      )))
   }, [])
+
+  // Reset to page 0 whenever the category changes (incl. via the navbar dropdown).
+  useEffect(() => { setPage(0) }, [selectedCategory])
 
   useEffect(() => {
     fetch(`/api/featured?lang=${lang}`)
@@ -96,7 +101,6 @@ export default function ProductsPage() {
 
   const handleSearchInput = (value: string) => {
     setSearch(value)
-    if (value.trim()) setSelectedCategory(null)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
       setPage(0)
@@ -105,10 +109,10 @@ export default function ProductsPage() {
     }, 400)
   }
 
+  // Category lives in the URL so it links from anywhere; clearing search shows it again.
   const handleCategorySelect = (id: number | null) => {
-    setSelectedCategory(id)
-    setPage(0)
     setSearch('')
+    router.push(id ? `/products?category=${id}` : '/products')
   }
 
   return (
@@ -191,5 +195,14 @@ export default function ProductsPage() {
         <Pagination page={page} total={total} perPage={PER_PAGE} onChange={setPage} />
       </div>
     </div>
+  )
+}
+
+// useSearchParams requires a Suspense boundary at the page level.
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-sm text-gray-400">Loading…</div>}>
+      <ProductsContent />
+    </Suspense>
   )
 }

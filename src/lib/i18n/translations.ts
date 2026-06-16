@@ -4,6 +4,7 @@ const translations = {
   en: {
     // Nav
     'nav.products': 'Products',
+    'nav.categories': 'Categories',
     'nav.favorites': 'Favorites',
     'nav.recentlyOrdered': 'Recently Ordered',
     'nav.orders': 'Orders',
@@ -144,6 +145,7 @@ const translations = {
   },
   he: {
     'nav.products': 'מוצרים',
+    'nav.categories': 'קטגוריות',
     'nav.favorites': 'מועדפים',
     'nav.recentlyOrdered': 'הזמנות אחרונות',
     'nav.orders': 'הזמנות',
