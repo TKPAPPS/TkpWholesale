@@ -14,6 +14,7 @@ interface Announcement {
   message: string
   type: 'info' | 'warning' | 'success'
   active: boolean
+  starts_at: string | null
   expires_at: string | null
   created_at: string
 }
@@ -24,6 +25,7 @@ export default function AdminDashboard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [newMsg, setNewMsg] = useState('')
   const [newType, setNewType] = useState<'info' | 'warning' | 'success'>('info')
+  const [newStart, setNewStart] = useState('')
   const [newExpiry, setNewExpiry] = useState('')
   const [saving, setSaving] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<number | null>(null)
@@ -54,12 +56,13 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/announcements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMsg.trim(), type: newType, expires_at: newExpiry || null }),
+        body: JSON.stringify({ message: newMsg.trim(), type: newType, starts_at: newStart || null, expires_at: newExpiry || null }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const created = await res.json()
       setAnnouncements((prev) => [created, ...prev])
       setNewMsg('')
+      setNewStart('')
       setNewExpiry('')
       showToast('Announcement posted')
     } catch {
@@ -156,6 +159,15 @@ export default function AdminDashboard() {
                 <option value="success">Success (green)</option>
               </select>
               <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Publish at</label>
+                <input
+                  type="datetime-local"
+                  value={newStart}
+                  onChange={(e) => setNewStart(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-700/20"
+                />
+              </div>
+              <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500">Expires</label>
                 <input
                   type="datetime-local"
@@ -187,6 +199,9 @@ export default function AdminDashboard() {
                   <p className={`text-sm flex-1 ${a.active ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
                     {a.message}
                   </p>
+                  {a.starts_at && new Date(a.starts_at) > new Date() && (
+                    <span className="text-xs text-amber-600 shrink-0">scheduled {new Date(a.starts_at).toLocaleDateString()}</span>
+                  )}
                   {a.expires_at && (
                     <span className="text-xs text-gray-400 shrink-0">exp. {new Date(a.expires_at).toLocaleDateString()}</span>
                   )}

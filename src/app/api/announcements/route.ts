@@ -10,6 +10,7 @@ export async function GET() {
       .select('id, message, type')
       .eq('active', true)
       .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .or(`starts_at.is.null,starts_at.lte.${now}`)
       .order('created_at', { ascending: false })
       .limit(1)
 
