@@ -6,6 +6,7 @@ import { useLangStore, initLang } from '@/store/langStore'
 import { useCartStore } from '@/store/cartStore'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { Navbar } from '@/components/layout/Navbar'
+import { BottomNav } from '@/components/layout/BottomNav'
 import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
@@ -74,9 +75,11 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
     <div className="min-h-screen bg-[#fafaf9]">
       <Navbar />
       <AnnouncementBanner />
-      <main className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 py-8">
+      {/* pb leaves room for the fixed mobile bottom nav; reset on md+ */}
+      <main className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 pt-8 pb-24 md:pb-8">
         {children}
       </main>
+      <BottomNav />
     </div>
   )
 }
