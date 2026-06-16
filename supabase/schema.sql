@@ -34,3 +34,30 @@ alter table announcements add column if not exists starts_at timestamptz;
 
 -- Server-side (service-role) access only, same as favorites.
 alter table announcements disable row level security;
+
+-- Rate limiting: a sliding-window counter keyed by e.g. "login:<ip>". Used to throttle
+-- the login endpoints. Accessed only by the service-role key (server-side).
+create table if not exists rate_limits (
+  key       text primary key,
+  hits      integer not null default 0,
+  reset_at  timestamptz not null
+);
+alter table rate_limits enable row level security;  -- service-role only; no policies
+
+-- Atomic increment + window check. Returns true if within the limit, false to block.
+create or replace function check_rate_limit(p_key text, p_max integer, p_window_seconds integer)
+returns boolean
+language plpgsql
+as $$
+declare
+  v_hits integer;
+begin
+  insert into rate_limits (key, hits, reset_at)
+    values (p_key, 1, now() + make_interval(secs => p_window_seconds))
+  on conflict (key) do update set
+    hits = case when rate_limits.reset_at < now() then 1 else rate_limits.hits + 1 end,
+    reset_at = case when rate_limits.reset_at < now() then now() + make_interval(secs => p_window_seconds) else rate_limits.reset_at end
+  returning hits into v_hits;
+  return v_hits <= p_max;
+end;
+$$;

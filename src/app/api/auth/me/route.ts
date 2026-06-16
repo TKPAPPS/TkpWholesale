@@ -17,6 +17,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
   }
 
+  // Revocation: bounce the session if the Odoo user has since been deactivated
+  // (cached ~5 min, so deactivating a customer in Odoo cuts access within minutes).
+  const { isUidActive } = await import('@/lib/odoo/odoo-helpers')
+  if (!(await isUidActive(parsed.uid))) {
+    return NextResponse.json({ error: 'ACCOUNT_DISABLED' }, { status: 401 })
+  }
+
   return NextResponse.json({
     uid: parsed.uid,
     partner_id: parsed.partner_id,

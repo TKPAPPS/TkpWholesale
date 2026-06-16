@@ -41,6 +41,24 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       .finally(() => setLoading(false))
   }, [])
 
+  // Re-validate the session periodically and whenever the tab becomes visible, so a
+  // customer deactivated in Odoo (or whose session expired) is bounced within minutes
+  // rather than continuing to use a stale tab. /api/auth/me does the active re-check.
+  useEffect(() => {
+    const revalidate = () => {
+      fetch('/api/auth/me').then((res) => {
+        if (!res.ok) {
+          setUser(null)
+          router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))
+        }
+      }).catch(() => {})
+    }
+    const interval = setInterval(revalidate, 5 * 60 * 1000)
+    const onVisible = () => { if (document.visibilityState === 'visible') revalidate() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
+  }, [router, setUser])
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4">

@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { devAdminToken } from '@/lib/supabase'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 
 function setSessionCookie(res: NextResponse, token: string) {
   res.cookies.set('admin_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 8 * 60 * 60,
+    maxAge: 4 * 60 * 60,
     path: '/',
   })
 }
 
 export async function POST(req: NextRequest) {
+  // Throttle admin logins harder than customer ones — 6 attempts per 10 minutes per IP.
+  const allowed = await checkRateLimit(`adminlogin:${clientIp(req)}`, 6, 600)
+  if (!allowed) {
+    return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' }, { status: 429 })
+  }
+
   const { email, password } = await req.json()
 
   if (!email || !password) {

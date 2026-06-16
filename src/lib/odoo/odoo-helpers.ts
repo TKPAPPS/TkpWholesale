@@ -340,6 +340,27 @@ export async function getInStockIds(): Promise<Set<number> | null> {
 
 export function bustProductCache() { revalidateTag('odoo-products') }
 
+// Cached per-uid "is this Odoo user still active?" check (revalidate 5 min). Lets the
+// portal revoke a customer's access shortly after an admin deactivates them in Odoo,
+// instead of waiting out the full session TTL. Fails OPEN (treats as active) on an
+// Odoo error so a transient blip never logs everyone out.
+const _fetchUidActive = unstable_cache(
+  async (uid: number): Promise<boolean> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'res.users', 'read', [[uid]], { fields: ['active'] }) as { active: boolean }[]
+    return rows[0]?.active === true
+  },
+  ['odoo-uid-active'],
+  { revalidate: 300, tags: ['odoo-uid-active'] },
+)
+export async function isUidActive(uid: number): Promise<boolean> {
+  try {
+    return await _fetchUidActive(uid)
+  } catch {
+    return true
+  }
+}
+
 // ─── Storefront rules (site_settings) ─────────────────────────────────────────
 // Admin-tunable rules stored as JSON in `b2b_portal.site_settings`. Cached + shared
 // like the other config params; the customer app reads these via /api/site-settings.

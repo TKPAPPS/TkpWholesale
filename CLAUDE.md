@@ -133,10 +133,24 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - `/admin/login` short-circuits the layout — no sidebar or drawer is rendered on the login page.
 - Admin drawer uses `start-0` (logical position) so it is RTL-aware, but admin itself does not switch language direction.
 
+## Auth hardening
+- **Login rate limiting:** both `/api/auth/login` (10/10min per IP) and `/api/admin/auth/login`
+  (6/10min) call `checkRateLimit` (`src/lib/rate-limit.ts`) → the Supabase `check_rate_limit`
+  RPC (atomic sliding window in the `rate_limits` table). **Fails open** if Supabase is
+  unconfigured/unreachable, so logins never break on an infra blip (note: locally, with
+  placeholder Supabase, rate limiting is effectively off).
+- **Session revocation:** `/api/auth/me` re-checks the Odoo user's `active` flag via
+  `isUidActive(uid)` (cached 5 min, fails open). The customer layout re-polls `/api/auth/me`
+  every 5 min and on tab-visible, so deactivating a customer in Odoo cuts their portal access
+  within minutes instead of waiting out the session TTL. (Deactivating in Odoo is the
+  revocation action — no separate admin UI.) Direct-API access with a still-valid cookie
+  persists until the TTL; per-route enforcement would be the next step if needed.
+- **Session TTL is 4 hours** (was 8) for both customer and admin cookies.
+
 ## Admin panel auth
 - Login at `/admin/login` with Odoo email + Odoo password.
 - Credentials are verified via `/jsonrpc` `authenticate` (works on SaaS; `/web/session/authenticate` rejects API keys).
-- Session cookie = HMAC-SHA256 of `SESSION_SECRET`. Cookie TTL: 8 hours. No `'dev'` fallback in production.
+- Session cookie = HMAC-SHA256 of `SESSION_SECRET`. Cookie TTL: 4 hours. No `'dev'` fallback in production.
 - `verifyAdminToken` always checks the HMAC token first, then Supabase JWT if Supabase is configured.
 - If Supabase env vars are partially set in Vercel (e.g. SERVICE_ROLE_KEY set but ANON_KEY not), the HMAC path still works.
 
