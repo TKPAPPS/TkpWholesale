@@ -5,6 +5,7 @@ import { Category } from '@/types'
 import { Sidebar } from './Sidebar'
 import { cn } from '@/lib/utils'
 import { useLangStore } from '@/store/langStore'
+import { t } from '@/lib/i18n/translations'
 
 interface MobileCategoryDrawerProps {
   open: boolean
@@ -45,7 +46,7 @@ export function MobileCategoryDrawer({ open, onClose, categories, selectedCatego
         )}
       >
         <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100">
-          <span className="text-sm font-semibold text-gray-900">Categories</span>
+          <span className="text-sm font-semibold text-gray-900">{t(lang, 'nav.categories')}</span>
           <button onClick={onClose} className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100">
             <X className="h-4 w-4" />
           </button>
@@ -58,19 +59,20 @@ export function MobileCategoryDrawer({ open, onClose, categories, selectedCatego
   )
 }
 
-export function MobileCategoryButton({ onClick, selectedCategoryId }: { onClick: () => void; selectedCategoryId: number | null }) {
+export function MobileCategoryButton({ onClick, selectedCategoryId, selectedLabel }: { onClick: () => void; selectedCategoryId: number | null; selectedLabel?: string }) {
+  const { lang } = useLangStore()
   return (
     <button
       onClick={onClick}
       className={cn(
-        'lg:hidden flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors shrink-0',
+        'lg:hidden flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors shrink-0 max-w-[55%]',
         selectedCategoryId !== null
           ? 'border-brand-700 bg-brand-50 text-brand-700'
           : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
       )}
     >
-      <SlidersHorizontal className="h-4 w-4" />
-      {selectedCategoryId !== null ? 'Filtered' : 'Categories'}
+      <SlidersHorizontal className="h-4 w-4 shrink-0" />
+      <span className="truncate">{selectedCategoryId !== null ? (selectedLabel || t(lang, 'nav.categories')) : t(lang, 'nav.categories')}</span>
     </button>
   )
 }

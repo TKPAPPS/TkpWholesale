@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Product } from '@/types'
+import { Product, Category } from '@/types'
+import { cn } from '@/lib/utils'
 import { useLangStore } from '@/store/langStore'
 import { useCategoriesStore } from '@/store/categoriesStore'
 import { t } from '@/lib/i18n/translations'
@@ -12,8 +13,18 @@ import { Pagination } from '@/components/ui/Pagination'
 import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
-import { Search, Package, Star } from 'lucide-react'
+import { Search, Package, Star, ChevronRight } from 'lucide-react'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
+
+// Walk the category tree to the selected id, returning the ancestor path (for breadcrumbs).
+function findCategoryPath(cats: Category[], id: number): Category[] {
+  for (const c of cats) {
+    if (c.id === id) return [c]
+    const sub = findCategoryPath(c.children ?? [], id)
+    if (sub.length) return [c, ...sub]
+  }
+  return []
+}
 
 function ProductsContent() {
   const { lang } = useLangStore()
@@ -115,6 +126,11 @@ function ProductsContent() {
     router.push(id ? `/products?category=${id}` : '/products')
   }
 
+  const categoryPath = selectedCategory ? findCategoryPath(categories, selectedCategory) : []
+  const selectedLabel = categoryPath.length
+    ? (lang === 'he' ? categoryPath[categoryPath.length - 1].name_he : categoryPath[categoryPath.length - 1].name)
+    : undefined
+
   return (
     <div className="flex gap-6">
       {/* Desktop sidebar */}
@@ -147,9 +163,29 @@ function ProductsContent() {
           </section>
         )}
 
+        {/* Breadcrumb (when a category is selected and not searching) */}
+        {categoryPath.length > 0 && !search && (
+          <nav className="flex items-center flex-wrap gap-1 text-xs text-gray-400 mb-3">
+            <button onClick={() => handleCategorySelect(null)} className="hover:text-brand-700 transition-colors">
+              {t(lang, 'products.allCategories')}
+            </button>
+            {categoryPath.map((c, i) => (
+              <span key={c.id} className="flex items-center gap-1">
+                <ChevronRight className="h-3 w-3 rtl:rotate-180" />
+                <button
+                  onClick={() => handleCategorySelect(c.id)}
+                  className={cn('hover:text-brand-700 transition-colors', i === categoryPath.length - 1 && 'text-gray-700 font-medium')}
+                >
+                  {lang === 'he' ? c.name_he : c.name}
+                </button>
+              </span>
+            ))}
+          </nav>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <MobileCategoryButton onClick={() => setDrawerOpen(true)} selectedCategoryId={selectedCategory} />
+          <MobileCategoryButton onClick={() => setDrawerOpen(true)} selectedCategoryId={selectedCategory} selectedLabel={selectedLabel} />
           <form onSubmit={handleSearch} className="flex-1 relative">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input

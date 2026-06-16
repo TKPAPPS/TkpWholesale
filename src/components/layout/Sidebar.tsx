@@ -26,20 +26,30 @@ function CategoryItem({ cat, selectedId, onSelect, depth = 0 }: {
 
   return (
     <div>
-      <button
+      {/* Label selects the category; the chevron only expands — distinct targets so
+          clicking a parent doesn't ambiguously do both. */}
+      <div
         className={cn(
-          'w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors text-start',
+          'flex items-center rounded-lg transition-colors',
           isSelected ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700 hover:bg-gray-50',
-          depth > 0 && 'ps-6 text-xs',
         )}
-        onClick={() => {
-          onSelect(cat.id)
-          if (hasChildren) setOpen(!open)
-        }}
       >
-        <span className="flex-1">{name}</span>
-        {hasChildren && (open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />)}
-      </button>
+        <button
+          className={cn('flex-1 px-3 py-2.5 text-sm text-start', depth > 0 && 'ps-6 text-xs')}
+          onClick={() => onSelect(cat.id)}
+        >
+          {name}
+        </button>
+        {hasChildren && (
+          <button
+            onClick={() => setOpen(!open)}
+            aria-label={open ? 'Collapse' : 'Expand'}
+            className="px-2 py-2.5 text-gray-400 hover:text-gray-600 shrink-0"
+          >
+            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        )}
+      </div>
       {hasChildren && open && (
         <div className="ms-2">
           {cat.children.map((child) => (
@@ -55,7 +65,7 @@ export function Sidebar({ categories, selectedCategoryId, onSelect }: SidebarPro
   const { lang } = useLangStore()
   return (
     <aside className="w-56 shrink-0 sticky top-8 max-h-[calc(100vh-5rem)] overflow-y-auto">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-3 mb-2">Categories</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-3 mb-2">{t(lang, 'nav.categories')}</p>
       <button
         className={cn(
           'w-full text-start rounded-lg px-3 py-2.5 text-sm transition-colors',
