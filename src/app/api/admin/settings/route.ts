@@ -36,6 +36,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const { hide_out_of_stock } = await req.json()
+    if (typeof hide_out_of_stock !== 'boolean') {
+      return NextResponse.json({ error: 'INVALID_INPUT', message: 'hide_out_of_stock must be a boolean.' }, { status: 400 })
+    }
     const sessionId = await getAdminSession()
 
     // set_param handles create-or-update automatically

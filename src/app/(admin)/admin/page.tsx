@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Megaphone, Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { useToastStore } from '@/store/toastStore'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 interface DashboardData {
   orders_today: number
@@ -24,6 +26,9 @@ export default function AdminDashboard() {
   const [newType, setNewType] = useState<'info' | 'warning' | 'success'>('info')
   const [newExpiry, setNewExpiry] = useState('')
   const [saving, setSaving] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const showToast = useToastStore((s) => s.show)
 
   const supabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL
 
@@ -51,35 +56,54 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: newMsg.trim(), type: newType, expires_at: newExpiry || null }),
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const created = await res.json()
       setAnnouncements((prev) => [created, ...prev])
       setNewMsg('')
       setNewExpiry('')
+      showToast('Announcement posted')
+    } catch {
+      showToast('Could not post announcement. Please try again.', 'error')
     } finally {
       setSaving(false)
     }
   }
 
   const toggleActive = async (id: number, active: boolean) => {
-    await fetch('/api/admin/announcements', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, active: !active }),
-    })
+    // Optimistic flip, rolled back if the server rejects it.
     setAnnouncements((prev) => prev.map((a) => a.id === id ? { ...a, active: !active } : a))
+    try {
+      const res = await fetch('/api/admin/announcements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, active: !active }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } catch {
+      setAnnouncements((prev) => prev.map((a) => a.id === id ? { ...a, active } : a))
+      showToast('Could not update announcement.', 'error')
+    }
   }
 
-  const deleteAnnouncement = async (id: number) => {
-    if (!window.confirm('Delete this announcement?')) return
-    const res = await fetch(`/api/admin/announcements?id=${id}`, { method: 'DELETE' })
-    if (!res.ok) { window.alert('Could not delete announcement. Please try again.'); return }
-    setAnnouncements((prev) => prev.filter((a) => a.id !== id))
+  const confirmDelete = async () => {
+    if (pendingDelete == null) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/announcements?id=${pendingDelete}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setAnnouncements((prev) => prev.filter((a) => a.id !== pendingDelete))
+      showToast('Announcement deleted')
+      setPendingDelete(null)
+    } catch {
+      showToast('Could not delete announcement. Please try again.', 'error')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const stats = [
     { label: 'Orders Today', value: data ? String(data.orders_today) : '—' },
     { label: 'Open Carts', value: data ? String(data.open_carts) : '—' },
-    { label: 'Active Sessions', value: supabaseConfigured ? '—' : 'N/A' },
     { label: 'Odoo Status', value: error ? 'Error' : data ? 'Online' : '…' },
   ]
 
@@ -93,7 +117,7 @@ export default function AdminDashboard() {
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-bold text-gray-900 mb-6">Dashboard</h1>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {stats.map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4">
               <p className="text-xs text-gray-400 mb-1">{s.label}</p>
@@ -174,7 +198,7 @@ export default function AdminDashboard() {
                     {a.active ? <ToggleRight className="h-5 w-5 text-brand-700" /> : <ToggleLeft className="h-5 w-5" />}
                   </button>
                   <button
-                    onClick={() => deleteAnnouncement(a.id)}
+                    onClick={() => setPendingDelete(a.id)}
                     className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -191,6 +215,17 @@ export default function AdminDashboard() {
           Announcements and session data require a Supabase database. Settings and categories are managed via Odoo.
         </p>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete announcement?"
+        message="This removes it from the customer banner. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

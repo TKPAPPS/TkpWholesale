@@ -51,8 +51,24 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const sessionId = await getAdminSession()
+
+    // Validate shape: a map of slug -> { en: string, he: string }. Reject anything else
+    // so we never stringify arbitrary/oversized junk into the Odoo config parameter.
+    const isValidShape = body && typeof body === 'object' && !Array.isArray(body) &&
+      Object.values(body).every((v) =>
+        v && typeof v === 'object' &&
+        typeof (v as { en?: unknown }).en === 'string' &&
+        typeof (v as { he?: unknown }).he === 'string')
+    if (!isValidShape) {
+      return NextResponse.json({ error: 'INVALID_INPUT', message: 'Body must be a map of { en, he } strings.' }, { status: 400 })
+    }
+
     const value = JSON.stringify(body)
+    if (value.length > 200_000) {  // ~200KB cap; content pages are far smaller
+      return NextResponse.json({ error: 'TOO_LARGE', message: 'Content exceeds the size limit.' }, { status: 413 })
+    }
+
+    const sessionId = await getAdminSession()
 
     const existing = await callKw(sessionId, 'ir.config_parameter', 'search',
       [[['key', '=', PARAM_KEY]]], {},

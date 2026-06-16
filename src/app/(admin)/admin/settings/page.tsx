@@ -1,8 +1,8 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
-import { Eye, EyeOff, Save } from 'lucide-react'
+import { Eye, EyeOff, Save, RotateCw } from 'lucide-react'
 
 interface PortalSettings {
   hide_out_of_stock: boolean
@@ -30,16 +30,24 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetch('/api/admin/settings')
-      .then((r) => {
-        if (r.status === 401) { router.replace('/admin/login'); return null }
-        return r.json()
-      })
-      .then((d) => { if (d) { setSettings(d); setDraft(d) } })
-      .catch(() => setError('Could not load settings from Odoo.'))
-      .finally(() => setLoading(false))
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/admin/settings')
+      if (res.status === 401) { router.replace('/admin/login'); return }
+      if (!res.ok) throw new Error()
+      const d = await res.json()
+      setSettings(d)
+      setDraft(d)
+    } catch {
+      setError('Could not load settings from Odoo.')
+    } finally {
+      setLoading(false)
+    }
   }, [router])
+
+  useEffect(() => { load() }, [load])
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(draft)
 
@@ -72,6 +80,11 @@ export default function SettingsPage() {
 
       {loading && <p className="text-sm text-gray-400">Loading settings…</p>}
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+      {error && !draft && !loading && (
+        <button onClick={load} className="inline-flex items-center gap-2 text-sm text-brand-700 hover:underline mb-4">
+          <RotateCw className="h-4 w-4" /> Retry
+        </button>
+      )}
 
       {draft && (
         <div className="space-y-4 max-w-lg">

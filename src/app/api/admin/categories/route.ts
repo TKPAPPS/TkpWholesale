@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
+import { bustCategoriesCache } from '@/lib/odoo/odoo-helpers'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 const PARAM_KEY = 'b2b_portal.hidden_category_ids'
@@ -67,7 +68,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { hidden_ids }: { hidden_ids: number[] } = await req.json()
+    const body = await req.json()
+    // Validate: must be an array of positive integers (ids stringified into Odoo).
+    if (!Array.isArray(body?.hidden_ids) || body.hidden_ids.some((id: unknown) => !Number.isInteger(id) || (id as number) <= 0)) {
+      return NextResponse.json({ error: 'INVALID_INPUT', message: 'hidden_ids must be an array of positive integers.' }, { status: 400 })
+    }
+    const hidden_ids = body.hidden_ids as number[]
     const sessionId = await getAdminSession()
 
     const value = hidden_ids.join(',')
@@ -80,6 +86,10 @@ export async function POST(req: NextRequest) {
     } else {
       await callKw(sessionId, 'ir.config_parameter', 'create', [{ key: PARAM_KEY, value }], {})
     }
+
+    // Bust the shared categories cache so the storefront reflects the change immediately
+    // instead of waiting up to 5 min for the Data Cache to expire.
+    bustCategoriesCache()
 
     return NextResponse.json({ ok: true, hidden_count: hidden_ids.length })
   } catch (err) {
