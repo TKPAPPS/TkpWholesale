@@ -26,6 +26,8 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SESSION_SECRET` | Signs the customer session cookie (min 32 chars) |
 | `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data |
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting). Server uses the service-role key. |
+| `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
@@ -47,7 +49,7 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Featured template ids | 5 min | `odoo-helpers.ts` `_fetchFeaturedIds` (`unstable_cache`); bust via `bustFeaturedCache()` |
 | Hidden product ids | 5 min | `odoo-helpers.ts` `_fetchHiddenProductIds` (`unstable_cache`); bust via `bustHiddenProductsCache()` |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
-| Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
+| Categories | 5 min | `categories/route.ts` `_fetchCategories` (`unstable_cache`, tag `odoo-categories`); bust via `bustCategoriesCache()` |
 | Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |
 
 Call `bustProductCache()` / `bustWebsiteSettingsCache()` to invalidate after Odoo data changes.
@@ -61,9 +63,10 @@ term forces Odoo to compute live stock for the whole catalog (~600ms per cold re
 `buildVisibilityDomain` instead takes the cached in-stock id set (`getInStockIds`) and
 emits a plain `['id','in',[...]]` domain (~60ms). The visible set is identical to the old
 filter (verified); stock display is up to ~2 min stale and checkout still validates real
-stock. `buildVisibilityDomain` is shared by the listing and the search route, so both must
-pass the in-stock set. A `null` set (lookup failed) means "do not hide on stock" so a
-transient failure shows products rather than emptying the catalog.
+stock. `buildVisibilityDomain(settingsMap, hideOos, inStockIds, hiddenIds, extra)` is shared by
+the listing and the search route, so both must pass the in-stock set **and** the hidden-products
+set. A `null` in-stock set (lookup failed) means "do not hide on stock" so a transient failure
+shows products rather than emptying the catalog.
 
 **Storefront rules are admin-configurable** via `b2b_portal.site_settings` (one JSON config
 param): low-stock badge threshold, new-arrivals window, products/orders/invoices page sizes,
@@ -83,6 +86,21 @@ under `odoo-products` and resolves hide-OOS / published-settings / hidden-produc
 that cached function, so `bustHideOosCache`, `bustWebsiteSettingsCache`, and
 `bustHiddenProductsCache` each also `revalidateTag('odoo-products')` — otherwise an admin
 change wouldn't reach the storefront for up to 5 min.
+
+**Featured products** (`/admin/featured`): an ordered list of template ids in
+`b2b_portal.featured_template_ids` (order preserved). Admin curates via a product picker
+(`/api/admin/product-search`, admin-authed — the customer `/api/search` needs a customer
+session). The storefront shows a "Featured" strip at the top of `/products` (page 0, not
+searching), fed by `/api/featured`, which returns the curated templates filtered to currently
+visible ones, in the admin's order.
+
+**Announcement scheduling:** the Supabase `announcements` table has `starts_at` (publish-at)
+and `expires_at`. The public `/api/announcements` shows the most recent active announcement
+where `starts_at` is null/past AND `expires_at` is null/future. Admin sets both on the dashboard.
+
+**`b2b_portal.site_settings` defaults** (in `src/lib/site-settings.ts`): new-arrivals window
+defaults to **30 days**, low-stock threshold 20, products/orders/invoices per page 24/20/20,
+checkout note max 500 — all admin-editable on the Settings page within bounds.
 
 The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
 The `/products` and `/new-arrivals` pages refetch on language switch, so reading both
@@ -124,8 +142,35 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   in parallel (the `list_price` read is now unconditional, even for fixed-price
   customers) to save a serial Odoo hop on the percentage/formula path.
 
+## Customer navigation & UI
+- **Top nav** (`Navbar.tsx`): desktop (`md+`) = `Categories ▾` · Products · New Arrivals ·
+  Quick Order · `Orders ▾` (Orders / Recently Ordered / Invoices) · Favorites. The two
+  dropdowns live in `NavMenus.tsx` (`NavCategories`, `NavOrders`, hover-intent). Right side:
+  language switcher, global search overlay (icon → full-screen search), cart with hover
+  preview, user name + logout. Mobile top bar keeps logo + lang + search + cart + hamburger;
+  the hamburger lists the full flat set (`navLinks`) incl. Quick Order + Recently Ordered.
+- **Mobile bottom tab bar** (`BottomNav.tsx`, `md:hidden`, fixed): Home · Products · Quick
+  Order · Cart (live badge) · Orders. `<main>` has `pb-24 md:pb-8` so content clears it;
+  respects the iOS safe-area inset.
+- **Categories are global**: `categoriesStore` (zustand) is hydrated once in
+  `(customer)/layout.tsx` (alongside `siteSettingsStore`) and shared by the navbar dropdown,
+  the `Sidebar`, and the `MobileCategoryDrawer`.
+- **`/products` category is URL-driven** (`?category=<id>`): selection is derived from the
+  search param (not local state) so it links from the navbar dropdown and deep-links; the page
+  is wrapped in `<Suspense>` (required for `useSearchParams`). `handleCategorySelect` does
+  `router.push`, and page resets to 0 on category change. A **breadcrumb** (All Products › … ›
+  current) renders above the toolbar when a category is selected.
+- **`Sidebar.tsx`** powers BOTH the desktop sidebar (`hidden lg:block`) and the mobile
+  `MobileCategoryDrawer` (slide-in, `lg:hidden`). Card style with a left accent bar on the
+  active row; the label **selects** the category, the chevron **only expands** (distinct
+  targets). RTL-aware (`border-s`, `rtl:rotate-180`).
+- Customer stores live in `src/store/`: `authStore`, `langStore` (EN/HE + RTL), `cartStore`
+  (optimistic), `toastStore`, `siteSettingsStore`, `categoriesStore`.
+
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
+- **Nav items** (`navItems`): Dashboard · Products · Featured · Settings · Categories · Content
+  · API Health. (`/admin/logs` and `/admin/audit` placeholders were removed.)
 - **Desktop `md+`**: fixed `w-48` sidebar on the left; `<main>` is `flex-1 p-6 overflow-auto`.
 - **Mobile `< md`**: sidebar is hidden (`hidden md:flex`). A `<header>` top bar with hamburger button appears. Hamburger opens a slide-in `w-64` drawer (same nav items + logout as desktop sidebar).
 - `<main>` is now wrapped in `<div class="flex-1 flex flex-col min-w-0">` — this wrapper is required for the mobile top bar + main to stack correctly.
@@ -166,7 +211,11 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
 - `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).
-- Auth endpoint rate limiting is deferred — recommended for a future security batch if the portal becomes more publicly accessible.
 - Hebrew product search depends on Odoo translation data being populated for `product.template.name`. Missing translations = no Hebrew results for that product.
-- `/recently-ordered` and `/quick-order` pages are accessible by URL but are not linked from any navigation.
-- Customer top-nav (`Navbar.tsx` `navLinks`, shared by desktop + mobile): Products, New Arrivals, Favorites, Orders, Invoices. New Arrivals is a top-level menu item linking to `/new-arrivals` (it used to render as a strip at the top of `/products`; that strip was removed). Active state is `pathname.startsWith(href)`.
+- **Pre-launch:** production Vercel intentionally points at the **staging** Odoo while testing.
+  At launch, switch `ODOO_URL`/`ODOO_DB`/`ODOO_ADMIN_API_KEY` to production Odoo + redeploy.
+- **Cost-field exposure (accepted for now):** portal users can read `standard_price` (cost) on
+  products via Odoo's API. Owner accepted the risk for the ~50 known customers; the fix (a small
+  Odoo.sh addon restricting the field to internal users) is deferred. Revisit before wider access.
+- Session revocation only covers the app path + 4h TTL, not direct-API calls with a valid cookie
+  (would need the `isUidActive` check on the ~20 data routes).
