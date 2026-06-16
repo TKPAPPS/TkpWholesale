@@ -11,11 +11,11 @@ import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpin
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { Search, Package } from 'lucide-react'
-
-const PER_PAGE = 24
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 export default function ProductsPage() {
   const { lang } = useLangStore()
+  const PER_PAGE = useSiteSettingsStore((s) => s.settings.productsPerPage)
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
@@ -59,7 +59,7 @@ export default function ProductsPage() {
       setTotal(data.total ?? 0)
     } catch { setOdooError(true) }
     finally { setLoading(false) }
-  }, [page, sort, selectedCategory, lang])
+  }, [page, sort, selectedCategory, lang, PER_PAGE])
 
   const doSearch = useCallback(async (q: string) => {
     setLoading(true)
@@ -76,7 +76,7 @@ export default function ProductsPage() {
   useEffect(() => {
     if (search.trim()) doSearch(search)
     else loadProducts()
-  }, [page, sort, selectedCategory, lang])
+  }, [page, sort, selectedCategory, lang, PER_PAGE])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()

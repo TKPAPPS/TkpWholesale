@@ -43,6 +43,7 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Products (per pricelist+domain+pagination+lang) | 5 min | `odoo-helpers.ts` `_fetchProductsCached` (`unstable_cache` — shared across Vercel instances, survives cold starts) |
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
 | In-stock template ids | 2 min | `odoo-helpers.ts` `_fetchInStockIds` (`unstable_cache` — shared) — avoids per-request `qty_available` compute |
+| Storefront rules (site_settings) | 5 min | `odoo-helpers.ts` `_fetchSiteSettings` (`unstable_cache` — shared); bust via `bustSiteSettingsCache()` on admin save |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
 | Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
 | Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |
@@ -61,6 +62,16 @@ filter (verified); stock display is up to ~2 min stale and checkout still valida
 stock. `buildVisibilityDomain` is shared by the listing and the search route, so both must
 pass the in-stock set. A `null` set (lookup failed) means "do not hide on stock" so a
 transient failure shows products rather than emptying the catalog.
+
+**Storefront rules are admin-configurable** via `b2b_portal.site_settings` (one JSON config
+param): low-stock badge threshold, new-arrivals window, products/orders/invoices page sizes,
+and checkout note max length. Shape + defaults + clamping live in `src/lib/site-settings.ts`
+(import-safe on client and server). The admin edits them on the Settings page
+(`/api/admin/site-settings`); the customer app reads them from the public `/api/site-settings`
+(must stay `force-dynamic`, or Next prerenders it static and serves stale defaults) into
+`siteSettingsStore`, hydrated once in `(customer)/layout.tsx`. Defaults equal the values that
+were previously hardcoded, so behaviour is unchanged until an admin overrides one. The invoices
+**API** reads `invoicesPerPage` server-side so its page size matches the client's pagination.
 
 The product list is read in a **single language** (`lang` query param → `'en'` | `'he'`).
 The `/products` and `/new-arrivals` pages refetch on language switch, so reading both

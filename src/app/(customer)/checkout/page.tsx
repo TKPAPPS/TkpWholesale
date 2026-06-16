@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLangStore } from '@/store/langStore'
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { t } from '@/lib/i18n/translations'
 import { formatCurrency } from '@/lib/utils'
 import { Cart, DeliveryAddress } from '@/types'
@@ -20,6 +21,7 @@ interface ReviewData extends Cart {
 
 export default function CheckoutPage() {
   const { lang } = useLangStore()
+  const noteMaxLength = useSiteSettingsStore((s) => s.settings.checkoutNoteMaxLength)
   const router = useRouter()
   const [review, setReview] = useState<ReviewData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -115,7 +117,7 @@ export default function CheckoutPage() {
               onChange={(e) => setNote(e.target.value)}
               placeholder={t(lang, 'checkout.orderNotePlaceholder')}
               rows={3}
-              maxLength={500}
+              maxLength={noteMaxLength}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20 resize-none"
             />
           </div>

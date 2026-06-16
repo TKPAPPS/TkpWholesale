@@ -9,17 +9,17 @@ import { ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { Sparkles, ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
-const PER_PAGE = 24
-const DAYS = 90
-
-function getCreatedAfter(): string {
-  const d = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000)
+function getCreatedAfter(days: number): string {
+  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   return d.toISOString().split('T')[0]
 }
 
 export default function NewArrivalsPage() {
   const { lang } = useLangStore()
+  const PER_PAGE = useSiteSettingsStore((s) => s.settings.productsPerPage)
+  const DAYS = useSiteSettingsStore((s) => s.settings.newArrivalsDays)
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -32,7 +32,7 @@ export default function NewArrivalsPage() {
     try {
       const params = new URLSearchParams({
         sort: 'new_arrivals',
-        created_after: getCreatedAfter(),
+        created_after: getCreatedAfter(DAYS),
         page: String(page),
         per_page: String(PER_PAGE),
         lang,
@@ -44,7 +44,7 @@ export default function NewArrivalsPage() {
       setTotal(data.total ?? 0)
     } catch { setOdooError(true) }
     finally { setLoading(false) }
-  }, [page, lang])
+  }, [page, lang, PER_PAGE, DAYS])
 
   useEffect(() => { load() }, [load])
 

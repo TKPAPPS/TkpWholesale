@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_INVOICES } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
-const PER_PAGE = 20
 
 function computeStateLabel(paymentState: string, dueDateStr: string | null): string {
   if (paymentState === 'paid') return 'Paid'
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const filter = searchParams.get('filter') ?? 'all' // all | unpaid | paid
 
   if (USE_MOCK) {
+    const PER_PAGE = DEFAULT_SITE_SETTINGS.invoicesPerPage
     let invoices = [...MOCK_INVOICES]
     if (filter === 'unpaid') invoices = invoices.filter((i) => i.payment_state !== 'paid')
     if (filter === 'paid') invoices = invoices.filter((i) => i.payment_state === 'paid')
@@ -38,6 +39,8 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { getSiteSettings } = await import('@/lib/odoo/odoo-helpers')
+    const PER_PAGE = (await getSiteSettings()).invoicesPerPage
 
     const baseDomain: unknown[] = [
       ['move_type', '=', 'out_invoice'],

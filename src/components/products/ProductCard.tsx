@@ -12,6 +12,7 @@ import { QuantitySelector } from './QuantitySelector'
 import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
 import { useToastStore } from '@/store/toastStore'
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 interface ProductCardProps {
   product: Product
@@ -24,6 +25,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const setCart = useCartStore((s) => s.setCart)
   const fetchCart = useCartStore((s) => s.fetchCart)
   const showToast = useToastStore((s) => s.show)
+  const lowStockThreshold = useSiteSettingsStore((s) => s.settings.lowStockThreshold)
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
   const [imgError, setImgError] = useState(false)
@@ -88,7 +90,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
         )}
 
         {/* Low stock badge */}
-        {product.sellable && product.qty_available > 0 && product.qty_available < 20 && (
+        {product.sellable && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
           <div className="absolute top-2 start-2">
             <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
               Low stock

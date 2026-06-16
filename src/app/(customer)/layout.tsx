@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { useLangStore, initLang } from '@/store/langStore'
 import { useCartStore } from '@/store/cartStore'
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { Navbar } from '@/components/layout/Navbar'
 import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -13,6 +14,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   const { user, isLoading, setUser, setLoading, hydrate } = useAuthStore()
   const { setLang } = useLangStore()
   const fetchCart = useCartStore((s) => s.fetchCart)
+  const hydrateSiteSettings = useSiteSettingsStore((s) => s.hydrate)
 
   // useLayoutEffect runs synchronously before the browser paints, so returning
   // users who have a cached session never see the spinner flash.
@@ -23,6 +25,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
     // Fire cart fetch immediately — it uses the session cookie directly
     // and doesn't need the auth result. Runs in parallel with auth check.
     fetchCart()
+    hydrateSiteSettings()
     fetch('/api/auth/me')
       .then((res) => {
         if (!res.ok) throw new Error('not authenticated')

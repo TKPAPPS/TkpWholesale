@@ -3,6 +3,7 @@ import { getOdooSession } from './admin-session'
 import { langContext } from './session'
 import type { Product, PackagingOption, Cart, CartLine } from '@/types'
 import { unstable_cache, revalidateTag } from 'next/cache'
+import { DEFAULT_SITE_SETTINGS, sanitizeSiteSettings, type SiteSettings } from '@/lib/site-settings'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 
@@ -331,6 +332,62 @@ export async function getInStockIds(): Promise<Set<number> | null> {
 }
 
 export function bustProductCache() { revalidateTag('odoo-products') }
+
+// ─── Storefront rules (site_settings) ─────────────────────────────────────────
+// Admin-tunable rules stored as JSON in `b2b_portal.site_settings`. Cached + shared
+// like the other config params; the customer app reads these via /api/site-settings.
+const SITE_SETTINGS_KEY = 'b2b_portal.site_settings'
+
+const _fetchSiteSettings = unstable_cache(
+  async (): Promise<SiteSettings> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
+      [[['key', '=', SITE_SETTINGS_KEY]]], { fields: ['value'], limit: 1 },
+    ) as { value: string }[]
+    if (!rows[0]?.value) return DEFAULT_SITE_SETTINGS
+    try {
+      return sanitizeSiteSettings(JSON.parse(rows[0].value))
+    } catch {
+      return DEFAULT_SITE_SETTINGS
+    }
+  },
+  ['odoo-site-settings'],
+  { revalidate: 300, tags: ['odoo-site-settings'] },
+)
+
+export function bustSiteSettingsCache() { revalidateTag('odoo-site-settings') }
+
+// Returns the storefront rules, falling back to defaults if Odoo is unreachable.
+export async function getSiteSettings(): Promise<SiteSettings> {
+  try {
+    return await _fetchSiteSettings()
+  } catch {
+    return DEFAULT_SITE_SETTINGS
+  }
+}
+
+// Uncached read for the admin editor, so it always shows the true stored value.
+export async function readSiteSettingsUncached(): Promise<SiteSettings> {
+  const sessionId = await getOdooSession()
+  const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
+    [[['key', '=', SITE_SETTINGS_KEY]]], { fields: ['value'], limit: 1 },
+  ) as { value: string }[]
+  if (!rows[0]?.value) return DEFAULT_SITE_SETTINGS
+  try {
+    return sanitizeSiteSettings(JSON.parse(rows[0].value))
+  } catch {
+    return DEFAULT_SITE_SETTINGS
+  }
+}
+
+// Persist the storefront rules (create-or-update) and bust the shared cache.
+export async function writeSiteSettings(settings: SiteSettings): Promise<void> {
+  const sessionId = await getOdooSession()
+  await callKw(sessionId, 'ir.config_parameter', 'set_param',
+    [SITE_SETTINGS_KEY, JSON.stringify(settings)], {},
+  )
+  bustSiteSettingsCache()
+}
 
 // Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
 // ALL Vercel instances and surviving cold starts, unlike the previous per-instance Map.

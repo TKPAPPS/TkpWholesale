@@ -9,11 +9,11 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/Input'
 import { Search, ClipboardList } from 'lucide-react'
-
-const PER_PAGE = 20
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 export default function OrdersPage() {
   const { lang } = useLangStore()
+  const PER_PAGE = useSiteSettingsStore((s) => s.settings.ordersPerPage)
   const [orders, setOrders] = useState<Order[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -35,7 +35,7 @@ export default function OrdersPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchOrders() }, [page])
+  useEffect(() => { fetchOrders() }, [page, PER_PAGE])
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setPage(0); fetchOrders() }
 

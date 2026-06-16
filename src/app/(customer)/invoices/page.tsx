@@ -9,8 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { FileText, Download, AlertCircle } from 'lucide-react'
 import { useToastStore } from '@/store/toastStore'
-
-const PER_PAGE = 20
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 type Filter = 'all' | 'unpaid' | 'paid'
 
@@ -34,6 +33,7 @@ function PaymentBadge({ state, label, lang }: { state: string; label: string; la
 export default function InvoicesPage() {
   const { lang } = useLangStore()
   const showToast = useToastStore((s) => s.show)
+  const PER_PAGE = useSiteSettingsStore((s) => s.settings.invoicesPerPage)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [total, setTotal] = useState(0)
   const [totalOutstanding, setTotalOutstanding] = useState(0)
@@ -59,7 +59,7 @@ export default function InvoicesPage() {
     }
   }
 
-  useEffect(() => { fetchInvoices() }, [page])
+  useEffect(() => { fetchInvoices() }, [page, PER_PAGE])
 
   const applyFilter = (f: Filter) => {
     setFilter(f)
