@@ -75,6 +75,7 @@ const translations = {
     'recent.title': 'Recently Ordered',
     'recent.empty': 'No recent orders.',
     'newArrivals.title': 'New Arrivals',
+    'featured.title': 'Featured',
     // Common
     'common.loading': 'Loading...',
     'common.error': 'Something went wrong.',
@@ -206,6 +207,7 @@ const translations = {
     'recent.title': 'הוזמן לאחרונה',
     'recent.empty': 'אין הזמנות אחרונות.',
     'newArrivals.title': 'מוצרים חדשים',
+    'featured.title': 'מומלצים',
     'nav.home': 'ראשי',
     'nav.quickOrder': 'הזמנה מהירה',
     'nav.cartEmpty': 'העגלה שלך ריקה',

@@ -44,6 +44,8 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
 | In-stock template ids | 2 min | `odoo-helpers.ts` `_fetchInStockIds` (`unstable_cache` — shared) — avoids per-request `qty_available` compute |
 | Storefront rules (site_settings) | 5 min | `odoo-helpers.ts` `_fetchSiteSettings` (`unstable_cache` — shared); bust via `bustSiteSettingsCache()` on admin save |
+| Featured template ids | 5 min | `odoo-helpers.ts` `_fetchFeaturedIds` (`unstable_cache`); bust via `bustFeaturedCache()` |
+| Hidden product ids | 5 min | `odoo-helpers.ts` `_fetchHiddenProductIds` (`unstable_cache`); bust via `bustHiddenProductsCache()` |
 | Hide-OOS setting | 1 min | `odoo-helpers.ts` `_fetchHideOos` (`unstable_cache` — shared across Vercel instances) |
 | Categories | 5 min | `categories/route.ts` `_cache` (module memory) |
 | Product images | 1 day browser + Vercel edge (`s-maxage`, `stale-while-revalidate` 7 days) | `images/product/[id]/[size]/route.ts` `Cache-Control: public` |

@@ -10,7 +10,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
-import { Search, Package } from 'lucide-react'
+import { Search, Package, Star } from 'lucide-react'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 export default function ProductsPage() {
@@ -26,6 +26,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [odooError, setOdooError] = useState(false)
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set())
+  const [featured, setFeatured] = useState<Product[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -40,6 +41,13 @@ export default function ProductsPage() {
       ))
     })
   }, [])
+
+  useEffect(() => {
+    fetch(`/api/featured?lang=${lang}`)
+      .then((r) => r.json())
+      .then((d) => setFeatured(d.products ?? []))
+      .catch(() => setFeatured([]))
+  }, [lang])
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -121,6 +129,20 @@ export default function ProductsPage() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
+        {/* Featured strip */}
+        {featured.length > 0 && !search && page === 0 && (
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Star className="h-4 w-4 text-brand-700" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">{t(lang, 'featured.title')}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {featured.map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
+            </div>
+            <hr className="mt-4 border-gray-100" />
+          </section>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <MobileCategoryButton onClick={() => setDrawerOpen(true)} selectedCategoryId={selectedCategory} />

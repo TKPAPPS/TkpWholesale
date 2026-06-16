@@ -389,6 +389,61 @@ export async function writeSiteSettings(settings: SiteSettings): Promise<void> {
   bustSiteSettingsCache()
 }
 
+// ─── ID-list config params (featured / hidden products) ───────────────────────
+// Both store an ordered/unordered list of template ids as a comma-separated string,
+// mirroring the existing `hidden_category_ids` convention.
+function parseIdList(value: string | undefined): number[] {
+  return value ? value.split(',').map(Number).filter(Boolean) : []
+}
+
+async function readIdListParam(key: string): Promise<number[]> {
+  const sessionId = await getOdooSession()
+  const rows = await callKw(sessionId, 'ir.config_parameter', 'search_read',
+    [[['key', '=', key]]], { fields: ['value'], limit: 1 },
+  ) as { value: string }[]
+  return parseIdList(rows[0]?.value)
+}
+
+async function writeIdListParam(key: string, ids: number[]): Promise<void> {
+  const sessionId = await getOdooSession()
+  await callKw(sessionId, 'ir.config_parameter', 'set_param', [key, ids.join(',')], {})
+}
+
+const FEATURED_KEY = 'b2b_portal.featured_template_ids'
+const HIDDEN_PRODUCTS_KEY = 'b2b_portal.hidden_product_ids'
+
+// Featured: ordered list of promoted template ids (order is preserved and meaningful).
+const _fetchFeaturedIds = unstable_cache(
+  async (): Promise<number[]> => readIdListParam(FEATURED_KEY),
+  ['odoo-featured'],
+  { revalidate: 300, tags: ['odoo-featured'] },
+)
+export function bustFeaturedCache() { revalidateTag('odoo-featured') }
+export async function getFeaturedIds(): Promise<number[]> {
+  try { return await _fetchFeaturedIds() } catch { return [] }
+}
+export function readFeaturedIdsUncached() { return readIdListParam(FEATURED_KEY) }
+export async function writeFeaturedIds(ids: number[]): Promise<void> {
+  await writeIdListParam(FEATURED_KEY, ids)
+  bustFeaturedCache()
+}
+
+// Hidden products: portal-level hide (order irrelevant), excluded from the listing.
+const _fetchHiddenProductIds = unstable_cache(
+  async (): Promise<number[]> => readIdListParam(HIDDEN_PRODUCTS_KEY),
+  ['odoo-hidden-products'],
+  { revalidate: 300, tags: ['odoo-hidden-products'] },
+)
+export function bustHiddenProductsCache() { revalidateTag('odoo-hidden-products') }
+export async function getHiddenProductIds(): Promise<Set<number>> {
+  try { return new Set(await _fetchHiddenProductIds()) } catch { return new Set() }
+}
+export function readHiddenProductIdsUncached() { return readIdListParam(HIDDEN_PRODUCTS_KEY) }
+export async function writeHiddenProductIds(ids: number[]): Promise<void> {
+  await writeIdListParam(HIDDEN_PRODUCTS_KEY, ids)
+  bustHiddenProductsCache()
+}
+
 // Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
 // ALL Vercel instances and surviving cold starts, unlike the previous per-instance Map.
 // The Odoo admin session is fetched inside (not passed in) so the rotating session token
