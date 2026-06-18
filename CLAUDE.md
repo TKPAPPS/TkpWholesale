@@ -98,6 +98,22 @@ visible ones, in the admin's order.
 and `expires_at`. The public `/api/announcements` shows the most recent active announcement
 where `starts_at` is null/past AND `expires_at` is null/future. Admin sets both on the dashboard.
 
+**New arrivals = product.template `create_date` within the window** (NOT the
+`product.website.settings` publish-record date). `/new-arrivals` sends `sort=new_arrivals`
++ `created_after=<now - newArrivalsDays>`; `_fetchProductsCached` pushes
+`['create_date','>=',created_after]` into the same `product.template` query as the listing,
+then applies the normal visibility filter (published on `WEBSITE_ID` + in-stock + not hidden).
+So a product only shows if it is BOTH recently created AND published to the portal.
+**Migration gotcha (caused an empty list on the 2026-06 staging swap):** an Odoo DB
+import/migration can bulk-stamp `product.website.settings.create_date` with the import
+timestamp — the old logic keyed off that field and went silently empty. Keying off the
+product's own `create_date` is the stable signal, but if a *full* re-import also resets
+template `create_date`, OR no product has been published within `newArrivalsDays`, the list
+is legitimately empty. **When switching the Odoo DB (esp. the launch cutover), sanity-check
+New Arrivals:** count `product.template` rows with `create_date >= cutoff` that are published
+on website 3; if 0, widen `newArrivalsDays` in Admin → Settings or publish newer products
+rather than assuming a code bug.
+
 **`b2b_portal.site_settings` defaults** (in `src/lib/site-settings.ts`): new-arrivals window
 defaults to **30 days**, low-stock threshold 20, products/orders/invoices per page 24/20/20,
 checkout note max 500 — all admin-editable on the Settings page within bounds.
@@ -214,6 +230,8 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - Hebrew product search depends on Odoo translation data being populated for `product.template.name`. Missing translations = no Hebrew results for that product.
 - **Pre-launch:** production Vercel intentionally points at the **staging** Odoo while testing.
   At launch, switch `ODOO_URL`/`ODOO_DB`/`ODOO_ADMIN_API_KEY` to production Odoo + redeploy.
+  After any Odoo DB switch, **sanity-check New Arrivals** (see the new-arrivals note above): if
+  empty, it's almost always data (nothing published within `newArrivalsDays`), not a code bug.
 - **Cost-field exposure (accepted for now):** portal users can read `standard_price` (cost) on
   products via Odoo's API. Owner accepted the risk for the ~50 known customers; the fix (a small
   Odoo.sh addon restricting the field to internal users) is deferred. Revisit before wider access.
