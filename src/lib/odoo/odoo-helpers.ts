@@ -265,14 +265,6 @@ export function buildVisibilityDomain(
   ]
 }
 
-export async function fetchRecentlyPublishedIds(sessionId: string, publishedAfter: string): Promise<number[]> {
-  const rows = await callKw(sessionId, 'product.website.settings', 'search_read',
-    [[['website_id', '=', WEBSITE_ID], ['is_published', '=', true], ['create_date', '>=', publishedAfter]]],
-    { fields: ['product_tmpl_id'] },
-  ) as unknown as { product_tmpl_id: [number, string] }[]
-  return rows.map(r => r.product_tmpl_id[0])
-}
-
 // Fetch published product settings via Next.js data cache — shared across all Vercel instances.
 // Returns serializable [templateId, allowOos][] tuples (Maps aren't JSON-serializable).
 // Costs ~1s to fetch thousands of rows from Odoo; cached so cold starts don't pay this cost.
@@ -507,22 +499,24 @@ const _fetchProductsCached = unstable_cache(
     const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
     const sessionId = await getOdooSession()
 
-    // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and (if
-    // new_arrivals) recently published IDs all in parallel — avoids a sequential
-    // preflight, and all four are cached so cold requests rarely pay the full cost.
-    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, recentIds] = await Promise.all([
+    // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and the
+    // hidden id set in parallel — avoids a sequential preflight, and all four are
+    // cached so cold requests rarely pay the full cost.
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
-      newArrivalsAfter ? fetchRecentlyPublishedIds(sessionId, newArrivalsAfter) : Promise.resolve(null),
     ])
     if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
-    // Merge new-arrivals ID filter into the caller's domain
+    // New arrivals = products whose own template was created within the window.
+    // (Previously keyed off product.website.settings.create_date — the publish date —
+    // which silently empties after an Odoo DB import/migration bulk-stamps those
+    // records with the import timestamp. The template create_date is the stable signal.)
     let effectiveDomain: unknown[] = domain
-    if (recentIds && recentIds.length > 0) {
-      effectiveDomain = [['id', 'in', recentIds], ...domain]
+    if (newArrivalsAfter) {
+      effectiveDomain = [['create_date', '>=', newArrivalsAfter], ...domain]
     }
 
     // Visibility rules (published + stock + admin hide) — shared with the search route.

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
 
     // For non-new-arrivals createdAfter, filter by product template create_date directly.
-    // For new_arrivals, fetchRecentlyPublishedIds runs in parallel inside fetchOdooProducts.
+    // For new_arrivals, fetchOdooProducts applies the same create_date window internally.
     if (createdAfter && sort !== 'new_arrivals') {
       domain.push(['create_date', '>=', createdAfter])
     }
