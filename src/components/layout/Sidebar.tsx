@@ -31,11 +31,14 @@ function CategoryItem({ cat, selectedId, onSelect, depth = 0 }: {
 
   return (
     <div>
-      {/* Label selects; the chevron only expands (distinct targets). */}
+      {/* Label selects and (if it has children) expands; the chevron still toggles on its own. */}
       <div className={cn(rowBase, isSelected ? rowActive : rowIdle)}>
         <button
           className={cn('flex-1 px-3 py-2.5 text-sm text-start truncate', depth > 0 && 'ps-5 text-[13px]')}
-          onClick={() => onSelect(cat.id)}
+          onClick={() => {
+            onSelect(cat.id)
+            if (hasChildren) setOpen(true)
+          }}
         >
           {name}
         </button>
