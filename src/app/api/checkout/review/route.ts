@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart, readCart, emptyCart, fetchDeliveryAddresses } = await import('@/lib/odoo/odoo-helpers')
+    const { findCart, readCart, emptyCart, fetchDeliveryAddresses, findUnorderableTemplateIds } = await import('@/lib/odoo/odoo-helpers')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
     const [cart, delivery_addresses] = await Promise.all([
@@ -31,11 +31,20 @@ export async function GET(req: NextRequest) {
       fetchDeliveryAddresses(sessionId, parsed.commercial_partner_id),
     ])
 
+    // Re-check stock now (the cart may have sat for days): flag any line whose product is no
+    // longer orderable so the buyer sees it and can't confirm until it's removed.
+    const unorderable = await findUnorderableTemplateIds(sessionId, cart.lines.map(l => l.template_id))
+    const lines = cart.lines.map(l =>
+      unorderable.has(l.template_id) ? { ...l, warnings: [...l.warnings, 'OUT_OF_STOCK'] } : l,
+    )
+
     const blocking_errors: string[] = []
-    if (cart.lines.length === 0) blocking_errors.push('Cart is empty.')
+    if (lines.length === 0) blocking_errors.push('EMPTY')
+    if (unorderable.size > 0) blocking_errors.push('OUT_OF_STOCK_ITEMS')
 
     return NextResponse.json({
       ...cart,
+      lines,
       valid: blocking_errors.length === 0,
       blocking_errors,
       delivery_addresses,

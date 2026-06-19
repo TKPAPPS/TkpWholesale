@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart } = await import('@/lib/odoo/odoo-helpers')
-    const { callKw } = await import('@/lib/odoo/client')
+    const { findCart, findUnorderableTemplateIds } = await import('@/lib/odoo/odoo-helpers')
+    const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
     if (!cartId) {
@@ -79,6 +79,20 @@ export async function POST(req: NextRequest) {
         currency: order.currency_id[1] ?? 'THB',
         already_confirmed: true,
       })
+    }
+
+    // Hard stock re-check (safety net even if the review was stale): refuse to confirm an order
+    // that contains an item which is now out of stock and not allow-out-of-stock.
+    const lineRows = await searchRead(sessionId, 'sale.order.line',
+      [['order_id', '=', cartId]], ['product_template_id'],
+    ) as { product_template_id: [number, string] | false }[]
+    const lineTemplateIds = lineRows.map(r => (Array.isArray(r.product_template_id) ? r.product_template_id[0] : 0)).filter(Boolean)
+    const unorderable = await findUnorderableTemplateIds(sessionId, lineTemplateIds)
+    if (unorderable.size > 0) {
+      return NextResponse.json(
+        { error: 'ITEMS_OUT_OF_STOCK', message: 'Some items are no longer in stock. Please review your cart.' },
+        { status: 409 },
+      )
     }
 
     // Validate delivery address belongs to this commercial partner

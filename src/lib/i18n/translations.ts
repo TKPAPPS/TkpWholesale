@@ -57,6 +57,8 @@ const translations = {
     'checkout.confirmOrder': 'Confirm Order',
     'checkout.confirmWarning': 'Once confirmed, the order cannot be edited on this portal.',
     'checkout.validationFailed': 'Some items are no longer available.',
+    'checkout.lineOutOfStock': 'No longer in stock',
+    'checkout.outOfStockBlock': 'Some items are out of stock. Remove them in your',
     // Confirmation
     'confirmation.title': 'Order Confirmed',
     'confirmation.subtitle': 'Your order has been received.',
@@ -200,6 +202,8 @@ const translations = {
     'checkout.confirmOrder': 'אשר הזמנה',
     'checkout.confirmWarning': 'לאחר האישור, לא ניתן לערוך את ההזמנה בפורטל זה.',
     'checkout.validationFailed': 'חלק מהפריטים אינם זמינים עוד.',
+    'checkout.lineOutOfStock': 'אזל מהמלאי',
+    'checkout.outOfStockBlock': 'חלק מהפריטים אזלו מהמלאי. הסר אותם ב',
     'confirmation.title': 'ההזמנה אושרה',
     'confirmation.subtitle': 'ההזמנה שלך התקבלה.',
     'confirmation.orderNumber': 'מספר הזמנה',

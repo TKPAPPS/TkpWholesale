@@ -104,7 +104,9 @@ export default function CheckoutPage() {
                     <p className="font-medium text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                     <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
                     {line.warnings.length > 0 && (
-                      <p className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{line.warnings[0]}</p>
+                      <p className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />
+                        {line.warnings[0] === 'OUT_OF_STOCK' ? t(lang, 'checkout.lineOutOfStock') : line.warnings[0]}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -173,7 +175,13 @@ export default function CheckoutPage() {
           {/* Confirm */}
           {confirmError && <p className="text-sm text-red-600 text-center">{confirmError}</p>}
           {!review.valid && (
-            <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">{t(lang, 'checkout.validationFailed')}</p>
+            <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+              {review.blocking_errors?.includes('OUT_OF_STOCK_ITEMS') ? (
+                <span>{t(lang, 'checkout.outOfStockBlock')} <Link href="/cart" className="underline font-medium">{t(lang, 'cart.title')}</Link></span>
+              ) : (
+                t(lang, 'checkout.validationFailed')
+              )}
+            </div>
           )}
           <p className="text-xs text-gray-400 text-center">{t(lang, 'checkout.confirmWarning')}</p>
           <Button onClick={confirm} loading={confirming} disabled={!review.valid || !selectedAddress} className="w-full" size="lg">

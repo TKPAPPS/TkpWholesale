@@ -375,6 +375,28 @@ export async function getInStockIds(): Promise<Set<number> | null> {
 
 export function bustProductCache() { revalidateTag('odoo-products') }
 
+// Given a set of template ids (e.g. the cart's), return the ones that can NOT currently be
+// ordered: out of stock AND not flagged allow-out-of-stock on this website. Used to warn at
+// checkout review and to hard-block at confirm, so an item that went OOS while a cart sat for
+// days can't slip through. Returns an empty set when stock is unknown (fails open).
+export async function findUnorderableTemplateIds(
+  sessionId: string,
+  templateIds: number[],
+): Promise<Set<number>> {
+  const out = new Set<number>()
+  if (templateIds.length === 0) return out
+  const [inStockIds, settingsMap] = await Promise.all([
+    getInStockIds(),
+    fetchWebsitePublishedSettings(sessionId),
+  ])
+  if (inStockIds === null) return out // stock lookup failed → don't block
+  for (const tid of Array.from(new Set(templateIds))) {
+    const allowOos = settingsMap.get(tid) ?? false
+    if (!inStockIds.has(tid) && !allowOos) out.add(tid)
+  }
+  return out
+}
+
 // Cached per-uid "is this Odoo user still active?" check (revalidate 5 min). Lets the
 // portal revoke a customer's access shortly after an admin deactivates them in Odoo,
 // instead of waiting out the full session TTL. Fails OPEN (treats as active) on an
