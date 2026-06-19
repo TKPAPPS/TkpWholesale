@@ -505,6 +505,129 @@ export async function writeHiddenProductIds(ids: number[]): Promise<void> {
   bustHiddenProductsCache()
 }
 
+// Resolve the customer's effective (pricelist) price for an arbitrary set of templates and
+// return a templateId -> price map. Shared by the price-sort ordering and best-sellers.
+// Mirrors the listing resolver: global / category (via parent_path) / product / variant rules.
+async function resolveEffectivePrices(
+  sessionId: string,
+  pricelistId: number,
+  prods: OdooProduct[],
+): Promise<Map<number, number>> {
+  if (prods.length === 0) return new Map()
+  const templateIds = prods.map(p => p.id)
+  const variantIds = Array.from(new Set(prods.flatMap(p => p.product_variant_ids)))
+  const items = await (callKw(sessionId, 'product.pricelist.item', 'search_read',
+    [[
+      '&', ['pricelist_id', '=', pricelistId],
+      '|', '|', '|',
+      ['applied_on', '=', '3_global'],
+      ['applied_on', '=', '2_product_category'],
+      '&', ['applied_on', '=', '1_product'], ['product_tmpl_id', 'in', templateIds],
+      '&', ['applied_on', '=', '0_product_variant'], ['product_id', 'in', variantIds],
+    ]],
+    { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id', 'categ_id',
+               'compute_price', 'percent_price', 'price_discount',
+               'fixed_price', 'price_surcharge', 'min_quantity'] },
+  ) as unknown as Promise<OdooPricelistItem[]>).catch(() => [] as OdooPricelistItem[])
+
+  let categAncestors: Map<number, Set<number>> | undefined
+  if (items.some(it => it.applied_on === '2_product_category')) {
+    const prodCategIds = Array.from(new Set(
+      prods.map(p => (Array.isArray(p.categ_id) ? p.categ_id[0] : 0)).filter(Boolean)
+    ))
+    if (prodCategIds.length > 0) {
+      const cats = await callKw(sessionId, 'product.category', 'read', [prodCategIds],
+        { fields: ['id', 'parent_path'] },
+      ) as { id: number; parent_path: string | false }[]
+      const ancestorByCateg = new Map<number, Set<number>>()
+      for (const c of cats) {
+        const ids = typeof c.parent_path === 'string'
+          ? c.parent_path.split('/').filter(Boolean).map(Number)
+          : [c.id]
+        ancestorByCateg.set(c.id, new Set(ids))
+      }
+      categAncestors = new Map()
+      for (const p of prods) {
+        const cid = Array.isArray(p.categ_id) ? p.categ_id[0] : 0
+        if (cid) categAncestors.set(p.id, ancestorByCateg.get(cid) ?? new Set([cid]))
+      }
+    }
+  }
+
+  const priceMap = buildPlPriceMap(prods, items, categAncestors)
+  // Fill in list_price for products with no matching rule so every product has a price.
+  const out = new Map<number, number>()
+  for (const p of prods) out.set(p.id, priceMap.get(p.id) ?? p.list_price)
+  return out
+}
+
+// All visible template ids ordered by the customer's effective price, ascending. Odoo can only
+// sort by list_price (which doesn't match the displayed pricelist price), so we resolve every
+// visible product's price once and cache the ordering per pricelist (price is language-neutral).
+const _fetchPriceOrderedIds = unstable_cache(
+  async (pricelistId: number): Promise<number[]> => {
+    const sessionId = await getOdooSession()
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
+      fetchWebsitePublishedSettings(sessionId),
+      getHideOutOfStock(sessionId),
+      getInStockIds(),
+      getHiddenProductIds(),
+    ])
+    const domain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, [])
+    const prods = await searchRead(sessionId, 'product.template', domain,
+      ['id', 'list_price', 'categ_id', 'product_variant_ids'], {},
+    ) as unknown as OdooProduct[]
+    const priceMap = await resolveEffectivePrices(sessionId, pricelistId, prods)
+    return prods
+      .map(p => ({ id: p.id, price: priceMap.get(p.id) ?? p.list_price }))
+      .sort((a, b) => a.price - b.price)
+      .map(x => x.id)
+  },
+  ['odoo-price-ordered'],
+  { revalidate: 600, tags: ['odoo-products'] },
+)
+export async function getPriceOrderedIds(pricelistId: number): Promise<number[]> {
+  try { return await _fetchPriceOrderedIds(pricelistId) } catch { return [] }
+}
+
+// Best sellers: template ids ranked by how often they appear on confirmed/delivered order
+// lines. `product_template_id` is not stored on sale.order.line, so we group by the stored
+// `product_id` (variant) and roll the counts up to templates. Service lines (Delivery, etc.)
+// rank high but get filtered out later by the storefront visibility rules. Cached 1h.
+const _fetchBestSellerIds = unstable_cache(
+  async (): Promise<number[]> => {
+    const sessionId = await getOdooSession()
+    const groups = await callKw(sessionId, 'sale.order.line', 'read_group',
+      [[['order_id.state', 'in', ['sale', 'done']], ['product_id', '!=', false]]],
+      { fields: ['product_id'], groupby: ['product_id'] },
+    ) as { product_id: [number, string]; product_id_count: number }[]
+    if (groups.length === 0) return []
+
+    const variantIds = groups.map(g => g.product_id[0])
+    const variants = await callKw(sessionId, 'product.product', 'read', [variantIds],
+      { fields: ['product_tmpl_id'] },
+    ) as { id: number; product_tmpl_id: [number, string] | false }[]
+    const tmplOf = new Map(variants.map(v => [v.id, Array.isArray(v.product_tmpl_id) ? v.product_tmpl_id[0] : 0]))
+
+    const countByTmpl = new Map<number, number>()
+    for (const g of groups) {
+      const tmpl = tmplOf.get(g.product_id[0])
+      if (!tmpl) continue
+      countByTmpl.set(tmpl, (countByTmpl.get(tmpl) ?? 0) + (g.product_id_count ?? 0))
+    }
+    return Array.from(countByTmpl.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 40)
+      .map(([id]) => id)
+  },
+  ['odoo-best-sellers'],
+  { revalidate: 3600, tags: ['odoo-best-sellers'] },
+)
+export function bustBestSellersCache() { revalidateTag('odoo-best-sellers') }
+export async function getBestSellerIds(): Promise<number[]> {
+  try { return await _fetchBestSellerIds() } catch { return [] }
+}
+
 // Set a template's per-website published flag in product.website.settings (the
 // source of truth for what's on this website), creating the row if absent. This is
 // the "true publish" control; bust the website-settings cache so it takes effect.

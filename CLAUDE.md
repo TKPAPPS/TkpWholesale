@@ -222,6 +222,21 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - `signSession(payload)` in `src/lib/odoo/session.ts` is the only place that should write a customer session cookie value. Only called from `src/app/api/auth/login/route.ts`. Throws if SESSION_SECRET is unavailable in production — the login route's try/catch converts this to a 503 response.
 - Old unsigned (plain JSON) cookies are rejected — users must re-login after this change.
 
+## Storefront strips, price sort & low-stock rule
+- **Sort by price** (`sort=price_asc`/`price_desc`) orders by the customer's *resolved pricelist
+  price*, not `list_price` (Odoo can only sort by `list_price`, which looked "mixed"). The route
+  uses `getPriceOrderedIds(pricelistId)` — a cached (10 min, per pricelist) full-catalog list of
+  visible template ids ordered by effective price — intersects it with the selected category,
+  pages by id, then re-imposes the order. With no pricelist it falls back to `list_price asc/desc`.
+- **Best sellers** (`/api/best-sellers`, strip on `/products` page 0): `getBestSellerIds()` ranks
+  templates by confirmed-order-line frequency. `sale.order.line.product_template_id` is NOT
+  stored, so it groups by the stored `product_id` (variant) and rolls counts up to templates;
+  service lines (Delivery, etc.) rank high but are dropped by storefront visibility. Cached 1h.
+  No admin curation (unlike Featured, which stays manual via `b2b_portal.featured_template_ids`).
+- **Low-stock badge rule:** shows when `qty_available > 0 AND qty_available < lowStockThreshold`
+  (default 20, tunable 0-100000 in Admin → Settings → `b2b_portal.site_settings`). Rendered in
+  `ProductCard.tsx`. Out-of-stock (qty 0) products show the OOS state, not the low-stock badge.
+
 ## Odoo 18 gotchas (verified on the staging8 DB)
 - **`sale.order` has NO `commercial_partner_id` field.** Reading it throws
   `Invalid field 'commercial_partner_id' on model 'sale.order'`. This silently broke every

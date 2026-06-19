@@ -13,7 +13,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { LoadingSpinner, ProductCardSkeleton } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
-import { Search, Package, Star, ChevronRight } from 'lucide-react'
+import { Search, Package, Star, ChevronRight, TrendingUp } from 'lucide-react'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
 // Walk the category tree to the selected id, returning the ancestor path (for breadcrumbs).
@@ -39,7 +39,7 @@ function ProductsContent() {
   const categoryParam = searchParams.get('category')
   const selectedCategory = categoryParam ? Number(categoryParam) : null
   const page = Number(searchParams.get('page') ?? 0)
-  const sort = (searchParams.get('sort') ?? 'sku') as 'sku' | 'name' | 'price' | 'recently_ordered'
+  const sort = (searchParams.get('sort') ?? 'sku') as 'sku' | 'name' | 'price_asc' | 'price_desc' | 'recently_ordered'
 
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
@@ -48,6 +48,7 @@ function ProductsContent() {
   const [odooError, setOdooError] = useState(false)
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set())
   const [featured, setFeatured] = useState<Product[]>([])
+  const [bestSellers, setBestSellers] = useState<Product[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -77,6 +78,13 @@ function ProductsContent() {
       .then((r) => r.json())
       .then((d) => setFeatured(d.products ?? []))
       .catch(() => setFeatured([]))
+  }, [lang])
+
+  useEffect(() => {
+    fetch(`/api/best-sellers?lang=${lang}`)
+      .then((r) => r.json())
+      .then((d) => setBestSellers(d.products ?? []))
+      .catch(() => setBestSellers([]))
   }, [lang])
 
   const loadProducts = useCallback(async () => {
@@ -178,6 +186,20 @@ function ProductsContent() {
           </section>
         )}
 
+        {/* Best sellers strip (most-ordered products) */}
+        {bestSellers.length > 0 && !search && page === 0 && !selectedCategory && (
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-brand-700" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">{t(lang, 'bestSellers.title')}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {bestSellers.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
+            </div>
+            <hr className="mt-4 border-gray-100" />
+          </section>
+        )}
+
         {/* Breadcrumb (when a category is selected and not searching) */}
         {categoryPath.length > 0 && !search && (
           <nav className="flex items-center flex-wrap gap-1 text-xs text-gray-400 mb-3">
@@ -217,7 +239,8 @@ function ProductsContent() {
           >
             <option value="sku">{t(lang, 'products.sortDefault')}</option>
             <option value="name">{t(lang, 'products.sortName')}</option>
-            <option value="price">{t(lang, 'products.sortPrice')}</option>
+            <option value="price_asc">{t(lang, 'products.sortPriceLow')}</option>
+            <option value="price_desc">{t(lang, 'products.sortPriceHigh')}</option>
             <option value="recently_ordered">{t(lang, 'products.sortRecent')}</option>
           </select>
         </div>
