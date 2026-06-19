@@ -40,6 +40,7 @@ function ProductsContent() {
   const selectedCategory = categoryParam ? Number(categoryParam) : null
   const page = Number(searchParams.get('page') ?? 0)
   const sort = (searchParams.get('sort') ?? 'sku') as 'sku' | 'name' | 'price_asc' | 'price_desc' | 'recently_ordered'
+  const inStockOnly = searchParams.get('in_stock_only') === '1'
 
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
@@ -98,6 +99,7 @@ function ProductsContent() {
         lang,
       })
       if (selectedCategory) params.set('category_id', String(selectedCategory))
+      if (inStockOnly) params.set('in_stock_only', '1')
       const res = await fetch(`/api/products?${params}`)
       if (res.status === 503) { setOdooError(true); return }
       const data = await res.json()
@@ -105,7 +107,7 @@ function ProductsContent() {
       setTotal(data.total ?? 0)
     } catch { setOdooError(true) }
     finally { setLoading(false) }
-  }, [page, sort, selectedCategory, lang, PER_PAGE])
+  }, [page, sort, selectedCategory, lang, PER_PAGE, inStockOnly])
 
   const doSearch = useCallback(async (q: string) => {
     setLoading(true)
@@ -122,7 +124,7 @@ function ProductsContent() {
   useEffect(() => {
     if (search.trim()) doSearch(search)
     else loadProducts()
-  }, [page, sort, selectedCategory, lang, PER_PAGE])
+  }, [page, sort, selectedCategory, lang, PER_PAGE, inStockOnly])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -243,6 +245,19 @@ function ProductsContent() {
             <option value="price_desc">{t(lang, 'products.sortPriceHigh')}</option>
             <option value="recently_ordered">{t(lang, 'products.sortRecent')}</option>
           </select>
+          <button
+            type="button"
+            onClick={() => setParams({ in_stock_only: inStockOnly ? null : '1', page: null })}
+            aria-pressed={inStockOnly}
+            className={cn(
+              'rounded-lg border px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap',
+              inStockOnly
+                ? 'border-brand-700 bg-brand-50 text-brand-700'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
+            )}
+          >
+            {t(lang, 'products.inStockOnly')}
+          </button>
         </div>
 
         {/* Results count */}

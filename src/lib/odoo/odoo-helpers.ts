@@ -682,6 +682,7 @@ const _fetchProductsCached = unstable_cache(
     pricelistId: number,       // 0 = no pricelist
     newArrivalsAfter: string,  // '' = not a new-arrivals query
     lang: 'en' | 'he' | 'both',
+    inStockOnly: boolean,      // true = restrict to currently in-stock products
   ): Promise<{ products: Product[]; total: number }> => {
     const domain: unknown[] = JSON.parse(domainJson)
     const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
@@ -703,13 +704,15 @@ const _fetchProductsCached = unstable_cache(
     // which silently empties after an Odoo DB import/migration bulk-stamps those
     // records with the import timestamp. The template create_date is the stable signal.)
     let effectiveDomain: unknown[] = domain
+    // Stock intersection (shared by new-arrivals and the in-stock-only toggle): restrict to the
+    // in-stock id set, which already counts non-storable consumables as always available.
+    const stockTerm: unknown[] = inStockIds !== null ? [['id', 'in', Array.from(inStockIds)]] : []
     if (newArrivalsAfter) {
       // New arrivals = recently created AND currently in stock (owner's spec: "from when we
-      // opened the product and it has stock"). Force the in-stock filter regardless of the
-      // hide-OOS setting by intersecting with the in-stock id set (which already counts
-      // non-storable consumables as always available).
-      const stockTerm: unknown[] = inStockIds !== null ? [['id', 'in', Array.from(inStockIds)]] : []
+      // opened the product and it has stock"). Force the in-stock filter regardless of hide-OOS.
       effectiveDomain = [['create_date', '>=', newArrivalsAfter], ...stockTerm, ...domain]
+    } else if (inStockOnly) {
+      effectiveDomain = [...stockTerm, ...domain]
     }
 
     // Visibility rules (published + stock + admin hide) — shared with the search route.
@@ -949,6 +952,7 @@ export async function fetchOdooProducts(
   pricelistId?: number | null,
   newArrivalsAfter?: string,
   lang: 'en' | 'he' | 'both' = 'both',
+  inStockOnly = false,
 ): Promise<{ products: Product[]; total: number }> {
   return _fetchProductsCached(
     JSON.stringify(domain),
@@ -956,6 +960,7 @@ export async function fetchOdooProducts(
     pricelistId ?? 0,
     newArrivalsAfter ?? '',
     lang,
+    inStockOnly,
   )
 }
 

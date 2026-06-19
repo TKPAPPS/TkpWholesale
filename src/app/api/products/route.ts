@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const sort = searchParams.get('sort') ?? 'name'
   const createdAfter = searchParams.get('created_after') ?? null   // ISO date string e.g. 2025-05-01
   const lang = searchParams.get('lang') === 'he' ? 'he' : 'en'     // read only the active language
+  const inStockOnly = searchParams.get('in_stock_only') === '1'
 
   if (USE_MOCK) {
     let products = MOCK_PRODUCTS.filter((p) => p.sellable || !p.in_stock)
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds, getInStockIds } = await import('@/lib/odoo/odoo-helpers')
     const { searchRead } = await import('@/lib/odoo/client')
 
     // Resolve the partner's CURRENT pricelist (cached) rather than trusting the login-time
@@ -54,6 +55,10 @@ export async function GET(req: NextRequest) {
         ) as { id: number }[]
         const catSet = new Set(catRows.map(c => c.id))
         ordered = ordered.filter(id => catSet.has(id))
+      }
+      if (inStockOnly) {
+        const ins = await getInStockIds()
+        if (ins) ordered = ordered.filter(id => ins.has(id))
       }
       const total = ordered.length
       const pageIds = ordered.slice(page * perPage, page * perPage + perPage)
@@ -100,6 +105,7 @@ export async function GET(req: NextRequest) {
       pricelistId,
       sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
       lang,
+      inStockOnly,
     )
 
     return NextResponse.json({ products, total, page, per_page: perPage }, {
