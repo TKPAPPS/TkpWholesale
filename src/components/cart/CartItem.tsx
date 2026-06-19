@@ -70,7 +70,7 @@ export function CartItem({ line, currency }: CartItemProps) {
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
+        <p className="text-sm font-medium text-gray-900 line-clamp-2 break-words">{name}</p>
         <p className="text-xs text-gray-400">{line.sku} · {line.packaging_name}</p>
         {line.warnings.length > 0 && (
           <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">

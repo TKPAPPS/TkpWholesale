@@ -207,7 +207,7 @@ export function Navbar() {
                 {/* Hover popover */}
                 {cartOpen && (
                   <div
-                    className="absolute end-0 top-full mt-2 w-[min(320px,calc(100vw-1rem))] bg-white rounded-2xl border border-gray-100 shadow-xl z-50"
+                    className="absolute end-0 top-full mt-2 w-[min(400px,calc(100vw-1rem))] bg-white rounded-2xl border border-gray-100 shadow-xl z-50"
                     onMouseEnter={openCartPreview}
                     onMouseLeave={closeCartPreview}
                   >
@@ -223,7 +223,7 @@ export function Navbar() {
                               <li key={line.line_id} className="flex items-center gap-3">
                                 <CartLineImage src={line.product_image_url} />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                  <p className="text-sm font-medium text-gray-900 line-clamp-2 break-words">
                                     {lang === 'he' ? line.product_name_he : line.product_name}
                                   </p>
                                   <p className="text-xs text-gray-400">

@@ -12,6 +12,24 @@ import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { CartSummary } from '@/components/cart/CartSummary'
 import { Package, AlertTriangle, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
+
+// Product thumbnail with a graceful fallback to a placeholder icon (matches the cart/mini-cart).
+function LineThumb({ src }: { src: string }) {
+  const [imgError, setImgError] = useState(false)
+  if (!src || imgError) {
+    return (
+      <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+        <Package className="h-4 w-4 text-gray-300" />
+      </div>
+    )
+  }
+  return (
+    <Image src={src} alt="" width={40} height={40}
+      className="h-10 w-10 rounded-lg object-contain bg-gray-50 shrink-0"
+      onError={() => setImgError(true)} />
+  )
+}
 
 interface ReviewData extends Cart {
   valid: boolean
@@ -78,9 +96,9 @@ export default function CheckoutPage() {
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Order Items</h2>
             {review.lines.map((line) => (
               <div key={line.line_id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
-                <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-gray-300" />
-                  <div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <LineThumb src={line.product_image_url} />
+                  <div className="min-w-0">
                     <p className="font-medium text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                     <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
                     {line.warnings.length > 0 && (

@@ -21,15 +21,17 @@ export async function GET(req: NextRequest) {
     const { searchRead } = await import('@/lib/odoo/client')
     const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
 
-    // Find recently ordered product template IDs from confirmed orders
+    // Find recently ordered product template IDs from confirmed orders. Scan more lines so we
+    // can surface a fuller reorder history (the customer may reorder many of the same items).
     const lines = await searchRead(sessionId, 'sale.order.line',
       [['order_id.partner_id', 'child_of', parsed.commercial_partner_id],
        ['order_id.state', 'in', ['sale', 'done']]],
       ['product_template_id'],
-      { limit: 50, order: 'id desc' },
+      { limit: 200, order: 'id desc' },
     ) as { product_template_id: [number, string] }[]
 
-    // Deduplicate, keep order (most recent first), take top 8
+    // Deduplicate, keep order (most recent first), take the top distinct products
+    const MAX_RECENT = 24
     const seen = new Set<number>()
     const recentTemplateIds: number[] = []
     for (const l of lines) {
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest) {
         seen.add(tid)
         recentTemplateIds.push(tid)
       }
-      if (recentTemplateIds.length >= 8) break
+      if (recentTemplateIds.length >= MAX_RECENT) break
     }
 
     if (recentTemplateIds.length === 0) {
@@ -49,15 +51,15 @@ export async function GET(req: NextRequest) {
     const { products } = await fetchOdooProducts(
       sessionId,
       [['id', 'in', recentTemplateIds]],
-      { limit: 8 },
+      { limit: MAX_RECENT },
       pricelistId,
     )
 
-    // Re-sort to match recency order
+    // Re-sort to match recency order (most recently ordered first)
     const idxMap = new Map(recentTemplateIds.map((id, i) => [id, i]))
-    products.sort((a, b) => (idxMap.get(a.id) ?? 99) - (idxMap.get(b.id) ?? 99))
+    products.sort((a, b) => (idxMap.get(a.id) ?? 1e9) - (idxMap.get(b.id) ?? 1e9))
 
-    return NextResponse.json({ products: products.slice(0, 4) })
+    return NextResponse.json({ products })
   } catch (err) {
     invalidateOdooSession()
     console.error('recently-ordered error:', err)
