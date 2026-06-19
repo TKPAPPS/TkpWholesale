@@ -20,18 +20,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const sessionId = await getOdooSession()
     const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { assertOrderOwnership } = await import('@/lib/odoo/odoo-helpers')
 
-    // Verify ownership
-    const orders = await callKw(sessionId, 'sale.order', 'read', [[id]], {
-      fields: ['id', 'state', 'commercial_partner_id', 'partner_id'],
-    }) as { id: number; state: string; commercial_partner_id: [number, string] | false; partner_id: [number, string] | false }[]
-
-    const order = orders[0]
-    if (!order || !['sale', 'done'].includes(order.state)) {
+    // Verify ownership (sale.order has no commercial_partner_id field — assertOrderOwnership
+    // validates via a partner_id child_of hierarchy search).
+    let order: Awaited<ReturnType<typeof assertOrderOwnership>>
+    try {
+      order = await assertOrderOwnership(sessionId, id, parsed.commercial_partner_id)
+    } catch {
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
-    const partnerId = order.commercial_partner_id ? order.commercial_partner_id[0] : order.partner_id ? order.partner_id[0] : null
-    if (partnerId !== parsed.commercial_partner_id) {
+    if (!['sale', 'done'].includes(order.state)) {
       return NextResponse.json({ error: 'ORDER_NOT_FOUND' }, { status: 404 })
     }
 

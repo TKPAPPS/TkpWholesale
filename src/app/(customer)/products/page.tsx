@@ -39,7 +39,7 @@ function ProductsContent() {
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
-  const [sort, setSort] = useState<'name' | 'price' | 'recently_ordered'>('name')
+  const [sort, setSort] = useState<'sku' | 'name' | 'price' | 'recently_ordered'>('sku')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [odooError, setOdooError] = useState(false)
@@ -200,6 +200,7 @@ function ProductsContent() {
             onChange={(e) => { setSort(e.target.value as typeof sort); setPage(0) }}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
           >
+            <option value="sku">{t(lang, 'products.sortDefault')}</option>
             <option value="name">{t(lang, 'products.sortName')}</option>
             <option value="price">{t(lang, 'products.sortPrice')}</option>
             <option value="recently_ordered">{t(lang, 'products.sortRecent')}</option>

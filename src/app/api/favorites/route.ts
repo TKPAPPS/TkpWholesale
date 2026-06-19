@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseSession } from '@/lib/odoo/session'
 import { createServerClient } from '@/lib/supabase'
-import { fetchOdooProducts } from '@/lib/odoo/odoo-helpers'
+import { fetchOdooProducts, getPartnerPricelistId } from '@/lib/odoo/odoo-helpers'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 export async function GET(req: NextRequest) {
@@ -34,8 +34,9 @@ export async function GET(req: NextRequest) {
   const domain = [['id', 'in', templateIds]]
   try {
     const sessionId = await getOdooSession()
+    const pricelistId = (await getPartnerPricelistId(session.partner_id)) ?? session.pricelist_id ?? undefined
     const { products } = await fetchOdooProducts(
-      sessionId, domain, {}, session.pricelist_id ?? undefined,
+      sessionId, domain, {}, pricelistId,
     )
     return NextResponse.json({ favorites: products })
   } catch (err) {

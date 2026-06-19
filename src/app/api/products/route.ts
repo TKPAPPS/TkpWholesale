@@ -34,7 +34,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+
+    // Resolve the partner's CURRENT pricelist (cached) rather than trusting the login-time
+    // cookie value, so changing a customer's pricelist in Odoo takes effect without re-login.
+    const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
 
     const domain: unknown[] = []
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
@@ -45,17 +49,22 @@ export async function GET(req: NextRequest) {
       domain.push(['create_date', '>=', createdAfter])
     }
 
+    // Default ('sku') orders by default_code, which is language-independent, so switching
+    // language keeps the same products in the same positions (only labels translate). The
+    // 'name' option is an explicit, localized alphabetical sort (Odoo orders by the active
+    // language's translated name), so that one intentionally reshuffles per language.
     const odooSort =
       sort === 'price'            ? 'list_price asc' :
       sort === 'new_arrivals'     ? 'create_date desc' :
-      sort === 'recently_ordered' ? 'name asc' :
-      'name asc'
+      sort === 'recently_ordered' ? 'default_code asc, id asc' :
+      sort === 'name'             ? 'name asc' :
+      'default_code asc, id asc'
 
     const { products, total } = await fetchOdooProducts(
       sessionId,
       domain,
       { limit: perPage, offset: page * perPage, order: odooSort },
-      parsed.pricelist_id ?? undefined,
+      pricelistId,
       sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
       lang,
     )

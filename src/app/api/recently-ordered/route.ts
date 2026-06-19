@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead } = await import('@/lib/odoo/client')
-    const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
 
     // Find recently ordered product template IDs from confirmed orders
     const lines = await searchRead(sessionId, 'sale.order.line',
@@ -45,11 +45,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ products: [] })
     }
 
+    const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
     const { products } = await fetchOdooProducts(
       sessionId,
       [['id', 'in', recentTemplateIds]],
       { limit: 8 },
-      parsed.pricelist_id ?? undefined,
+      pricelistId,
     )
 
     // Re-sort to match recency order

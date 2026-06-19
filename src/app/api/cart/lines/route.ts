@@ -23,14 +23,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, lookupPricelistPrice, fetchWebsitePublishedSettings, readCart } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, fetchWebsitePublishedSettings, readCart } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
-    // Run all independent operations in parallel, including published-status check
-    const [pkgInfo, priceUnit, cartId, publishedMap] = await Promise.all([
+    // Run all independent operations in parallel, including published-status check.
+    // We deliberately do NOT compute price_unit here — the cart carries the partner's current
+    // pricelist (Odoo sets it from the partner on create), so Odoo computes the exact line
+    // price natively. That keeps card/cart/review/Odoo prices identical.
+    const [pkgInfo, cartId, publishedMap] = await Promise.all([
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
-      lookupPricelistPrice(sessionId, parsed.pricelist_id, product_id),
-      getOrCreateCart(sessionId, parsed.partner_id, parsed.pricelist_id),
+      getOrCreateCart(sessionId, parsed.partner_id),
       fetchWebsitePublishedSettings(sessionId),
     ])
 
@@ -54,13 +56,14 @@ export async function POST(req: NextRequest) {
 
     if (existingLines.length > 0) {
       const newQty = existingLines[0].product_packaging_qty + packaging_qty
+      // No price_unit: Odoo recomputes it from the order pricelist when qty changes.
       const writeVals: Record<string, unknown> = {
         product_packaging_qty: newQty,
         product_uom_qty: newQty * pkgInfo.qty,
       }
-      if (priceUnit !== null) writeVals.price_unit = priceUnit
       await callKw(sessionId, 'sale.order.line', 'write', [[existingLines[0].id], writeVals], {})
     } else {
+      // No price_unit: Odoo computes it from the order pricelist on create.
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
         product_id: pkgInfo.productVariantId,
@@ -68,7 +71,6 @@ export async function POST(req: NextRequest) {
         product_uom_qty: packaging_qty * pkgInfo.qty,
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
-      if (priceUnit !== null) lineVals.price_unit = priceUnit
       await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
     }
 

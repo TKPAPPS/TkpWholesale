@@ -17,6 +17,7 @@ interface OdooProduct {
   list_price: number
   uom_id: [number, string]
   public_categ_ids: number[]
+  categ_id: [number, string] | false
   taxes_id: number[]
   qty_available: number
   type: string
@@ -57,6 +58,7 @@ interface OdooPricelistItem {
   applied_on: '0_product_variant' | '1_product' | '2_product_category' | '3_global'
   product_tmpl_id: [number, string] | false
   product_id: [number, string] | false
+  categ_id: [number, string] | false
   compute_price: 'fixed' | 'percentage' | 'formula'
   percent_price: number
   price_discount: number
@@ -82,7 +84,15 @@ const PRICELIST_PRIORITY: Record<string, number> = {
   '3_global': 3,
 }
 
-function buildPlPriceMap(products: OdooProduct[], items: OdooPricelistItem[]): Map<number, number> {
+// `categAncestors` maps product.id -> the set of its internal category id and all ancestor
+// category ids, so a `2_product_category` rule matches when its category is the product's
+// category or any ancestor (Odoo's child_of semantics). Omitted when the pricelist has no
+// category rules.
+function buildPlPriceMap(
+  products: OdooProduct[],
+  items: OdooPricelistItem[],
+  categAncestors?: Map<number, Set<number>>,
+): Map<number, number> {
   const map = new Map<number, number>()
   const applicable = items.filter(it => it.min_quantity <= 1)
 
@@ -98,6 +108,9 @@ function buildPlPriceMap(products: OdooProduct[], items: OdooPricelistItem[]): M
         matches = !!(item.product_id && product.product_variant_ids.includes(item.product_id[0]))
       } else if (item.applied_on === '1_product') {
         matches = !!(item.product_tmpl_id && item.product_tmpl_id[0] === product.id)
+      } else if (item.applied_on === '2_product_category') {
+        const anc = categAncestors?.get(product.id)
+        matches = !!(item.categ_id && anc && anc.has(item.categ_id[0]))
       } else if (item.applied_on === '3_global') {
         matches = true
       }
@@ -112,6 +125,30 @@ function buildPlPriceMap(products: OdooProduct[], items: OdooPricelistItem[]): M
     if (bestPrice !== null && bestPrice > 0) map.set(product.id, bestPrice)
   }
   return map
+}
+
+// Resolve a partner's CURRENT pricelist server-side, cached per partner. The session cookie
+// captures pricelist_id at login (4h TTL), so a pricelist change in Odoo wouldn't show until
+// re-login; reading it here (cached ~5 min) makes changes take effect within the cache window.
+const _fetchPartnerPricelistId = unstable_cache(
+  async (partnerId: number): Promise<number | null> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]],
+      { fields: ['property_product_pricelist'] },
+    ) as { property_product_pricelist: [number, string] | false }[]
+    const pl = rows[0]?.property_product_pricelist
+    return pl ? pl[0] : null
+  },
+  ['odoo-partner-pricelist'],
+  { revalidate: 300, tags: ['odoo-partner-pricelist'] },
+)
+
+export async function getPartnerPricelistId(partnerId: number): Promise<number | null> {
+  try {
+    return await _fetchPartnerPricelistId(partnerId)
+  } catch {
+    return null
+  }
 }
 
 // Look up the pricelist price for a single product template.
@@ -178,7 +215,6 @@ interface OdooOrder {
   name: string
   state: string
   partner_id: [number, string]
-  commercial_partner_id: [number, string]
   partner_shipping_id: [number, string] | false
   note: string | false
   amount_untaxed: number
@@ -194,7 +230,7 @@ interface OdooOrder {
 
 const PRODUCT_FIELDS = [
   'id', 'name', 'default_code', 'description_sale', 'list_price',
-  'uom_id', 'public_categ_ids', 'taxes_id', 'qty_available',
+  'uom_id', 'public_categ_ids', 'categ_id', 'taxes_id', 'qty_available',
   'type', 'product_variant_ids', 'packaging_ids',
 ]
 
@@ -309,12 +345,17 @@ export async function fetchWebsitePublishedSettings(_sessionId: string): Promise
 const _fetchInStockIds = unstable_cache(
   async (): Promise<number[]> => {
     const sessionId = await getOdooSession()
+    // Odoo 18: physical products are all type `consu`; only `is_storable` ones track
+    // inventory. Non-storable consumables always report qty_available = 0 but are
+    // perpetually orderable, so they count as "in stock". A storable product is in stock
+    // only when qty_available > 0. (`type in [consu, storable]` was a pre-18 relic —
+    // `storable` is no longer a valid type value here.)
     return await callKw(sessionId, 'product.template', 'search',
-      [[['qty_available', '>', 0], ['type', 'in', ['consu', 'storable']]]], {},
+      [['&', ['type', '=', 'consu'], '|', ['is_storable', '=', false], ['qty_available', '>', 0]]], {},
     ) as number[]
   },
   ['odoo-instock-ids'],
-  { revalidate: 120, tags: ['odoo-instock-ids'] },
+  { revalidate: 60, tags: ['odoo-instock-ids'] },
 )
 
 export function bustInStockCache() { revalidateTag('odoo-instock-ids') }
@@ -549,6 +590,7 @@ const _fetchProductsCached = unstable_cache(
 
     // Derive all IDs needed for the next batch from the primary read
     const templateIds = primaryRaw.map(p => p.id)
+    const variantIds = Array.from(new Set(primaryRaw.flatMap(p => p.product_variant_ids)))
     const allPackagingIds = Array.from(new Set(primaryRaw.flatMap(p => p.packaging_ids)))
     const allTaxIds = Array.from(new Set(primaryRaw.flatMap(p => p.taxes_id)))
     const allCatIds = Array.from(new Set(primaryRaw.flatMap(p => p.public_categ_ids)))
@@ -561,13 +603,18 @@ const _fetchProductsCached = unstable_cache(
             sessionId,
             'product.pricelist.item',
             'search_read',
+            // Fetch every rule type that can apply to this page: global + all category rules
+            // (few), plus per-template and per-variant rules scoped to the page's ids.
             [[
+              '&',
               ['pricelist_id', '=', pricelistId],
-              '|',
+              '|', '|', '|',
               ['applied_on', '=', '3_global'],
-              ['product_tmpl_id', 'in', templateIds],
+              ['applied_on', '=', '2_product_category'],
+              '&', ['applied_on', '=', '1_product'], ['product_tmpl_id', 'in', templateIds],
+              '&', ['applied_on', '=', '0_product_variant'], ['product_id', 'in', variantIds],
             ]],
-            { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id',
+            { fields: ['id', 'applied_on', 'product_tmpl_id', 'product_id', 'categ_id',
                        'compute_price', 'percent_price', 'price_discount',
                        'fixed_price', 'price_surcharge', 'min_quantity'] },
           ) as unknown as Promise<OdooPricelistItem[]>).catch((err) => {
@@ -597,8 +644,35 @@ const _fetchProductsCached = unstable_cache(
         : Promise.resolve([] as { id: number; name: string }[]),
     ])
 
+    // Category pricelist rules match a product whose internal category is the rule's category
+    // or a descendant. Resolve ancestor sets from product.category.parent_path, but only when
+    // this pricelist actually has category rules (keeps the common per-product path at 0 extra calls).
+    let categAncestors: Map<number, Set<number>> | undefined
+    if (rawPlItems.some(it => it.applied_on === '2_product_category')) {
+      const prodCategIds = Array.from(new Set(
+        primaryRaw.map(p => (Array.isArray(p.categ_id) ? p.categ_id[0] : 0)).filter(Boolean)
+      ))
+      if (prodCategIds.length > 0) {
+        const cats = await callKw(sessionId, 'product.category', 'read', [prodCategIds],
+          { fields: ['id', 'parent_path'] },
+        ) as { id: number; parent_path: string | false }[]
+        const ancestorByCateg = new Map<number, Set<number>>()
+        for (const c of cats) {
+          const ids = typeof c.parent_path === 'string'
+            ? c.parent_path.split('/').filter(Boolean).map(Number)
+            : [c.id]
+          ancestorByCateg.set(c.id, new Set(ids))
+        }
+        categAncestors = new Map()
+        for (const prod of primaryRaw) {
+          const cid = Array.isArray(prod.categ_id) ? prod.categ_id[0] : 0
+          if (cid) categAncestors.set(prod.id, ancestorByCateg.get(cid) ?? new Set([cid]))
+        }
+      }
+    }
+
     const plPriceMap = new Map<number, number>()
-    buildPlPriceMap(primaryRaw, rawPlItems).forEach((price, id) => plPriceMap.set(id, price))
+    buildPlPriceMap(primaryRaw, rawPlItems, categAncestors).forEach((price, id) => plPriceMap.set(id, price))
 
     const packMap = new Map(packagings.map(p => [p.id, p]))
     const taxMap = new Map(taxes.map(t => [t.id, t]))
@@ -669,7 +743,11 @@ const _fetchProductsCached = unstable_cache(
       })
     }
 
-    const inStock = raw.qty_available > 0
+    // Derive in_stock from the SAME in-stock id set that drives visibility, so the grid can
+    // never show a product as "out of stock" that it only displayed because it was considered
+    // in stock (and vice-versa). The set already treats non-storable consumables as always
+    // available. Fall back to the fresh qty only if the stock lookup failed (set is null).
+    const inStock = inStockIds === null ? raw.qty_available > 0 : inStockIds.has(raw.id)
     // Use per-website OOS flag from product.website.settings, not the global template flag
     const allowOos = websiteSettingsMap.get(raw.id) ?? false
     const sellable = inStock || allowOos
@@ -878,16 +956,17 @@ export async function findCart(sessionId: string, partnerId: number): Promise<nu
 export async function getOrCreateCart(
   sessionId: string,
   partnerId: number,
-  pricelistId: number | null,
 ): Promise<number> {
   const existing = await findCart(sessionId, partnerId)
   if (existing) return existing
 
+  // Do NOT set pricelist_id — Odoo derives it from the partner's current
+  // property_product_pricelist on create. This keeps the cart on the customer's live
+  // pricelist (no stale cookie, no re-login) and lets Odoo compute line price_unit natively.
   const createVals: Record<string, unknown> = {
     partner_id: partnerId,
     website_id: WEBSITE_ID,
   }
-  if (pricelistId) createVals.pricelist_id = pricelistId
 
   const orderId = await callKw(sessionId, 'sale.order', 'create', [createVals], {}) as number
   return orderId
@@ -909,26 +988,29 @@ export function emptyCart(): Cart {
   }
 }
 
-// Validate that an order belongs to this partner (security check)
+// Validate that an order belongs to this partner (security check).
+// NOTE: sale.order has NO `commercial_partner_id` field on this Odoo — reading it throws and
+// made every order-detail view return ORDER_NOT_FOUND. Ownership is verified the same way the
+// orders list does it: a `partner_id child_of <commercialPartnerId>` domain search, which
+// matches the commercial partner and every child contact in its hierarchy.
 export async function assertOrderOwnership(
   sessionId: string,
   orderId: number,
   commercialPartnerId: number,
 ): Promise<OdooOrder> {
-  const orders = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
-    fields: ['id', 'partner_id', 'commercial_partner_id', 'state', 'name',
-      'partner_shipping_id', 'note', 'amount_untaxed', 'amount_tax', 'amount_total',
-      'currency_id', 'date_order', 'order_line'],
-  }) as unknown as OdooOrder[]
+  const [orders, owned] = await Promise.all([
+    callKw(sessionId, 'sale.order', 'read', [[orderId]], {
+      fields: ['id', 'partner_id', 'state', 'name',
+        'partner_shipping_id', 'note', 'amount_untaxed', 'amount_tax', 'amount_total',
+        'currency_id', 'date_order', 'order_line'],
+    }) as unknown as Promise<OdooOrder[]>,
+    callKw(sessionId, 'sale.order', 'search_count',
+      [[['id', '=', orderId], ['partner_id', 'child_of', commercialPartnerId]]], {},
+    ) as Promise<number>,
+  ])
 
   const order = orders[0]
-  if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), { code: 'ORDER_NOT_FOUND' })
-
-  // Check ownership: order's partner must be this commercial partner or a child of it
-  const orderPartnerId = order.partner_id[0]
-  if (orderPartnerId !== commercialPartnerId && order.commercial_partner_id[0] !== commercialPartnerId) {
-    throw Object.assign(new Error('ORDER_NOT_FOUND'), { code: 'ORDER_NOT_FOUND' })
-  }
+  if (!order || !owned) throw Object.assign(new Error('ORDER_NOT_FOUND'), { code: 'ORDER_NOT_FOUND' })
 
   return order
 }

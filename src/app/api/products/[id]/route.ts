@@ -22,9 +22,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+    const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
     const { products } = await fetchOdooProducts(
-      sessionId, [['id', '=', id]], { limit: 1 }, parsed.pricelist_id ?? undefined,
+      sessionId, [['id', '=', id]], { limit: 1 }, pricelistId,
     )
 
     if (products.length === 0) {

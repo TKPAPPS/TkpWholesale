@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
   try {
     const sessionId = await getOdooSession()
     const { callKw } = await import('@/lib/odoo/client')
-    const { readCart, lookupPricelistPrice } = await import('@/lib/odoo/odoo-helpers')
+    const { readCart } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
     if (!Number.isInteger(lineId) || lineId <= 0) {
@@ -66,15 +66,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
+    // No price_unit: Odoo recomputes it from the order's pricelist when product_uom_qty changes.
     const writeVals: Record<string, unknown> = {
       product_packaging_qty: packaging_qty,
       product_uom_qty: packaging_qty * resolved.unitsPerPack,
-    }
-    if (resolved.templateId && parsed.pricelist_id) {
-      const priceUnit = await lookupPricelistPrice(
-        sessionId, parsed.pricelist_id, resolved.templateId,
-      )
-      if (priceUnit !== null) writeVals.price_unit = priceUnit
     }
     await callKw(sessionId, 'sale.order.line', 'write',
       [[resolved.lineId], writeVals], {})
