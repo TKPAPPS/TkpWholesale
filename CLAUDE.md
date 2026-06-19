@@ -222,6 +222,30 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - `signSession(payload)` in `src/lib/odoo/session.ts` is the only place that should write a customer session cookie value. Only called from `src/app/api/auth/login/route.ts`. Throws if SESSION_SECRET is unavailable in production — the login route's try/catch converts this to a 503 response.
 - Old unsigned (plain JSON) cookies are rejected — users must re-login after this change.
 
+## Odoo 18 gotchas (verified on the staging8 DB)
+- **`sale.order` has NO `commercial_partner_id` field.** Reading it throws
+  `Invalid field 'commercial_partner_id' on model 'sale.order'`. This silently broke every
+  order-detail + PDF view (assertOrderOwnership returned ORDER_NOT_FOUND for everyone). Verify
+  order ownership with a `['partner_id','child_of',commercialPartnerId]` search instead.
+  `commercial_partner_id` IS valid on `res.partner`.
+- **No `storable`/`product` product type.** Physical goods are all `type='consu'`; only
+  `is_storable=true` ones track inventory. Non-storable consumables always report
+  `qty_available=0` but are perpetually orderable — treat them as in stock. The in-stock id set
+  is `type='consu' AND (is_storable=false OR qty_available>0)`. `in_stock` for the card is
+  derived from that same set so visibility and the displayed flag can't contradict.
+- **Pricing is Odoo-native, not reimplemented.** Carts are created with `partner_id` only (no
+  `pricelist_id`) so Odoo assigns the partner's current `property_product_pricelist`; cart lines
+  are created/updated WITHOUT `price_unit` so Odoo computes the exact pricelist price. Never
+  write `price_unit` manually. The customer's pricelist is resolved server-side via
+  `getPartnerPricelistId(partnerId)` (cached 5 min) instead of the login cookie, so pricelist
+  changes in Odoo take effect without re-login. The product LISTING still resolves prices in JS
+  (`buildPlPriceMap`, a preview that reconciles to Odoo's exact price in the cart) and now
+  handles all rule types: `3_global`, `2_product_category` (matched via `product.category.parent_path`
+  ancestry), `1_product`, `0_product_variant`, honouring `min_quantity`.
+- **Language-stable sort.** The product listing default sort orders by `default_code` (SKU),
+  which is language-independent, so switching EN/HE doesn't reshuffle the grid. `sort=name` is
+  an explicit localized alphabetical option (Odoo orders by the active language's name).
+
 ## Known issues / follow-ups
 - PDF download: `ir.attachment` strategy implemented but not confirmed working end-to-end on SaaS.
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
