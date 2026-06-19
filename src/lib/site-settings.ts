@@ -16,7 +16,7 @@ export interface SiteSettings {
 // behaviour is unchanged until the admin overrides a value.
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   lowStockThreshold: 20,
-  newArrivalsDays: 30,
+  newArrivalsDays: 90,
   productsPerPage: 24,
   ordersPerPage: 20,
   invoicesPerPage: 20,

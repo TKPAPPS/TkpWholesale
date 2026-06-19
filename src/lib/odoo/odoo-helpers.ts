@@ -557,7 +557,12 @@ const _fetchProductsCached = unstable_cache(
     // records with the import timestamp. The template create_date is the stable signal.)
     let effectiveDomain: unknown[] = domain
     if (newArrivalsAfter) {
-      effectiveDomain = [['create_date', '>=', newArrivalsAfter], ...domain]
+      // New arrivals = recently created AND currently in stock (owner's spec: "from when we
+      // opened the product and it has stock"). Force the in-stock filter regardless of the
+      // hide-OOS setting by intersecting with the in-stock id set (which already counts
+      // non-storable consumables as always available).
+      const stockTerm: unknown[] = inStockIds !== null ? [['id', 'in', Array.from(inStockIds)]] : []
+      effectiveDomain = [['create_date', '>=', newArrivalsAfter], ...stockTerm, ...domain]
     }
 
     // Visibility rules (published + stock + admin hide) — shared with the search route.

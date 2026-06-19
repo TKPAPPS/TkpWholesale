@@ -18,7 +18,8 @@ function getCreatedAfter(days: number): string {
 
 export default function NewArrivalsPage() {
   const { lang } = useLangStore()
-  const PER_PAGE = useSiteSettingsStore((s) => s.settings.productsPerPage)
+  // New arrivals shows a larger page than the main grid (owner: "not only 12") and paginates.
+  const PER_PAGE = Math.max(48, useSiteSettingsStore((s) => s.settings.productsPerPage))
   const DAYS = useSiteSettingsStore((s) => s.settings.newArrivalsDays)
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)

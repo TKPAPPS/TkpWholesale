@@ -34,12 +34,15 @@ function ProductsContent() {
   const categories = useCategoriesStore((s) => s.categories)
   // Category is driven by the URL (?category=) so it can be linked from anywhere
   // (navbar dropdown, deep links) and stays consistent.
+  // Category, sort and page all live in the URL so browser back/forward restore your place
+  // (returning from the cart keeps you on page 3, not page 1) and views are deep-linkable.
   const categoryParam = searchParams.get('category')
   const selectedCategory = categoryParam ? Number(categoryParam) : null
+  const page = Number(searchParams.get('page') ?? 0)
+  const sort = (searchParams.get('sort') ?? 'sku') as 'sku' | 'name' | 'price' | 'recently_ordered'
+
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
-  const [sort, setSort] = useState<'sku' | 'name' | 'price' | 'recently_ordered'>('sku')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [odooError, setOdooError] = useState(false)
@@ -48,15 +51,26 @@ function ProductsContent() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Update the URL (replace, so paging doesn't spam history) preserving the other params.
+  // Falsy values (0 / '' / null) drop the param to keep clean default URLs.
+  const setParams = useCallback((changes: Record<string, string | number | null>) => {
+    const sp = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null || v === '' || v === 0) sp.delete(k)
+      else sp.set(k, String(v))
+    }
+    const qs = sp.toString()
+    router.replace(qs ? `/products?${qs}` : '/products', { scroll: false })
+  }, [router, searchParams])
+  const setPage = useCallback((p: number) => setParams({ page: p }), [setParams])
+  const setSort = useCallback((s: string) => setParams({ sort: s === 'sku' ? null : s, page: null }), [setParams])
+
   useEffect(() => {
     fetch('/api/favorites').then(r => r.json()).catch(() => ({ favorites: [] }))
       .then((favs) => setFavoriteIds(new Set(
         (favs.favorites ?? []).map((p: { template_id: number }) => p.template_id)
       )))
   }, [])
-
-  // Reset to page 0 whenever the category changes (incl. via the navbar dropdown).
-  useEffect(() => { setPage(0) }, [selectedCategory])
 
   useEffect(() => {
     fetch(`/api/featured?lang=${lang}`)
@@ -121,9 +135,10 @@ function ProductsContent() {
   }
 
   // Category lives in the URL so it links from anywhere; clearing search shows it again.
+  // Changing category resets to page 0.
   const handleCategorySelect = (id: number | null) => {
     setSearch('')
-    router.push(id ? `/products?category=${id}` : '/products')
+    setParams({ category: id, page: null })
   }
 
   const categoryPath = selectedCategory ? findCategoryPath(categories, selectedCategory) : []
@@ -197,7 +212,7 @@ function ProductsContent() {
           </form>
           <select
             value={sort}
-            onChange={(e) => { setSort(e.target.value as typeof sort); setPage(0) }}
+            onChange={(e) => setSort(e.target.value)}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
           >
             <option value="sku">{t(lang, 'products.sortDefault')}</option>
