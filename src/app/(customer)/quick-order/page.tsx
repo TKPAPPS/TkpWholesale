@@ -7,13 +7,29 @@ import { useCartStore } from '@/store/cartStore'
 import { useToastStore } from '@/store/toastStore'
 import { formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import { Zap, Search, X, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { Zap, Search, X, Plus, ShoppingCart, Trash2, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 
 interface OrderRow {
   product: Product
   pkg: PackagingOption
   qty: number
+}
+
+// Parse a pasted list into {sku, qty}. Accepts "SKU 10", "SKU,10", "SKU x 10", or "SKU" (qty 1).
+// The qty is only taken when separated from the SKU (so a SKU ending in digits, e.g. DRY-0548,
+// keeps its digits).
+function parseList(text: string): { sku: string; qty: number }[] {
+  return text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(line => {
+      const m = line.match(/^(.+?)(?:[\s,]+[xX*]?\s*(\d+))?\s*$/)
+      if (!m) return { sku: line, qty: 1 }
+      return { sku: m[1].trim(), qty: m[2] ? Math.max(1, parseInt(m[2], 10)) : 1 }
+    })
+    .filter(i => i.sku)
 }
 
 export default function QuickOrderPage() {
@@ -26,6 +42,9 @@ export default function QuickOrderPage() {
   const [searching, setSearching] = useState(false)
   const [rows, setRows] = useState<OrderRow[]>([])
   const [adding, setAdding] = useState(false)
+  const [showPaste, setShowPaste] = useState(false)
+  const [listText, setListText] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set())
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -57,6 +76,53 @@ export default function QuickOrderPage() {
     }
     setQuery('')
     setSuggestions([])
+  }
+
+  // Bulk add a resolved list, merging quantities into existing rows (functional update so a
+  // single paste of many SKUs doesn't clobber itself).
+  const addResolved = (items: { product: Product; qty: number }[]) => {
+    setRows(prev => {
+      const next = [...prev]
+      for (const { product, qty } of items) {
+        const idx = next.findIndex(r => r.product.template_id === product.template_id)
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], qty: next[idx].qty + qty }
+        } else {
+          const pkg = product.packaging_options.find(p => p.is_default) ?? product.packaging_options[0]
+          if (pkg) next.push({ product, pkg, qty })
+        }
+      }
+      return next
+    })
+  }
+
+  const handleAddList = async () => {
+    const items = parseList(listText)
+    if (items.length === 0) return
+    setBulkLoading(true)
+    try {
+      const res = await fetch('/api/bulk-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, lang }),
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast(data.message ?? 'Could not process list.', 'error'); return }
+      const matched: { product: Product; qty: number }[] = data.matched ?? []
+      const unmatched: string[] = data.unmatched ?? []
+      if (matched.length) {
+        addResolved(matched)
+        showToast(`${matched.length} ${t(lang, 'quickOrder.itemsAdded')}`)
+      }
+      if (unmatched.length) {
+        showToast(`${t(lang, 'quickOrder.notFound')}: ${unmatched.slice(0, 6).join(', ')}${unmatched.length > 6 ? '…' : ''}`, 'error')
+      }
+      if (matched.length) { setListText(''); setShowPaste(false) }
+    } catch {
+      showToast('Could not process list.', 'error')
+    } finally {
+      setBulkLoading(false)
+    }
   }
 
   const updateRow = (templateId: number, field: 'pkg' | 'qty', value: PackagingOption | number) => {
@@ -148,6 +214,36 @@ export default function QuickOrderPage() {
                 </button>
               )
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Paste a list */}
+      <div className="mb-6">
+        <button
+          type="button"
+          onClick={() => setShowPaste(v => !v)}
+          className="flex items-center gap-2 text-sm text-brand-700 font-medium hover:underline"
+        >
+          <ClipboardList className="h-4 w-4" />
+          {t(lang, 'quickOrder.pasteList')}
+        </button>
+        {showPaste && (
+          <div className="mt-3 bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-xs text-gray-400 mb-2">{t(lang, 'quickOrder.pasteHint')}</p>
+            <textarea
+              value={listText}
+              onChange={(e) => setListText(e.target.value)}
+              rows={5}
+              placeholder={'DRY-0548 10\nFRZ-0029, 5\nDRY-2148 x 3'}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20 resize-y"
+            />
+            <div className="mt-3 flex justify-end">
+              <Button onClick={handleAddList} loading={bulkLoading} disabled={!listText.trim()}>
+                <Plus className="h-4 w-4 me-2" />
+                {t(lang, 'quickOrder.addList')}
+              </Button>
+            </div>
           </div>
         )}
       </div>
