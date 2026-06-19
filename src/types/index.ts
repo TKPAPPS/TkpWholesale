@@ -136,6 +136,8 @@ export interface OrderLine {
 export interface OrderDetail extends Order {
   partner_shipping: DeliveryAddress
   note: string
+  client_order_ref: string
+  commitment_date: string
   lines: OrderLine[]
   amount_untaxed: number
   amount_tax: number

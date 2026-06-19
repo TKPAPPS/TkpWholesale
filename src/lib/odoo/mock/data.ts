@@ -312,6 +312,8 @@ export const MOCK_ORDER_DETAIL: OrderDetail = {
   line_count: 2,
   partner_shipping: { id: 78, name: 'Main Warehouse', street: '123 Sukhumvit Rd', city: 'Bangkok', zip: '10110', country: 'Thailand' },
   note: 'Please deliver before noon.',
+  client_order_ref: 'PO-2026-0042',
+  commitment_date: '2026-06-25 09:00:00',
   lines: [
     { line_id: 1001, product_id: 22, template_id: 22, packaging_id: 1, product_name: 'Extra Virgin Olive Oil 5L', product_name_he: 'שמן זית כתית מובחר 5 ליטר', sku: 'OIL-EV-5L', packaging_name: 'Pack of 4', packaging_qty: 2, unit_qty: 8, price_unit: 240.00, price_subtotal: 1920.00, price_total: 2016.00 },
     { line_id: 1002, product_id: 23, template_id: 23, packaging_id: 2, product_name: 'Tahini 500g', product_name_he: 'טחינה גולמית 500 גרם', sku: 'TAH-500', packaging_name: 'Pack of 12', packaging_qty: 1, unit_qty: 12, price_unit: 90.00, price_subtotal: 1080.00, price_total: 1134.00 },

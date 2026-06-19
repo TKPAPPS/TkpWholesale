@@ -217,6 +217,8 @@ interface OdooOrder {
   partner_id: [number, string]
   partner_shipping_id: [number, string] | false
   note: string | false
+  client_order_ref: string | false
+  commitment_date: string | false
   amount_untaxed: number
   amount_tax: number
   amount_total: number
@@ -1129,7 +1131,8 @@ export async function assertOrderOwnership(
   const [orders, owned] = await Promise.all([
     callKw(sessionId, 'sale.order', 'read', [[orderId]], {
       fields: ['id', 'partner_id', 'state', 'name',
-        'partner_shipping_id', 'note', 'amount_untaxed', 'amount_tax', 'amount_total',
+        'partner_shipping_id', 'note', 'client_order_ref', 'commitment_date',
+        'amount_untaxed', 'amount_tax', 'amount_total',
         'currency_id', 'date_order', 'order_line'],
     }) as unknown as Promise<OdooOrder[]>,
     callKw(sessionId, 'sale.order', 'search_count',

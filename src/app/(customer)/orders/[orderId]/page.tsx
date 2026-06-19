@@ -100,6 +100,16 @@ export default function OrderDetailPage() {
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.deliveryAddress')}</p>
         <p className="text-sm font-medium text-gray-900">{order.partner_shipping.name}</p>
         <p className="text-sm text-gray-500 line-clamp-2">{order.partner_shipping.street}, {order.partner_shipping.city}</p>
+        {(order.commitment_date || order.client_order_ref) && (
+          <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap gap-x-8 gap-y-1 text-sm">
+            {order.commitment_date && (
+              <span className="text-gray-500">{t(lang, 'checkout.deliveryDate')}: <span className="text-gray-900 font-medium">{formatDate(order.commitment_date, lang)}</span></span>
+            )}
+            {order.client_order_ref && (
+              <span className="text-gray-500">{t(lang, 'checkout.poRef')}: <span className="text-gray-900 font-medium">{order.client_order_ref}</span></span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Lines */}

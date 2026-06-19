@@ -94,6 +94,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       line_count: lines.length,
       partner_shipping: shippingAddress,
       note: order.note || '',
+      client_order_ref: order.client_order_ref || '',
+      commitment_date: order.commitment_date || '',
       lines: lines.map(l => ({
         line_id: l.id,
         product_id: l.product_id[0],

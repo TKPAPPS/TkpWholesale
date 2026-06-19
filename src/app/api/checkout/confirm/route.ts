@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const session = req.cookies.get('session')?.value
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const { delivery_address_id, note } = await req.json()
+  const { delivery_address_id, note, po_ref, delivery_date } = await req.json()
 
   if (!Number.isInteger(delivery_address_id) || delivery_address_id <= 0) {
     return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address is required.' }, { status: 400 })
@@ -16,6 +16,25 @@ export async function POST(req: NextRequest) {
 
   if (note !== undefined && (typeof note !== 'string' || note.length > 2000)) {
     return NextResponse.json({ error: 'INVALID_NOTE', message: 'Note must be a string under 2000 characters.' }, { status: 400 })
+  }
+
+  // Optional PO / customer reference (maps to sale.order.client_order_ref).
+  if (po_ref !== undefined && (typeof po_ref !== 'string' || po_ref.length > 100)) {
+    return NextResponse.json({ error: 'INVALID_PO_REF', message: 'Reference must be under 100 characters.' }, { status: 400 })
+  }
+
+  // Optional requested delivery date YYYY-MM-DD (maps to sale.order.commitment_date). Must be
+  // a valid date and not in the past.
+  let commitmentDate: string | null = null
+  if (delivery_date !== undefined && delivery_date !== null && delivery_date !== '') {
+    if (typeof delivery_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(delivery_date) || Number.isNaN(Date.parse(delivery_date))) {
+      return NextResponse.json({ error: 'INVALID_DELIVERY_DATE', message: 'Delivery date is invalid.' }, { status: 400 })
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    if (delivery_date < today) {
+      return NextResponse.json({ error: 'INVALID_DELIVERY_DATE', message: 'Delivery date cannot be in the past.' }, { status: 400 })
+    }
+    commitmentDate = `${delivery_date} 09:00:00`
   }
 
   if (USE_MOCK) {
@@ -70,13 +89,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address not valid.' }, { status: 400 })
     }
 
-    // Write delivery address, note, and stamp date_order to now (prevents stale draft dates)
+    // Write delivery address, note, optional PO ref + requested delivery date, and stamp
+    // date_order to now (prevents stale draft dates).
     const nowUtc = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    await callKw(sessionId, 'sale.order', 'write', [[cartId], {
+    const writeVals: Record<string, unknown> = {
       partner_shipping_id: delivery_address_id,
       note: note ?? '',
       date_order: nowUtc,
-    }], {})
+    }
+    if (typeof po_ref === 'string' && po_ref.trim()) writeVals.client_order_ref = po_ref.trim()
+    if (commitmentDate) writeVals.commitment_date = commitmentDate
+    await callKw(sessionId, 'sale.order', 'write', [[cartId], writeVals], {})
 
     await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
 
