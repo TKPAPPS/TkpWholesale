@@ -14,8 +14,10 @@
   is two-layered: the claim RPC stamps `last_run_date` before any Odoo call, and a
   deterministic `client_order_ref` (`AUTO:<id8>:<runDate>`) recovers a crash after
   confirm. Cron orders omit `website_id` so `findCart` never adopts them as a cart.
-- New env vars: `CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, and `ADMIN_EMAILS`
-  (admin allowlist). All must be set in Vercel before the cron/email path is live.
+- New env vars: `CRON_SECRET` + `ADMIN_EMAILS` (both set in Vercel). `RESEND_API_KEY`
+  / `EMAIL_FROM` are intentionally left unset for launch — portal-side email is off
+  and `sendEmail` no-ops quietly; customers track schedules on `/scheduled-orders`.
+  Enable Resend later for proactive placed/failed alerts.
 
 ### Fixed — code review (security)
 - Admin login gated by an email allowlist (was: any valid Odoo/Supabase user).

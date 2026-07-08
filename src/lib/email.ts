@@ -7,10 +7,10 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
-  if (!apiKey || !from) {
-    console.warn('sendEmail skipped: RESEND_API_KEY / EMAIL_FROM not configured')
-    return false
-  }
+  // Email is optional. When Resend is not configured this is an expected, quiet
+  // no-op (portal-side notifications are off) — not a warning worth logging on
+  // every scheduled order.
+  if (!apiKey || !from) return false
   if (!opts.to) return false
   try {
     const res = await fetch(RESEND_ENDPOINT, {

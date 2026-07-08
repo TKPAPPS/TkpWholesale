@@ -30,7 +30,7 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
 | `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
 | `CRON_SECRET` | Bearer token the scheduled-orders cron must send (`Authorization: Bearer <CRON_SECRET>`). Vercel injects this into its cron requests. |
-| `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). If unset, emails are skipped (best-effort). |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Currently unset by design — email is off.** When unset, `sendEmail` is a quiet no-op; the feature works and customers rely on the `/scheduled-orders` status page. To enable later: verify a TKP sender domain in Resend, set both vars, redeploy. |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
