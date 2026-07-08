@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import Link from 'next/link'
 import { ShoppingCart, Trash2 } from 'lucide-react'
 
@@ -16,6 +17,7 @@ export default function CartPage() {
   const { lang } = useLangStore()
   const { cart, isLoading, odooUnavailable, setCart, setLoading, setUnavailable } = useCartStore()
   const [clearing, setClearing] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const fetchCart = async () => {
     setLoading(true)
@@ -31,11 +33,11 @@ export default function CartPage() {
   useEffect(() => { fetchCart() }, [])
 
   const clearCart = async () => {
-    if (!confirm('Clear your entire cart?')) return
     setClearing(true)
     await fetch('/api/cart', { method: 'DELETE' })
     setCart(null)
     setClearing(false)
+    setConfirmClear(false)
   }
 
   if (isLoading) return <LoadingSpinner />
@@ -45,11 +47,24 @@ export default function CartPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">{t(lang, 'cart.title')}</h1>
         {cart && cart.lines.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={clearCart} loading={clearing} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+          <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)} loading={clearing} className="text-red-600 hover:text-red-700 hover:bg-red-50">
             <Trash2 className="h-4 w-4 me-1" /> {t(lang, 'cart.clearCart')}
           </Button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title={t(lang, 'cart.clearCart')}
+        message={t(lang, 'cart.clearConfirm')}
+        confirmLabel={t(lang, 'cart.clearCart')}
+        cancelLabel={t(lang, 'common.cancel')}
+        busyLabel={t(lang, 'common.working')}
+        destructive
+        busy={clearing}
+        onConfirm={clearCart}
+        onCancel={() => setConfirmClear(false)}
+      />
 
       {odooUnavailable && <OdooUnavailable message={t(lang, 'cart.odooUnavailable')} onRetry={fetchCart} />}
 

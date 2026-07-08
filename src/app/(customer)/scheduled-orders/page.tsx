@@ -157,6 +157,8 @@ export default function ScheduledOrdersPage() {
         title={t(lang, 'scheduled.cancel')}
         message={t(lang, 'scheduled.cancelConfirm')}
         confirmLabel={t(lang, 'scheduled.cancel')}
+        cancelLabel={t(lang, 'common.close')}
+        busyLabel={t(lang, 'common.working')}
         destructive
         busy={busyId === cancelId}
         onConfirm={doCancel}

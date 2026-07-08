@@ -285,6 +285,8 @@ export function Navbar() {
               <button
                 className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100"
                 onClick={() => setMobileOpen(!mobileOpen)}
+                aria-label={mobileOpen ? t(lang, 'common.close') : t(lang, 'nav.menu')}
+                aria-expanded={mobileOpen}
               >
                 {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>

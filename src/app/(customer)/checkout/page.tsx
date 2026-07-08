@@ -196,6 +196,11 @@ export default function CheckoutPage() {
               maxLength={noteMaxLength}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20 resize-none"
             />
+            {note.length > noteMaxLength * 0.8 && (
+              <p className={`mt-1 text-xs text-end ${note.length >= noteMaxLength ? 'text-red-500' : 'text-gray-400'}`}>
+                {note.length} / {noteMaxLength}
+              </p>
+            )}
           </div>
 
           {/* Repeat this order */}
