@@ -1176,6 +1176,51 @@ export async function getOrCreateCart(
   return orderId
 }
 
+// Snapshot an order's product lines for a scheduled order: variant id, quantities,
+// packaging, plus EN/HE names + SKU (so the management UI can render without an
+// Odoo round-trip). Prices are intentionally NOT captured — the executor lets Odoo
+// compute the live pricelist price at placement.
+export async function readOrderItemsForSchedule(sessionId: string, orderId: number): Promise<import('@/lib/scheduled-orders').ScheduledOrderItem[]> {
+  const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
+    'id', 'product_id', 'product_packaging_id', 'product_packaging_qty', 'product_uom_qty', 'display_type',
+  ]) as unknown as {
+    display_type: string | false
+    product_id: [number, string] | false
+    product_packaging_id: [number, string] | false
+    product_packaging_qty: number
+    product_uom_qty: number
+  }[]
+
+  const lines = rawLines.filter(l => !l.display_type && Array.isArray(l.product_id))
+  const variantIds = Array.from(new Set(lines.map(l => (l.product_id as [number, string])[0])))
+  if (variantIds.length === 0) return []
+
+  const [enRows, heRows] = await Promise.all([
+    callKw(sessionId, 'product.product', 'read', [variantIds], {
+      fields: ['id', 'display_name', 'default_code'], context: { lang: 'en_US' },
+    }) as Promise<{ id: number; display_name: string; default_code: string | false }[]>,
+    callKw(sessionId, 'product.product', 'read', [variantIds], {
+      fields: ['id', 'display_name'], context: { lang: 'he_IL' },
+    }) as Promise<{ id: number; display_name: string }[]>,
+  ])
+  const enMap = new Map(enRows.map(r => [r.id, r]))
+  const heMap = new Map(heRows.map(r => [r.id, r.display_name]))
+
+  return lines.map(l => {
+    const variantId = (l.product_id as [number, string])[0]
+    const en = enMap.get(variantId)
+    return {
+      product_id: variantId,
+      name: en?.display_name ?? '',
+      name_he: heMap.get(variantId) ?? en?.display_name ?? '',
+      sku: en?.default_code || '',
+      uom_qty: l.product_uom_qty,
+      packaging_id: l.product_packaging_id ? l.product_packaging_id[0] : null,
+      packaging_qty: l.product_packaging_qty,
+    }
+  })
+}
+
 export function emptyCart(): Cart {
   return {
     cart_id: 0,

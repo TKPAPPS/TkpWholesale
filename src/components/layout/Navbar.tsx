@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList } from 'lucide-react'
+import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList, CalendarClock } from 'lucide-react'
 import { NavCategories, NavOrders } from './NavMenus'
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
@@ -127,6 +127,7 @@ export function Navbar() {
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: ClipboardList },
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered'), icon: RotateCcw },
+    { href: '/scheduled-orders', label: t(lang, 'nav.scheduledOrders'), icon: CalendarClock },
     { href: '/invoices', label: t(lang, 'invoices.title'), icon: FileText },
   ]
   // Desktop shows these as flat links; Categories + Orders are dropdowns.

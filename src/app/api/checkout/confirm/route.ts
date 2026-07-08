@@ -4,9 +4,57 @@ import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 import { stripHtml } from '@/lib/text'
-import { todayBkk } from '@/lib/schedule-dates'
+import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
+import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-orders'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
+
+// Build + persist a schedule from the just-confirmed order. Throws on any problem
+// (Supabase not configured, over the per-customer cap, empty snapshot, or a
+// schedule that would never run) so the caller can flag schedule_error.
+async function createSchedule(args: {
+  sessionId: string
+  orderId: number
+  spec: { frequency: 'daily' | 'weekly'; interval_weeks: number; excluded_weekdays: number[]; end_date: string | null }
+  partnerId: number
+  commercialPartnerId: number
+  shippingAddressId: number
+  poRef: string
+  note: string
+  lang: 'en' | 'he'
+}): Promise<string> {
+  const { readOrderItemsForSchedule } = await import('@/lib/odoo/odoo-helpers')
+  const { scheduleConfigured, countActiveSchedules, insertSchedule } = await import('@/lib/scheduled-orders-db')
+
+  if (!scheduleConfigured()) throw new Error('Scheduling backend not configured')
+
+  const active = await countActiveSchedules(args.commercialPartnerId)
+  if (active >= MAX_ACTIVE_SCHEDULES) throw new Error('Too many active schedules')
+
+  const items = await readOrderItemsForSchedule(args.sessionId, args.orderId)
+  if (items.length === 0) throw new Error('No schedulable items on the order')
+
+  const anchor = todayBkk()
+  const next = nextRunDate({ ...args.spec, anchor_date: anchor }, anchor)
+  if (!next) throw new Error('Schedule would never run')
+
+  return insertSchedule({
+    partner_id: args.partnerId,
+    commercial_partner_id: args.commercialPartnerId,
+    shipping_address_id: args.shippingAddressId,
+    po_ref: args.poRef,
+    note: args.note,
+    lang: args.lang,
+    items,
+    frequency: args.spec.frequency,
+    interval_weeks: args.spec.interval_weeks,
+    excluded_weekdays: args.spec.excluded_weekdays,
+    anchor_date: anchor,
+    end_date: args.spec.end_date,
+    next_run_date: next,
+    status: 'active',
+  })
+}
 
 export async function POST(req: NextRequest) {
   const session = req.cookies.get('session')?.value
@@ -21,10 +69,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a moment and try again.' }, { status: 429 })
   }
 
-  const { delivery_address_id, note, po_ref, delivery_date } = await req.json()
+  const { delivery_address_id, note, po_ref, delivery_date, schedule } = await req.json()
 
   if (!Number.isInteger(delivery_address_id) || delivery_address_id <= 0) {
     return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address is required.' }, { status: 400 })
+  }
+
+  // Optional recurrence: validate up-front so a bad schedule is rejected before we
+  // place the (non-reversible) order.
+  let scheduleSpec: ReturnType<typeof normalizeScheduleInput> | null = null
+  if (schedule !== undefined && schedule !== null) {
+    scheduleSpec = normalizeScheduleInput(schedule)
+    if (!scheduleSpec.ok) {
+      return NextResponse.json({ error: 'INVALID_SCHEDULE', message: scheduleSpec.error }, { status: 400 })
+    }
   }
 
   // The note cap is admin-configurable (checkoutNoteMaxLength); read the same
@@ -147,6 +205,26 @@ export async function POST(req: NextRequest) {
       throw confirmErr
     }
 
+    // The order is confirmed. If a recurrence was requested, snapshot the just-
+    // confirmed order's lines and create the schedule. This is best-effort: if it
+    // fails, the order is still placed and the client shows a warning (schedule_error)
+    // rather than treating the whole checkout as failed.
+    let scheduleId: string | undefined
+    let scheduleError = false
+    if (scheduleSpec?.ok) {
+      try {
+        scheduleId = await createSchedule({
+          sessionId, orderId: cartId, spec: scheduleSpec.value,
+          partnerId: parsed.partner_id, commercialPartnerId: parsed.commercial_partner_id,
+          shippingAddressId: delivery_address_id, poRef: typeof po_ref === 'string' ? po_ref.trim() : '',
+          note: cleanNote, lang: parsed.lang,
+        })
+      } catch (schedErr) {
+        console.error('schedule creation failed (order still placed):', schedErr)
+        scheduleError = true
+      }
+    }
+
     // The order is now confirmed in Odoo. If the read-back fails transiently, the
     // order still exists — return a success shape (using the pre-confirm read)
     // rather than a 503, so the client never re-submits and duplicates the order.
@@ -162,6 +240,8 @@ export async function POST(req: NextRequest) {
         amount_total: co.amount_total,
         currency: co.currency_id[1] ?? 'THB',
         already_confirmed: false,
+        schedule_id: scheduleId,
+        schedule_error: scheduleError || undefined,
       })
     } catch (readErr) {
       console.error('checkout confirm read-back failed (order already confirmed):', readErr)
@@ -172,6 +252,8 @@ export async function POST(req: NextRequest) {
         amount_total: order.amount_total,
         currency: order.currency_id[1] ?? 'THB',
         already_confirmed: false,
+        schedule_id: scheduleId,
+        schedule_error: scheduleError || undefined,
       })
     }
   } catch (err) {

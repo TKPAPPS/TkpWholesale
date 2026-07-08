@@ -63,6 +63,7 @@ export function NavOrders() {
   const items = [
     { href: '/orders', label: t(lang, 'nav.orders') },
     { href: '/recently-ordered', label: t(lang, 'nav.recentlyOrdered') },
+    { href: '/scheduled-orders', label: t(lang, 'nav.scheduledOrders') },
     { href: '/invoices', label: t(lang, 'invoices.title') },
   ]
   const active = items.some((i) => pathname.startsWith(i.href))
