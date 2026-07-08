@@ -45,22 +45,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
 
-    // Check for existing line with same product + packaging
+    // Check for existing line with the SAME product AND the same packaging.
+    // When packaging_id is falsy (the "Unit" fallback, id 0), match only lines
+    // that also have NO packaging — otherwise a unit add merges into a real
+    // "Case of 12" line and corrupts its quantities.
     const existingLines = await searchRead(
       sessionId, 'sale.order.line',
       [['order_id', '=', cartId], ['product_id', '=', pkgInfo.productVariantId],
-       ...(packaging_id ? [['product_packaging_id', '=', packaging_id]] : [])],
-      ['id', 'product_packaging_qty'],
+       packaging_id ? ['product_packaging_id', '=', packaging_id] : ['product_packaging_id', '=', false]],
+      ['id', 'product_packaging_qty', 'product_uom_qty'],
       { limit: 1 },
-    ) as { id: number; product_packaging_qty: number }[]
+    ) as { id: number; product_packaging_qty: number; product_uom_qty: number }[]
 
     if (existingLines.length > 0) {
-      const newQty = existingLines[0].product_packaging_qty + packaging_qty
+      // Merge on the unit quantity (product_uom_qty is always accurate), not on
+      // product_packaging_qty, which Odoo reports as 0 for no-packaging lines and
+      // would reset the quantity instead of adding to it.
+      const addedUnits = packaging_qty * pkgInfo.qty
+      const newUnitQty = existingLines[0].product_uom_qty + addedUnits
       // No price_unit: Odoo recomputes it from the order pricelist when qty changes.
       const writeVals: Record<string, unknown> = {
-        product_packaging_qty: newQty,
-        product_uom_qty: newQty * pkgInfo.qty,
+        product_uom_qty: newUnitQty,
       }
+      if (packaging_id) writeVals.product_packaging_qty = existingLines[0].product_packaging_qty + packaging_qty
       await callKw(sessionId, 'sale.order.line', 'write', [[existingLines[0].id], writeVals], {})
     } else {
       // No price_unit: Odoo computes it from the order pricelist on create.

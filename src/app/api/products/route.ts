@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { parsePagination } from '@/lib/pagination'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -11,8 +12,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const categoryId = searchParams.get('category_id') ? Number(searchParams.get('category_id')) : null
-  const page = Number(searchParams.get('page') ?? 0)
-  const perPage = Number(searchParams.get('per_page') ?? 24)
+  const { page, perPage, offset } = parsePagination(searchParams, 24)
   const sort = searchParams.get('sort') ?? 'name'
   const createdAfter = searchParams.get('created_after') ?? null   // ISO date string e.g. 2025-05-01
   const lang = searchParams.get('lang') === 'he' ? 'he' : 'en'     // read only the active language
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       products = [...products].sort((a, b) => a.name.localeCompare(b.name))
     }
     const total = products.length
-    return NextResponse.json({ products: products.slice(page * perPage, page * perPage + perPage), total, page, per_page: perPage })
+    return NextResponse.json({ products: products.slice(offset, offset + perPage), total, page, per_page: perPage })
   }
 
   const parsed = parseSession(req)
@@ -50,8 +50,10 @@ export async function GET(req: NextRequest) {
       const asc = await getPriceOrderedIds(pricelistId)
       let ordered = sort === 'price_desc' ? [...asc].reverse() : asc
       if (categoryId) {
+        // limit: 0 = no cap. Otherwise searchRead defaults to 100, silently
+        // dropping products from categories larger than 100 and shrinking total.
         const catRows = await searchRead(sessionId, 'product.template',
-          [['public_categ_ids', 'child_of', categoryId]], ['id'], {},
+          [['public_categ_ids', 'child_of', categoryId]], ['id'], { limit: 0 },
         ) as { id: number }[]
         const catSet = new Set(catRows.map(c => c.id))
         ordered = ordered.filter(id => catSet.has(id))
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
         if (ins) ordered = ordered.filter(id => ins.has(id))
       }
       const total = ordered.length
-      const pageIds = ordered.slice(page * perPage, page * perPage + perPage)
+      const pageIds = ordered.slice(offset, offset + perPage)
       if (pageIds.length === 0) {
         return NextResponse.json({ products: [], total, page, per_page: perPage })
       }
@@ -101,7 +103,7 @@ export async function GET(req: NextRequest) {
     const { products, total } = await fetchOdooProducts(
       sessionId,
       domain,
-      { limit: perPage, offset: page * perPage, order: odooSort },
+      { limit: perPage, offset, order: odooSort },
       pricelistId,
       sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
       lang,

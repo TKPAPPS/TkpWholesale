@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
-  const page = Number(searchParams.get('page') ?? 0)
+  const rawPage = Number(searchParams.get('page'))
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 0
   const filter = searchParams.get('filter') ?? 'all' // all | unpaid | paid
 
   if (USE_MOCK) {

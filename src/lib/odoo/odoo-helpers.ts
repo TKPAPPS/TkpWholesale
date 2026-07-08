@@ -1017,11 +1017,15 @@ export async function fetchOdooCategories(sessionId: string) {
 // ─── Cart helpers ─────────────────────────────────────────────────────────────
 
 async function readCartLines(sessionId: string, orderId: number): Promise<CartLine[]> {
-  const lines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
+  const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
     'id', 'product_id', 'product_template_id', 'product_packaging_id',
     'product_packaging_qty', 'product_uom_qty', 'price_unit',
-    'price_subtotal', 'price_total', 'name',
-  ]) as unknown as OdooCartLine[]
+    'price_subtotal', 'price_total', 'name', 'display_type',
+  ]) as unknown as (OdooCartLine & { display_type: string | false; product_id: [number, string] | false; product_template_id: [number, string] | false })[]
+
+  // Drop section/note lines (display_type set, no product) that staff may add to
+  // the draft quotation in the Odoo backoffice — they are not cart items.
+  const lines = rawLines.filter(l => !l.display_type && Array.isArray(l.product_id) && Array.isArray(l.product_template_id)) as unknown as OdooCartLine[]
 
   // Fetch units-per-package for every packaging used in this order.
   // Using product.packaging.qty (e.g. 12 for "Case of 12") is the only
@@ -1040,21 +1044,35 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
     pkgs.forEach(p => unitsPerPackMap.set(p.id, p.qty))
   }
 
+  // Read the real Hebrew name and SKU per variant so server reconciliation matches
+  // the optimistic line (which seeds name_he + sku from the product). Without this
+  // the cart flips Hebrew names to English on reconcile and shows a blank SKU.
+  const variantIds = Array.from(new Set(lines.map(l => l.product_id[0])))
+  const variantInfo = new Map<number, { name_he: string; sku: string }>()
+  if (variantIds.length > 0) {
+    const heRows = await callKw(sessionId, 'product.product', 'read', [variantIds], {
+      fields: ['id', 'display_name', 'default_code'],
+      context: { lang: 'he_IL' },
+    }) as { id: number; display_name: string; default_code: string | false }[]
+    heRows.forEach(r => variantInfo.set(r.id, { name_he: r.display_name, sku: r.default_code || '' }))
+  }
+
   return lines.map(line => {
     const packagingId = line.product_packaging_id ? line.product_packaging_id[0] : 0
     const unitsPerPack = unitsPerPackMap.get(packagingId) ?? 1
     // price_unit is price per individual UOM unit; multiply by units per pack
     // to get the customer-facing package price (what they pay per box/case/etc.)
     const price_per_pack = Math.round(line.price_unit * unitsPerPack * 100) / 100
+    const info = variantInfo.get(line.product_id[0])
 
     return {
       line_id: line.id,
       product_id: line.product_id[0],
       template_id: line.product_template_id[0],
       product_name: line.product_template_id[1] ?? line.name,
-      product_name_he: line.product_template_id[1] ?? line.name,
+      product_name_he: info?.name_he ?? line.product_template_id[1] ?? line.name,
       product_image_url: `/api/images/product/${line.product_template_id[0]}/128`,
-      sku: '',
+      sku: info?.sku ?? '',
       packaging_id: packagingId,
       packaging_name: line.product_packaging_id ? line.product_packaging_id[1] : 'Unit',
       packaging_qty: line.product_packaging_qty,
@@ -1126,7 +1144,81 @@ export async function getOrCreateCart(
   }
 
   const orderId = await callKw(sessionId, 'sale.order', 'create', [createVals], {}) as number
+
+  // Race guard: the optimistic UI fires adds without awaiting, so two concurrent
+  // first-adds can each pass the findCart(null) check and each create a cart —
+  // then findCart (id desc) would only ever return the newer one, stranding the
+  // other's line. Converge everyone on the OLDEST draft portal cart: if an earlier
+  // one exists, adopt it and unlink the one we just created (still empty here,
+  // since callers add the line only after this returns).
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const drafts = await searchRead(sessionId, 'sale.order',
+    [
+      ['partner_id', '=', partnerId],
+      ['state', '=', 'draft'],
+      ['website_id', '=', WEBSITE_ID],
+      ['date_order', '>=', sevenDaysAgo],
+    ],
+    ['id'],
+    { limit: 1, order: 'id asc' },
+  ) as unknown as { id: number }[]
+
+  const canonicalId = drafts[0]?.id ?? orderId
+  if (canonicalId !== orderId) {
+    try {
+      await callKw(sessionId, 'sale.order', 'unlink', [[orderId]], {})
+    } catch {
+      // Best-effort cleanup of the duplicate; a leftover empty draft is harmless
+      // once findCart converges on the older canonical cart via readCart.
+    }
+    return canonicalId
+  }
   return orderId
+}
+
+// Snapshot an order's product lines for a scheduled order: variant id, quantities,
+// packaging, plus EN/HE names + SKU (so the management UI can render without an
+// Odoo round-trip). Prices are intentionally NOT captured — the executor lets Odoo
+// compute the live pricelist price at placement.
+export async function readOrderItemsForSchedule(sessionId: string, orderId: number): Promise<import('@/lib/scheduled-orders').ScheduledOrderItem[]> {
+  const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
+    'id', 'product_id', 'product_packaging_id', 'product_packaging_qty', 'product_uom_qty', 'display_type',
+  ]) as unknown as {
+    display_type: string | false
+    product_id: [number, string] | false
+    product_packaging_id: [number, string] | false
+    product_packaging_qty: number
+    product_uom_qty: number
+  }[]
+
+  const lines = rawLines.filter(l => !l.display_type && Array.isArray(l.product_id))
+  const variantIds = Array.from(new Set(lines.map(l => (l.product_id as [number, string])[0])))
+  if (variantIds.length === 0) return []
+
+  const [enRows, heRows] = await Promise.all([
+    callKw(sessionId, 'product.product', 'read', [variantIds], {
+      fields: ['id', 'display_name', 'default_code'], context: { lang: 'en_US' },
+    }) as Promise<{ id: number; display_name: string; default_code: string | false }[]>,
+    callKw(sessionId, 'product.product', 'read', [variantIds], {
+      fields: ['id', 'display_name'], context: { lang: 'he_IL' },
+    }) as Promise<{ id: number; display_name: string }[]>,
+  ])
+  const enMap = new Map(enRows.map(r => [r.id, r]))
+  const heMap = new Map(heRows.map(r => [r.id, r.display_name]))
+
+  return lines.map(l => {
+    const variantId = (l.product_id as [number, string])[0]
+    const en = enMap.get(variantId)
+    return {
+      product_id: variantId,
+      name: en?.display_name ?? '',
+      name_he: heMap.get(variantId) ?? en?.display_name ?? '',
+      sku: en?.default_code || '',
+      uom_qty: l.product_uom_qty,
+      packaging_id: l.product_packaging_id ? l.product_packaging_id[0] : null,
+      packaging_qty: l.product_packaging_qty,
+    }
+  })
 }
 
 export function emptyCart(): Cart {

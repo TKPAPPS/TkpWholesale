@@ -61,3 +61,59 @@ begin
   return v_hits <= p_max;
 end;
 $$;
+
+-- Scheduled / repeating orders. Created at checkout; executed daily by the cron
+-- route /api/cron/scheduled-orders (service-role only). All dates are Asia/Bangkok
+-- calendar dates. `items` is a snapshot of what to order (never prices — Odoo
+-- computes the live pricelist price at placement).
+create table if not exists scheduled_orders (
+  id                    uuid primary key default gen_random_uuid(),
+  partner_id            bigint not null,            -- ordering contact (session.partner_id)
+  commercial_partner_id bigint not null,            -- ownership scope (like the orders list)
+  shipping_address_id   bigint not null,
+  po_ref                text not null default '',
+  note                  text not null default '',
+  lang                  text not null default 'en' check (lang in ('en','he')),
+  items                 jsonb not null,             -- [{product_id,name,name_he,sku,uom_qty,packaging_id,packaging_qty}]
+  frequency             text not null check (frequency in ('daily','weekly')),
+  interval_weeks        integer not null default 1 check (interval_weeks between 1 and 8),
+  excluded_weekdays     smallint[] not null default '{}',  -- 0=Sun..6=Sat, daily only
+  anchor_date           date not null,              -- Bangkok date of checkout
+  end_date              date,                       -- inclusive; null = forever
+  next_run_date         date not null,              -- Bangkok date
+  status                text not null default 'active'
+                          check (status in ('active','paused','ended','cancelled')),
+  paused_reason         text,
+  consecutive_failures  integer not null default 0,
+  last_run_date         date,                       -- claim / idempotency stamp
+  last_run_at           timestamptz,
+  last_order_id         bigint,
+  last_order_name       text,
+  last_status           text,                       -- 'success' | 'failed'
+  last_error            text,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+create index if not exists scheduled_orders_due_idx
+  on scheduled_orders (next_run_date) where status = 'active';
+create index if not exists scheduled_orders_owner_idx
+  on scheduled_orders (commercial_partner_id);
+alter table scheduled_orders disable row level security;
+
+-- Atomic per-schedule claim. Stamps last_run_date = today and returns the row
+-- ONLY if it is active, due, and not already claimed today. An empty result means
+-- another cron run already claimed it (double fire / overlap) so it is skipped.
+-- Stamping at claim time (before any Odoo call) means a mid-run timeout can never
+-- double-place on the same day.
+create or replace function claim_scheduled_order(p_id uuid, p_today date)
+returns setof scheduled_orders
+language sql
+as $$
+  update scheduled_orders
+     set last_run_date = p_today, last_run_at = now(), updated_at = now()
+   where id = p_id
+     and status = 'active'
+     and next_run_date <= p_today
+     and (last_run_date is null or last_run_date < p_today)
+  returning *;
+$$;

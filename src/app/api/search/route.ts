@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
   const session = req.cookies.get('session')?.value
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const q = (req.nextUrl.searchParams.get('q') ?? '').trim()
+  // Cap length (docs/security-rules.md: max 100 chars) before it reaches the two
+  // ilike domains, so an oversized query can't force huge pattern scans on Odoo.
+  const q = (req.nextUrl.searchParams.get('q') ?? '').trim().slice(0, 100)
   if (!q) return NextResponse.json({ results: [], query: q, total: 0 })
 
   if (USE_MOCK) {

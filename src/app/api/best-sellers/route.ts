@@ -13,9 +13,12 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   const lang = req.nextUrl.searchParams.get('lang') === 'he' ? 'he' : 'en'
+  // Strip uses the default (12); the dedicated /best-sellers page requests more.
+  const rawLimit = Number(req.nextUrl.searchParams.get('limit'))
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 12
 
   if (USE_MOCK) {
-    return NextResponse.json({ products: MOCK_PRODUCTS.filter((p) => p.sellable).slice(0, 8) })
+    return NextResponse.json({ products: MOCK_PRODUCTS.filter((p) => p.sellable).slice(0, limit) })
   }
 
   const parsed = parseSession(req)
@@ -42,7 +45,7 @@ export async function GET(req: NextRequest) {
     const order = new Map(ids.map((id, i) => [id, i]))
     products.sort((a, b) => (order.get(a.template_id) ?? 1e9) - (order.get(b.template_id) ?? 1e9))
 
-    return NextResponse.json({ products: products.slice(0, 12) }, {
+    return NextResponse.json({ products: products.slice(0, limit) }, {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
     })
   } catch (err) {

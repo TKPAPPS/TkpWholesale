@@ -21,9 +21,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const { lang } = useLangStore()
-  const addLineOptimistic = useCartStore((s) => s.addLineOptimistic)
-  const setCart = useCartStore((s) => s.setCart)
-  const fetchCart = useCartStore((s) => s.fetchCart)
+  const addToCartAndSync = useCartStore((s) => s.addToCartAndSync)
   const showToast = useToastStore((s) => s.show)
   const lowStockThreshold = useSiteSettingsStore((s) => s.settings.lowStockThreshold)
   const [qty, setQty] = useState(1)
@@ -37,28 +35,14 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
 
   const addToCart = () => {
     if (!defaultPkg) return
-    // Optimistic: update the cart instantly, then sync to Odoo in the background.
-    addLineOptimistic(product, defaultPkg, qty)
+    // Optimistic update + background sync + sequenced reconcile, shared with the
+    // product detail page via the cart store.
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     showToast(`${name} added to cart`)
-
-    fetch('/api/cart/lines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // product_id = template_id (the API validates packaging against this template)
-      body: JSON.stringify({ product_id: product.template_id, packaging_id: defaultPkg.id, packaging_qty: qty }),
+    addToCartAndSync(product, defaultPkg, qty).then((ok) => {
+      if (!ok) showToast('Could not add to cart. Please try again.', 'error')
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        // Reconcile with Odoo's real cart (correct ids, prices, taxes).
-        setCart(await res.json())
-      })
-      .catch(() => {
-        // Resync from the server so the optimistic line is undone.
-        fetchCart()
-        showToast('Could not add to cart. Please try again.', 'error')
-      })
   }
 
   return (
@@ -93,7 +77,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
         {product.sellable && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
           <div className="absolute top-2 start-2">
             <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
-              Low stock
+              {t(lang, 'products.lowStock')}
             </span>
           </div>
         )}

@@ -4,6 +4,7 @@ import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
+const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 
 async function resolveCartForLine(sessionId: string, lineId: number, partnerId: number) {
   const { searchRead, callKw } = await import('@/lib/odoo/client')
@@ -18,13 +19,18 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
 
   const orderId = lines[0].order_id[0]
 
-  // Verify ownership: order must belong to this partner and be in draft state
+  // Verify ownership: the order must be a PORTAL cart — belong to this partner, be
+  // in draft state, AND carry this website_id. Without the website_id check a portal
+  // user could edit/delete lines of a staff-created backoffice quotation for their
+  // own partner (findCart enforces the same filter; docs/security-rules.md requires it).
   const orders = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
-    fields: ['id', 'partner_id', 'state'],
-  }) as { id: number; partner_id: [number, string]; state: string }[]
+    fields: ['id', 'partner_id', 'state', 'website_id'],
+  }) as { id: number; partner_id: [number, string]; state: string; website_id: [number, string] | false }[]
 
   const order = orders[0]
   if (!order || order.partner_id[0] !== partnerId || order.state !== 'draft') return null
+  const orderWebsiteId = Array.isArray(order.website_id) ? order.website_id[0] : null
+  if (orderWebsiteId !== WEBSITE_ID) return null
 
   // Fetch units per package so product_uom_qty stays in sync with packaging qty
   let unitsPerPack = 1

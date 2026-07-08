@@ -26,8 +26,11 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SESSION_SECRET` | Signs the customer session cookie (min 32 chars) |
 | `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data |
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting). Server uses the service-role key. |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting, scheduled orders). Server uses the service-role key. |
 | `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
+| `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
+| `CRON_SECRET` | Bearer token the scheduled-orders cron must send (`Authorization: Bearer <CRON_SECRET>`). Vercel injects this into its cron requests. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Currently unset by design — email is off.** When unset, `sendEmail` is a quiet no-op; the feature works and customers rely on the `/scheduled-orders` status page. To enable later: verify a TKP sender domain in Resend, set both vars, redeploy. |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
@@ -236,6 +239,33 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - **Low-stock badge rule:** shows when `qty_available > 0 AND qty_available < lowStockThreshold`
   (default 20, tunable 0-100000 in Admin → Settings → `b2b_portal.site_settings`). Rendered in
   `ProductCard.tsx`. Out-of-stock (qty 0) products show the OOS state, not the low-stock badge.
+
+## Scheduled / repeating orders
+- **Data:** Supabase `scheduled_orders` (service-role, RLS-off) + `claim_scheduled_order(id, today)`
+  RPC. `items` is a JSONB snapshot `[{product_id,name,name_he,sku,uom_qty,packaging_id,packaging_qty}]` —
+  never prices (Odoo computes the live pricelist price at placement). All dates are **Asia/Bangkok**
+  calendar dates; date math lives in `src/lib/schedule-dates.ts` (`todayBkk`, `addDays`, `nextRunDate`),
+  which is also used by the Part-A timezone fixes.
+- **Creation:** `POST /api/checkout/confirm` accepts an optional `schedule` object; after `action_confirm`
+  it snapshots the confirmed order's lines (`readOrderItemsForSchedule`) and inserts the row. Best-effort:
+  a failure returns `schedule_error` (order still placed), surfaced on the confirmation page.
+- **Executor:** `/api/cron/scheduled-orders` (Vercel cron `30 23 * * *` = 06:30 Bangkok, `maxDuration=300`),
+  authed by `Authorization: Bearer $CRON_SECRET`. Per due schedule, sequentially: claim RPC → Odoo-side
+  `client_order_ref` recovery check → address re-validate (fallback to the commercial partner's own
+  address) → create `sale.order` (**NO `pricelist_id`, NO `website_id`** — else `findCart` adopts it as a
+  cart) → create all lines in one call (no `price_unit`) → `action_confirm` → advance `next_run_date` →
+  Resend email. On failure: don't advance, increment `consecutive_failures`, email, auto-pause after 3.
+- **Idempotency (both required):** the claim RPC stamps `last_run_date` before any Odoo call (a mid-run
+  timeout can't double-place same day); the deterministic `client_order_ref` recovers a crash-after-confirm.
+- **Management:** `GET /api/scheduled-orders`, `PATCH|DELETE /api/scheduled-orders/[id]` (ownership via
+  `commercial_partner_id` in the query), page at `/scheduled-orders`, linked from the Orders dropdown +
+  mobile nav.
+
+## Session tokens carry expiry
+- Both the customer `session` cookie (`signSession` in `src/lib/odoo/session.ts`) and the admin token
+  (`signAdminToken` in `src/lib/supabase.ts`) now embed `iat`/`exp`; verification rejects expired tokens
+  regardless of the client-controlled cookie maxAge. Old unsigned/no-exp tokens are rejected — users
+  re-login once. Admin access additionally requires the email to be on `ADMIN_EMAILS`.
 
 ## Odoo 18 gotchas (verified on the staging8 DB)
 - **`sale.order` has NO `commercial_partner_id` field.** Reading it throws

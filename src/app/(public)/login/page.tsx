@@ -8,6 +8,7 @@ import { t } from '@/lib/i18n/translations'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { Logo } from '@/components/layout/Logo'
 import { useAuthStore } from '@/store/authStore'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const { setUser } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -33,7 +35,8 @@ export default function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(t(lang, 'auth.loginError'))
+        // Surface the rate-limit message specifically; everything else is generic.
+        setError(res.status === 429 && data.message ? data.message : t(lang, 'auth.loginError'))
         return
       }
       setUser(data.user)
@@ -87,15 +90,26 @@ export default function LoginPage() {
               autoComplete="email"
               required
             />
-            <Input
-              id="password"
-              type="password"
-              label={t(lang, 'auth.password')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                label={t(lang, 'auth.password')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                className="pe-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? t(lang, 'auth.hidePassword') : t(lang, 'auth.showPassword')}
+                className="absolute end-3 top-[38px] text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
 
             {error && (
               <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-3">

@@ -15,6 +15,16 @@ interface CartState {
   // Odoo write happens in the background. Returns the previous cart so the
   // caller can roll back if the write fails.
   addLineOptimistic: (product: Product, pkg: PackagingOption, qty: number) => Cart | null
+  // Optimistic add + background POST + sequenced reconcile. Resolves true on
+  // success, false on failure (after resyncing). Shared by the product grid and
+  // the product detail page so both stay on one cart-sync protocol.
+  addToCartAndSync: (product: Product, pkg: PackagingOption, qty: number) => Promise<boolean>
+  // Re-add many lines (reorder). Resolves with how many failed.
+  reorderLines: (lines: { product_id: number; packaging_id: number | null; packaging_qty: number }[]) => Promise<{ added: number; failed: number }>
+  // Update / remove a cart line with sequenced reconcile. No-op on optimistic
+  // (negative) line ids, which have no server row yet.
+  updateLineQty: (lineId: number, packagingQty: number) => Promise<boolean>
+  removeLine: (lineId: number) => Promise<boolean>
 }
 
 // Recompute cart totals from its lines after an optimistic mutation.
@@ -29,75 +39,164 @@ function withTotals(cart: Cart): Cart {
   }
 }
 
-export const useCartStore = create<CartState>((set, get) => ({
-  cart: null,
-  isLoading: false,
-  odooUnavailable: false,
-  setCart: (cart) => set({ cart }),
-  setLoading: (isLoading) => set({ isLoading }),
-  setUnavailable: (odooUnavailable) => set({ odooUnavailable }),
-  lineCount: () => get().cart?.lines.length ?? 0,
-  fetchCart: async () => {
-    try {
-      const res = await fetch('/api/cart')
-      if (!res.ok) return
-      const data = await res.json()
-      set({ cart: data })
-    } catch {
-      // silently ignore — badge stays at 0
-    }
-  },
-  addLineOptimistic: (product, pkg, qty) => {
-    const prev = get().cart
-    // Seed an empty cart if none exists yet (temp id, reconciled on server reply).
-    const base: Cart = prev ?? {
-      cart_id: -1,
-      state: 'draft',
-      partner_shipping_id: null,
-      partner_shipping_name: '',
-      note: '',
-      lines: [],
-      amount_untaxed: 0,
-      amount_tax: 0,
-      amount_total: 0,
-      currency: product.currency,
-      warnings: [],
-    }
+// Monotonic reconcile sequencing. Every server-bound cart mutation takes a ticket
+// before it fires; a server response only replaces the cart if no newer response
+// has already landed. Without this, a slower earlier response overwrites a newer
+// cart and silently drops items the user just added.
+let seqCounter = 0
+let appliedSeq = 0
 
-    const lines = base.lines.map((l) => ({ ...l }))
-    const existing = lines.find(
-      (l) => l.template_id === product.template_id && l.packaging_id === pkg.id,
-    )
+export const useCartStore = create<CartState>((set, get) => {
+  // Apply a server cart snapshot iff it is not stale relative to what we've shown.
+  const reconcile = (cart: Cart, seq: number) => {
+    if (seq < appliedSeq) return
+    appliedSeq = seq
+    set({ cart })
+  }
 
-    if (existing) {
-      const ratio = (existing.packaging_qty + qty) / existing.packaging_qty
-      existing.packaging_qty += qty
-      existing.unit_qty += qty * pkg.qty
-      existing.price_subtotal = Math.round(existing.price_subtotal * ratio * 100) / 100
-      existing.price_total = Math.round(existing.price_total * ratio * 100) / 100
-    } else {
-      const newLine: CartLine = {
-        line_id: -Date.now(), // temp negative id until the server reconciles
-        product_id: product.variant_id,
-        template_id: product.template_id,
-        product_name: product.name,
-        product_name_he: product.name_he,
-        product_image_url: `/api/images/product/${product.template_id}/128`,
-        sku: product.sku,
-        packaging_id: pkg.id,
-        packaging_name: pkg.name,
-        packaging_qty: qty,
-        unit_qty: qty * pkg.qty,
-        price_unit: pkg.price_per_unit_incl_tax,
-        price_per_pack: pkg.price_per_pack_incl_tax,
-        price_subtotal: Math.round(pkg.price_per_pack_excl_tax * qty * 100) / 100,
-        price_total: Math.round(pkg.price_per_pack_incl_tax * qty * 100) / 100,
+  return {
+    cart: null,
+    isLoading: false,
+    odooUnavailable: false,
+    setCart: (cart) => set({ cart }),
+    setLoading: (isLoading) => set({ isLoading }),
+    setUnavailable: (odooUnavailable) => set({ odooUnavailable }),
+    lineCount: () => get().cart?.lines.length ?? 0,
+    fetchCart: async () => {
+      const seq = ++seqCounter
+      try {
+        const res = await fetch('/api/cart')
+        if (!res.ok) return
+        const data = await res.json()
+        reconcile(data, seq)
+      } catch {
+        // silently ignore — badge stays at 0
+      }
+    },
+    addLineOptimistic: (product, pkg, qty) => {
+      const prev = get().cart
+      // Seed an empty cart if none exists yet (temp id, reconciled on server reply).
+      const base: Cart = prev ?? {
+        cart_id: -1,
+        state: 'draft',
+        partner_shipping_id: null,
+        partner_shipping_name: '',
+        note: '',
+        lines: [],
+        amount_untaxed: 0,
+        amount_tax: 0,
+        amount_total: 0,
+        currency: product.currency,
         warnings: [],
       }
-      lines.push(newLine)
-    }
 
-    set({ cart: withTotals({ ...base, lines }) })
-    return prev
-  },
-}))
+      const lines = base.lines.map((l) => ({ ...l }))
+      const existing = lines.find(
+        (l) => l.template_id === product.template_id && l.packaging_id === pkg.id,
+      )
+
+      if (existing) {
+        existing.packaging_qty += qty
+        existing.unit_qty += qty * pkg.qty
+        // Recompute price = per-pack price × number of packs. For the unit fallback
+        // (pkg.qty === 1) a "pack" is one unit, and the server line reports
+        // packaging_qty = 0, so fall back to unit_qty. This replaces the old ratio
+        // math that divided by a zero packaging_qty (producing Infinity/NaN totals).
+        const packCount = existing.packaging_qty > 0 ? existing.packaging_qty : existing.unit_qty
+        existing.price_subtotal = Math.round(pkg.price_per_pack_excl_tax * packCount * 100) / 100
+        existing.price_total = Math.round(pkg.price_per_pack_incl_tax * packCount * 100) / 100
+      } else {
+        const newLine: CartLine = {
+          line_id: -Date.now(), // temp negative id until the server reconciles
+          product_id: product.variant_id,
+          template_id: product.template_id,
+          product_name: product.name,
+          product_name_he: product.name_he,
+          product_image_url: `/api/images/product/${product.template_id}/128`,
+          sku: product.sku,
+          packaging_id: pkg.id,
+          packaging_name: pkg.name,
+          packaging_qty: qty,
+          unit_qty: qty * pkg.qty,
+          price_unit: pkg.price_per_unit_incl_tax,
+          price_per_pack: pkg.price_per_pack_incl_tax,
+          price_subtotal: Math.round(pkg.price_per_pack_excl_tax * qty * 100) / 100,
+          price_total: Math.round(pkg.price_per_pack_incl_tax * qty * 100) / 100,
+          warnings: [],
+        }
+        lines.push(newLine)
+      }
+
+      set({ cart: withTotals({ ...base, lines }) })
+      return prev
+    },
+    addToCartAndSync: async (product, pkg, qty) => {
+      get().addLineOptimistic(product, pkg, qty)
+      const seq = ++seqCounter
+      try {
+        const res = await fetch('/api/cart/lines', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // product_id = template_id (the API validates packaging against this template)
+          body: JSON.stringify({ product_id: product.template_id, packaging_id: pkg.id, packaging_qty: qty }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        reconcile(await res.json(), seq)
+        return true
+      } catch {
+        // Resync so the optimistic line is undone (sequenced fetch).
+        await get().fetchCart()
+        return false
+      }
+    },
+    reorderLines: async (lines) => {
+      let failed = 0
+      const results = await Promise.allSettled(
+        lines.map((l) =>
+          fetch('/api/cart/lines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(l),
+          }).then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          }),
+        ),
+      )
+      for (const r of results) if (r.status === 'rejected') failed++
+      await get().fetchCart()
+      return { added: lines.length - failed, failed }
+    },
+    updateLineQty: async (lineId, packagingQty) => {
+      // Optimistic lines (negative id) have no server row yet — resync instead of
+      // PATCHing a non-existent id (which 404s).
+      if (lineId <= 0) { await get().fetchCart(); return false }
+      const seq = ++seqCounter
+      try {
+        const res = await fetch(`/api/cart/lines/${lineId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packaging_qty: packagingQty }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        reconcile(await res.json(), seq)
+        return true
+      } catch {
+        await get().fetchCart()
+        return false
+      }
+    },
+    removeLine: async (lineId) => {
+      if (lineId <= 0) { await get().fetchCart(); return false }
+      const seq = ++seqCounter
+      try {
+        const res = await fetch(`/api/cart/lines/${lineId}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        reconcile(await res.json(), seq)
+        return true
+      } catch {
+        await get().fetchCart()
+        return false
+      }
+    },
+  }
+})

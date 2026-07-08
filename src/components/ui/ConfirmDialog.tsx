@@ -6,16 +6,20 @@ interface ConfirmDialogProps {
   title: string
   message?: string
   confirmLabel?: string
+  cancelLabel?: string
+  busyLabel?: string
   destructive?: boolean
   busy?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
 
-// Small reusable confirm modal — replaces window.confirm so admin actions get a
+// Small reusable confirm modal — replaces window.confirm so actions get a
 // consistent, styled confirmation with a busy state instead of a browser dialog.
+// Labels are props so callers can pass localized strings.
 export function ConfirmDialog({
-  open, title, message, confirmLabel = 'Confirm', destructive, busy, onConfirm, onCancel,
+  open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busyLabel = 'Working…',
+  destructive, busy, onConfirm, onCancel,
 }: ConfirmDialogProps) {
   if (!open) return null
   return (
@@ -34,7 +38,7 @@ export function ConfirmDialog({
             disabled={busy}
             className="px-4 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
@@ -44,7 +48,7 @@ export function ConfirmDialog({
               destructive ? 'bg-red-600 hover:bg-red-700' : 'bg-brand-700 hover:bg-brand-800',
             )}
           >
-            {busy ? 'Working…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>

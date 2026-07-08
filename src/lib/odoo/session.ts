@@ -11,7 +11,14 @@ export interface OdooSession {
   name: string
   email: string
   pricelist_name: string
+  iat?: number  // issued-at (unix seconds) — stamped by signSession
+  exp?: number  // expiry (unix seconds) — enforced by verifySession
 }
+
+// Server-enforced session lifetime. Must match the cookie maxAge in the login
+// route; the in-token exp is the authoritative one (the cookie maxAge is
+// client-controlled and can be extended locally).
+export const SESSION_TTL_SECONDS = 4 * 60 * 60
 
 // In production, SESSION_SECRET must be present and at least 32 chars.
 // Throws if the requirement is not met — callers that issue cookies should let
@@ -31,8 +38,12 @@ export function getSecret(): string {
 // Sign a session payload: base64url(JSON) + '.' + HMAC-SHA256(secret, base64url(JSON))
 // base64url has no '.' characters, so splitting on the last '.' is unambiguous.
 // Throws in production if SESSION_SECRET is not properly configured.
-export function signSession(session: unknown): string {
-  const payload = Buffer.from(JSON.stringify(session)).toString('base64url')
+export function signSession(session: object): string {
+  // Stamp iat/exp so the token carries its own lifetime; verifySession rejects
+  // expired tokens regardless of the (client-controlled) cookie maxAge.
+  const now = Math.floor(Date.now() / 1000)
+  const withExp = { iat: now, exp: now + SESSION_TTL_SECONDS, ...session }
+  const payload = Buffer.from(JSON.stringify(withExp)).toString('base64url')
   const sig = createHmac('sha256', getSecret()).update(payload).digest('hex')
   return `${payload}.${sig}`
 }
@@ -62,11 +73,20 @@ function verifySession(token: string): OdooSession | null {
     return null
   }
 
+  let parsed: OdooSession
   try {
-    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as OdooSession
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as OdooSession
   } catch {
     return null
   }
+
+  // Reject expired tokens. Tokens issued before this change have no exp; treat
+  // them as invalid so everyone re-logs into a token that carries an expiry
+  // (the cookie's own 4h maxAge means these are already near end-of-life).
+  const now = Math.floor(Date.now() / 1000)
+  if (typeof parsed.exp !== 'number' || parsed.exp < now) return null
+
+  return parsed
 }
 
 export function parseSession(req: NextRequest): OdooSession | null {

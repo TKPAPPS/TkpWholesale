@@ -26,9 +26,7 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
   const [favorited, setFavorited] = useState(false)
-  const fetchCart = useCartStore((s) => s.fetchCart)
-  const addLineOptimistic = useCartStore((s) => s.addLineOptimistic)
-  const setCart = useCartStore((s) => s.setCart)
+  const addToCartAndSync = useCartStore((s) => s.addToCartAndSync)
   const showToast = useToastStore((s) => s.show)
   const [imgError, setImgError] = useState(false)
 
@@ -52,25 +50,13 @@ export default function ProductDetailPage() {
 
   const addToCart = () => {
     if (!product || !selectedPkg) return
-    // Optimistic: update the cart instantly, then sync to Odoo in the background.
-    addLineOptimistic(product, selectedPkg, qty)
+    // Optimistic update + background sync + sequenced reconcile (shared store action).
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
-
-    fetch('/api/cart/lines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: product.template_id, packaging_id: selectedPkg.id, packaging_qty: qty }),
+    addToCartAndSync(product, selectedPkg, qty).then((ok) => {
+      if (!ok) showToast('Could not add to cart. Please try again.', 'error')
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        setCart(await res.json())
-      })
-      .catch(() => {
-        fetchCart()
-        showToast('Could not add to cart. Please try again.', 'error')
-      })
   }
 
   if (loading) return <LoadingSpinner />

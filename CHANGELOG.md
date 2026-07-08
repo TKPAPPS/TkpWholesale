@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-07-08 (Review fixes + Scheduled/repeating orders)
+
+### Added — Scheduled / repeating orders
+- Customers can turn any checkout into a repeating order (daily with excluded
+  weekdays, or weekly / every N weeks), with an optional end date, and manage
+  them at `/scheduled-orders` (pause / resume / cancel).
+- A daily Vercel cron (`/api/cron/scheduled-orders`, 23:30 UTC = 06:30 Bangkok)
+  places each due order as a fully confirmed `sale.order` (so Odoo auto-creates
+  manufacturing orders for MTO items, same as a manual checkout), then emails the
+  customer via Resend (placed / failed). Placed regardless of live stock.
+- New Supabase `scheduled_orders` table + `claim_scheduled_order` RPC. Idempotency
+  is two-layered: the claim RPC stamps `last_run_date` before any Odoo call, and a
+  deterministic `client_order_ref` (`AUTO:<id8>:<runDate>`) recovers a crash after
+  confirm. Cron orders omit `website_id` so `findCart` never adopts them as a cart.
+- New env vars: `CRON_SECRET` + `ADMIN_EMAILS` (both set in Vercel). `RESEND_API_KEY`
+  / `EMAIL_FROM` are intentionally left unset for launch — portal-side email is off
+  and `sendEmail` no-ops quietly; customers track schedules on `/scheduled-orders`.
+  Enable Resend later for proactive placed/failed alerts.
+
+### Fixed — code review (security)
+- Admin login gated by an email allowlist (was: any valid Odoo/Supabase user).
+- Admin + customer session tokens now carry iat/exp (server-enforced expiry);
+  admin token compared in constant time (was a static, non-revocable HMAC).
+- Checkout note HTML-stripped and capped by the admin `checkoutNoteMaxLength`;
+  per-customer rate limit added to `POST /api/checkout/confirm`.
+
+### Fixed — code review (correctness)
+- Odoo client: 15s timeout on every call; `action_confirm` UserError surfaced as
+  422 (not 503); `odooAuthenticate` distinguishes DB/config errors from bad creds.
+- Checkout confirm read-back isolated so a transient failure returns success (no
+  duplicate order); `getOrCreateCart` converges concurrent first-adds on one cart.
+- Cart store: sequenced reconcile (stale response can't overwrite a newer cart);
+  optimistic price no longer divides by zero; PATCH/DELETE no-op on optimistic ids.
+- Cart line merge keyed on packaging + `product_uom_qty` (unit-fallback bug);
+  `readCartLines` skips section/note lines and returns real HE name + SKU.
+- Cart-line ownership requires `website_id`; pagination params clamped; price-sort
+  category lookup no longer truncates at 100.
+- Bangkok-safe dates: `formatDate` renders Odoo UTC datetimes in Asia/Bangkok;
+  delivery-date bounds + `commitment_date` use Bangkok time.
+- Checkout page redirects to login on 401 instead of crashing; shared order-state
+  labels + `reorderLines` (list/detail agree; reorder reports failures).
+
 ## 2026-05-20 (Batch 3A — Admin nav cleanup, announcement delete confirmation)
 
 ### Changed
