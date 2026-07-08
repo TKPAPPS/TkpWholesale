@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { timingSafeEqual } from 'crypto'
 import { signAdminToken, isAdminEmail } from '@/lib/supabase'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
+
+// Constant-time string compare that never leaks length via early return.
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return timingSafeEqual(ab, bb)
+}
 
 function setSessionCookie(res: NextResponse, token: string) {
   res.cookies.set('admin_session', token, {
@@ -31,6 +40,25 @@ export async function POST(req: NextRequest) {
   // session — otherwise any valid portal customer could log into /admin.
   if (!isAdminEmail(email)) {
     return NextResponse.json({ error: 'NOT_AUTHORIZED', message: 'This account is not authorized for admin access.' }, { status: 403 })
+  }
+
+  // Dedicated portal admin password (env). When ADMIN_PASSWORD is set, it is the
+  // source of truth for allowlisted admins — a fixed credential independent of
+  // Odoo/Supabase passwords. Compared in constant time.
+  const adminPassword = process.env.ADMIN_PASSWORD
+  if (adminPassword) {
+    if (!safeEqual(password, adminPassword)) {
+      return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
+    }
+    let token: string
+    try {
+      token = signAdminToken(email)
+    } catch {
+      return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server configuration error. Please contact the administrator.' }, { status: 503 })
+    }
+    const res = NextResponse.json({ ok: true, email })
+    setSessionCookie(res, token)
+    return res
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
