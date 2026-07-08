@@ -16,40 +16,30 @@ interface CartItemProps {
 
 export function CartItem({ line, currency }: CartItemProps) {
   const { lang } = useLangStore()
-  const { setCart } = useCartStore()
+  const updateLineQty = useCartStore((s) => s.updateLineQty)
+  const removeLine = useCartStore((s) => s.removeLine)
   const [qty, setQty] = useState(line.packaging_qty)
   const [removing, setRemoving] = useState(false)
   const [imgError, setImgError] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const name = lang === 'he' ? line.product_name_he : line.product_name
+  const subtitle = [line.sku, line.packaging_name].filter(Boolean).join(' · ')
 
   const updateQty = useCallback(
     (newQty: number) => {
       setQty(newQty)
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(async () => {
-        const res = await fetch(`/api/cart/lines/${line.line_id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ packaging_qty: newQty }),
-        })
-        if (res.ok) {
-          const cart = await res.json()
-          setCart(cart)
-        }
+      debounceRef.current = setTimeout(() => {
+        updateLineQty(line.line_id, newQty)
       }, 500)
     },
-    [line.line_id, setCart],
+    [line.line_id, updateLineQty],
   )
 
   const remove = async () => {
     setRemoving(true)
-    const res = await fetch(`/api/cart/lines/${line.line_id}`, { method: 'DELETE' })
-    if (res.ok) {
-      const cart = await res.json()
-      setCart(cart)
-    }
+    await removeLine(line.line_id)
     setRemoving(false)
   }
 
@@ -71,7 +61,7 @@ export function CartItem({ line, currency }: CartItemProps) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900 line-clamp-2 break-words">{name}</p>
-        <p className="text-xs text-gray-400">{line.sku} · {line.packaging_name}</p>
+        <p className="text-xs text-gray-400">{subtitle}</p>
         {line.warnings.length > 0 && (
           <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
             <AlertTriangle className="h-3 w-3" />

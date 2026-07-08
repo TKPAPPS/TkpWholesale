@@ -13,11 +13,24 @@ export function formatCurrency(amount: number, currency: string): string {
   }).format(amount)
 }
 
+// Parse a date string into a Date.
+// Odoo datetime fields come back as naive UTC "YYYY-MM-DD HH:MM:SS" (no zone
+// marker). new Date() parses that form inconsistently — Invalid Date on Safari,
+// browser-local elsewhere — so normalize it to an explicit UTC ISO string first.
+// Already-ISO strings (with 'T' and/or 'Z') are passed through unchanged.
+function parseOdooDate(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    return new Date(value.replace(' ', 'T') + 'Z')
+  }
+  return new Date(value)
+}
+
 export function formatDate(iso: string, lang: 'en' | 'he'): string {
-  return new Date(iso).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-GB', {
+  return parseOdooDate(iso).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-GB', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'Asia/Bangkok',
   })
 }
 

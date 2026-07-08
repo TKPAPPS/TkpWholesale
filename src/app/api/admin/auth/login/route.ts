@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { devAdminToken } from '@/lib/supabase'
+import { signAdminToken, isAdminEmail } from '@/lib/supabase'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 
 function setSessionCookie(res: NextResponse, token: string) {
@@ -26,6 +26,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Email and password required.' }, { status: 401 })
   }
 
+  // Verifying a credential proves identity, not authority. Only emails on the
+  // admin allowlist (ADMIN_EMAILS, or ODOO_ADMIN_LOGIN) may hold an admin
+  // session — otherwise any valid portal customer could log into /admin.
+  if (!isAdminEmail(email)) {
+    return NextResponse.json({ error: 'NOT_AUTHORIZED', message: 'This account is not authorized for admin access.' }, { status: 403 })
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -33,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (!url || !anonKey || url.includes('your-project')) {
     let token: string
     try {
-      token = devAdminToken()
+      token = signAdminToken(email)
     } catch {
       return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server configuration error. Please contact the administrator.' }, { status: 503 })
     }

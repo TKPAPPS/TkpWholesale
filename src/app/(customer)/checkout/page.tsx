@@ -56,10 +56,16 @@ export default function CheckoutPage() {
     setOdooError(false)
     try {
       const res = await fetch('/api/checkout/review')
-      if (res.status === 503) { setOdooError(true); return }
+      // Session expired mid-checkout — send the user to login rather than crashing
+      // on review.lines.map (the error body has no lines).
+      if (res.status === 401) {
+        router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
+        return
+      }
+      if (!res.ok) { setOdooError(true); return }
       const data = await res.json()
       setReview(data)
-      setSelectedAddress(data.delivery_addresses[0]?.id ?? null)
+      setSelectedAddress(data.delivery_addresses?.[0]?.id ?? null)
     } catch { setOdooError(true) }
     finally { setLoading(false) }
   }

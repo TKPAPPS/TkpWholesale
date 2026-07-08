@@ -22,7 +22,7 @@ export default function OrderDetailPage() {
   const [reordering, setReordering] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const showToast = useToastStore((s) => s.show)
-  const fetchCart = useCartStore((s) => s.fetchCart)
+  const reorderLines = useCartStore((s) => s.reorderLines)
 
   useEffect(() => {
     fetch(`/api/orders/${orderId}`)
@@ -54,15 +54,12 @@ export default function OrderDetailPage() {
     if (!order) return
     setReordering(true)
     try {
-      for (const line of order.lines) {
-        await fetch('/api/cart/lines', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty }),
-        })
-      }
-      await fetchCart()
-      showToast(`${order.lines.length} item${order.lines.length !== 1 ? 's' : ''} added to cart`)
+      const lines = order.lines.map((line) => ({
+        product_id: line.template_id, packaging_id: line.packaging_id, packaging_qty: line.packaging_qty,
+      }))
+      const { added, failed } = await reorderLines(lines)
+      if (failed > 0) showToast(`${failed} item${failed !== 1 ? 's' : ''} could not be added to cart`, 'error')
+      else showToast(`${added} item${added !== 1 ? 's' : ''} added to cart`)
       router.push('/cart')
     } catch {
       showToast('Could not reorder. Please try again.', 'error')

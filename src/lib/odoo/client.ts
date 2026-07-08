@@ -1,6 +1,12 @@
 const ODOO_URL = (process.env.ODOO_URL ?? '').replace(/\/$/, '')
 const ODOO_DB = process.env.ODOO_DB!
 
+// Every Odoo call gets a hard timeout. Without it a hung/blackholed connection
+// stalls the request for the full platform function timeout, and — because the
+// admin auth promise is shared (admin-session.ts _inflight) — one stuck auth can
+// stall every concurrent request on the instance until that limit.
+const ODOO_TIMEOUT_MS = 15_000
+
 export class OdooError extends Error {
   constructor(
     message: string,
@@ -8,6 +14,18 @@ export class OdooError extends Error {
     public odooData?: unknown,
   ) {
     super(message)
+  }
+}
+
+// fetch() with an AbortSignal timeout, surfaced as a typed OdooError.
+async function odooFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(ODOO_TIMEOUT_MS) })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new OdooError('Odoo request timed out', 'TIMEOUT')
+    }
+    throw new OdooError('Could not reach Odoo', 'NETWORK_ERROR', err)
   }
 }
 
@@ -20,7 +38,7 @@ export async function odooRpc(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (sessionId) headers['Cookie'] = `session_id=${sessionId}`
 
-  const res = await fetch(`${ODOO_URL}${endpoint}`, {
+  const res = await odooFetch(`${ODOO_URL}${endpoint}`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params }),
@@ -39,7 +57,7 @@ export async function odooRpc(
 
 // Authenticate a portal user — returns { uid, session_id }
 export async function odooAuthenticate(login: string, password: string): Promise<{ uid: number; session_id: string; partner_id: number; lang: string }> {
-  const res = await fetch(`${ODOO_URL}/web/session/authenticate`, {
+  const res = await odooFetch(`${ODOO_URL}/web/session/authenticate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -52,8 +70,19 @@ export async function odooAuthenticate(login: string, password: string): Promise
   const setCookie = res.headers.get('set-cookie') ?? ''
   const sessionId = setCookie.match(/session_id=([^;]+)/)?.[1]
 
-  const json = (await res.json()) as { result?: { uid: number | false; partner_id: number; lang: string } }
+  const json = (await res.json()) as {
+    result?: { uid: number | false; partner_id: number; lang: string }
+    error?: { message: string; data?: { name?: string; message?: string } }
+  }
 
+  // Distinguish a genuine bad-credentials result from an Odoo-side error (wrong
+  // DB name, server error). Masking the latter as INVALID_CREDENTIALS makes a
+  // launch-day misconfig look like every customer suddenly has the wrong
+  // password, with nothing logged.
+  if (json.error) {
+    throw new OdooError(json.error.data?.message || json.error.message, 'ODOO_ERROR', json.error)
+  }
+  if (json.result?.uid === false) throw new OdooError('Invalid credentials', 'INVALID_CREDENTIALS')
   if (!json.result?.uid) throw new OdooError('Invalid credentials', 'INVALID_CREDENTIALS')
   if (!sessionId) throw new OdooError('No session returned', 'SESSION_ERROR')
 
@@ -76,7 +105,7 @@ async function callKwExternal(
   args: unknown[],
   kwargs: Record<string, unknown>,
 ): Promise<unknown> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
+  const res = await odooFetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -92,7 +121,7 @@ async function callKwExternal(
 
 // Authenticate via the external JSON-RPC common service (works with API keys on SaaS).
 export async function adminAuthenticate(login: string, apikey: string): Promise<number> {
-  const res = await fetch(`${ODOO_URL}/jsonrpc`, {
+  const res = await odooFetch(`${ODOO_URL}/jsonrpc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -101,7 +130,10 @@ export async function adminAuthenticate(login: string, apikey: string): Promise<
     }),
   })
   if (!res.ok) throw new OdooError(`HTTP ${res.status}`, 'HTTP_ERROR')
-  const json = (await res.json()) as { result?: number | false; error?: { message: string } }
+  const json = (await res.json()) as { result?: number | false; error?: { message: string; data?: { message?: string } } }
+  if (json.error) {
+    throw new OdooError(json.error.data?.message || json.error.message, 'ODOO_ERROR', json.error)
+  }
   const uid = json.result
   if (!uid) throw new OdooError('Invalid credentials', 'INVALID_CREDENTIALS')
   return uid
