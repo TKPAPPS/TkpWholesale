@@ -1,8 +1,8 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList, CalendarClock } from 'lucide-react'
-import { NavCategories, NavOrders } from './NavMenus'
+import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList, CalendarClock, TrendingUp } from 'lucide-react'
+import { NavOrders } from './NavMenus'
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
@@ -123,6 +123,7 @@ export function Navbar() {
   const navLinks = [
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
     { href: '/new-arrivals', label: t(lang, 'newArrivals.title'), icon: Sparkles },
+    { href: '/best-sellers', label: t(lang, 'bestSellers.title'), icon: TrendingUp },
     { href: '/quick-order', label: t(lang, 'nav.quickOrder'), icon: Zap },
     { href: '/favorites', label: t(lang, 'nav.favorites'), icon: Heart },
     { href: '/orders', label: t(lang, 'nav.orders'), icon: ClipboardList },
@@ -130,8 +131,9 @@ export function Navbar() {
     { href: '/scheduled-orders', label: t(lang, 'nav.scheduledOrders'), icon: CalendarClock },
     { href: '/invoices', label: t(lang, 'invoices.title'), icon: FileText },
   ]
-  // Desktop shows these as flat links; Categories + Orders are dropdowns.
-  const desktopPrimary = navLinks.slice(0, 3) // Products, New Arrivals, Quick Order
+  // Desktop shows these as flat links; Orders is a dropdown. Category browsing
+  // lives in the products-page sidebar + mobile drawer (no navbar dropdown).
+  const desktopPrimary = navLinks.slice(0, 4) // Products, New Arrivals, Best Sellers, Quick Order
 
   return (
     <>
@@ -144,9 +146,8 @@ export function Navbar() {
               <Logo className="h-10 w-auto" />
             </Link>
 
-            {/* Desktop nav: Categories ▾ · Products · New Arrivals · Quick Order · Orders ▾ · Favorites */}
+            {/* Desktop nav: Products · New Arrivals · Best Sellers · Quick Order · Orders ▾ · Favorites */}
             <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
-              <NavCategories />
               {desktopPrimary.map(({ href, label }) => {
                 const active = pathname.startsWith(href)
                 return (
