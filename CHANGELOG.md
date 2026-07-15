@@ -1,14 +1,13 @@
 # Changelog
 
-## 2026-07-15 (Production readiness batch 3: observability + fail-safes + mobile polish)
+## 2026-07-15 (Production readiness batch 3: fail-safes + mobile polish)
 
-### Added: error reporting (Sentry, dormant until DSN set)
-- `@sentry/nextjs` wired for server, edge, and client (`sentry.*.config.ts`,
-  `src/instrumentation.ts`, `withSentryConfig` in next.config.mjs,
-  `experimental.instrumentationHook` required on Next 14). Both error
-  boundaries call `Sentry.captureException`. Everything no-ops until
-  `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN` are set in Vercel; source-map upload
-  disabled (no auth token needed). Client bundle cost: ~73 kB gz on first load.
+### Observability decision
+- Skipped a dedicated error-reporting SDK (Sentry) for now. At ~50 customers the
+  three-runtime SDK + client bundle weight is not worth it. Failures already land
+  in Vercel runtime logs via `console.error` in every route; revisit an external
+  error tracker only if an incident proves the logs insufficient. The branded
+  error boundaries (`global-error.tsx`, `(customer)/error.tsx`) stay.
 
 ### Fixed: fail-safes
 - Middleware now 503s EVERY request on Vercel when `USE_MOCK_API` is not the

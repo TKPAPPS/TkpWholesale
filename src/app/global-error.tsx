@@ -1,12 +1,9 @@
 'use client'
-import * as Sentry from '@sentry/nextjs'
-import { useEffect } from 'react'
 
 // Root error boundary: catches render errors that escape every nested boundary
 // (including the root layout). Must render its own <html>/<body>. Kept
-// dependency-free beyond Sentry (no stores, no i18n) so it can never crash itself.
-export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  useEffect(() => { Sentry.captureException(error) }, [error])
+// dependency-free (no stores, no i18n) so it can never crash itself.
+export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <html lang="en">
       <body style={{ fontFamily: 'system-ui, sans-serif', background: '#fafaf9' }}>
