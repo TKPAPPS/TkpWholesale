@@ -77,7 +77,7 @@ export default function ProductDetailPage() {
         <div className="h-[38vh] md:h-auto md:aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden relative">
           {!imgError ? (
             <Image
-              src={`/api/images/product/${product.template_id}/512`}
+              src={`/api/images/product/${product.template_id}/1024`}
               alt={name}
               fill
               sizes="(max-width: 768px) 100vw, 50vw"

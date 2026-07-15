@@ -916,7 +916,9 @@ const _fetchProductsCached = unstable_cache(
       sku: raw.default_code || '',
       description: typeof raw.description_sale === 'string' ? raw.description_sale : '',
       description_he: typeof he?.description_sale === 'string' ? he.description_sale : '',
-      image_url: `/api/images/product/${raw.id}/256`,
+      // 512 (not 256): grid cards are ~300px, which needs ~600px source on retina.
+      // Odoo returns the smaller rendition if 512 isn't available. Still AVIF + edge-cached.
+      image_url: `/api/images/product/${raw.id}/512`,
       categories: raw.public_categ_ids.map(cid => ({
         id: cid,
         name: primaryCatMap.get(cid)?.name ?? '',

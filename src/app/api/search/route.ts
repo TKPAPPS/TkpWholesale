@@ -117,7 +117,9 @@ export async function GET(req: NextRequest) {
         name: t.name,
         name_he: heMap.get(t.id) ?? t.name,
         sku: t.default_code || '',
-        image_url: `/api/images/product/${t.id}/128`,
+        // 512 to match the listing grid — search results render in the same
+        // ProductCard cards, so 128 looked noticeably blurry beside listing.
+        image_url: `/api/images/product/${t.id}/512`,
         currency: 'THB',
         packaging_options: packagingOptions,
       }

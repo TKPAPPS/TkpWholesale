@@ -132,8 +132,12 @@ own `/web/image` endpoint and are served CDN-public via `Cache-Control: public`,
 gate added no real protection, and removing it lets the Vercel image optimizer fetch the
 route server-side (it has no session cookie). `<Image>` is now optimized (AVIF/WebP,
 resized) everywhere — `unoptimized` was removed from the product grid, detail page, cart,
-quick-order, and navbar mini-cart. Product-grid cards request `image_256`; the product
-detail page uses `image_512`; thumbnails use `image_128`. Note: a `public` edge cache
+quick-order, and navbar mini-cart. Product-grid cards + search results request `image_512`;
+the product detail page uses `image_1024`; cart/mini-cart thumbnails use `image_128`.
+(Bumped from 256/512/128 on 2026-07-15: grid cards are ~300px = ~600px on retina, detail can
+be ~640px CSS; Odoo returns the smaller rendition when the larger isn't uploaded, so low-res
+source products are unchanged. Still AVIF/WebP q75 + edge-cached, so a few KB more per image.)
+Note: a `public` edge cache
 serves cached images to unauthenticated requests — acceptable for product photos, not for
 anything sensitive.
 
