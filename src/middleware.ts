@@ -6,6 +6,21 @@ const PUBLIC_PATHS = new Set(['/', '/login', '/contact', '/privacy', '/terms'])
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  // Fail-safe: USE_MOCK_API treats anything but the exact string 'false' as
+  // "serve mock data" (login accepts any email, checkout returns a fake order).
+  // On Vercel that misconfiguration must fail LOUDLY, not silently serve fakes
+  // to real customers. Gated on VERCEL so local prod-build mock testing still works.
+  if (process.env.VERCEL && process.env.USE_MOCK_API !== 'false') {
+    return NextResponse.json(
+      { error: 'MISCONFIGURED', message: 'Service unavailable.' },
+      { status: 503 },
+    )
+  }
+
+  // API routes handle their own auth; middleware only runs on them for the
+  // mock-mode guard above.
+  if (pathname.startsWith('/api')) return NextResponse.next()
+
   // Admin area — requires the admin_session cookie (except the admin login page).
   // Full token validation happens in each admin API route; middleware only checks
   // cookie presence so the redirect is instant (no network call needed).
@@ -31,7 +46,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on all page routes; skip API routes, Next internals, and static files
-  // (anything with a file extension).
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|icon.svg|.*\\..*).*)'],
+  // Run on all page AND api routes (api needs the mock-mode guard); skip Next
+  // internals and static files (anything with a file extension).
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\..*).*)'],
 }

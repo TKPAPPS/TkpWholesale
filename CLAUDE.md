@@ -24,13 +24,14 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `ODOO_ADMIN_LOGIN` | Admin user email (currently `tal@kosher-place.com`) |
 | `ODOO_ADMIN_API_KEY` | Odoo API key for server-side calls |
 | `SESSION_SECRET` | Signs the customer session cookie (min 32 chars) |
-| `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data |
+| `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data. **On Vercel (`VERCEL` env present), middleware 503s every request unless the value is exactly `false`** so a misconfig fails loudly instead of serving fake data. Local prod-build mock testing still works (no `VERCEL` var). |
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting, scheduled orders). Server uses the service-role key. |
 | `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
 | `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
 | `CRON_SECRET` | Bearer token the scheduled-orders cron must send (`Authorization: Bearer <CRON_SECRET>`). Vercel injects this into its cron requests. |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Currently unset by design — email is off.** When unset, `sendEmail` is a quiet no-op; the feature works and customers rely on the `/scheduled-orders` status page. To enable later: verify a TKP sender domain in Resend, set both vars, redeploy. |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry error reporting (server+edge / client). **Unset = Sentry fully no-ops.** To enable: create a Sentry project, set both in Vercel, redeploy. Source-map upload is disabled in the build (no auth token required). |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)

@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 const SECURITY_HEADERS = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -6,6 +8,8 @@ const SECURITY_HEADERS = [
 ]
 
 const config = {
+  // Required on Next 14 for src/instrumentation.ts (Sentry server init) to run.
+  experimental: { instrumentationHook: true },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
@@ -25,4 +29,12 @@ const config = {
   },
 }
 
-export default config
+// Sentry build wrapping: instruments route handlers/pages for error capture.
+// Source-map upload is DISABLED (no SENTRY_AUTH_TOKEN in CI); runtime reporting
+// only activates when SENTRY_DSN / NEXT_PUBLIC_SENTRY_DSN are set.
+export default withSentryConfig(config, {
+  silent: true,
+  telemetry: false,
+  sourcemaps: { disable: true },
+  disableLogger: true,
+})

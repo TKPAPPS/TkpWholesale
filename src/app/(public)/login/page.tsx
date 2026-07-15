@@ -9,6 +9,7 @@ import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { Logo } from '@/components/layout/Logo'
 import { useAuthStore } from '@/store/authStore'
 import { Eye, EyeOff } from 'lucide-react'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -130,7 +131,11 @@ export default function LoginPage() {
 
           <p className="text-center text-xs text-gray-400 leading-relaxed">
             Access restricted to registered wholesale customers.
-            <br />Contact your sales representative to request access.
+            <br />
+            <Link href="/contact" className="text-brand-700 hover:underline">
+              Contact your sales representative
+            </Link>{' '}
+            to request access.
           </p>
         </div>
       </div>

@@ -104,13 +104,15 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
 
         {defaultPkg && (
           <div className="space-y-1 text-xs">
-            <div className="flex items-baseline justify-between">
-              <span className="text-gray-500">{defaultPkg.name}</span>
-              <span className="font-bold text-gray-900 text-sm">{formatCurrency(price, product.currency)}</span>
+            {/* flex-wrap + gap: in the narrow 2-col mobile grid the pack label
+                and price were interleaving; now the price wraps to its own line. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+              <span className="text-gray-500 truncate min-w-0">{defaultPkg.name}</span>
+              <span className="font-bold text-gray-900 text-sm whitespace-nowrap ms-auto">{formatCurrency(price, product.currency)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-gray-400">
-              <span>{t(lang, 'products.unitPrice')}</span>
-              <span>{formatCurrency(unitPrice, product.currency)}</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-gray-400">
+              <span className="truncate min-w-0">{t(lang, 'products.unitPrice')}</span>
+              <span className="whitespace-nowrap ms-auto">{formatCurrency(unitPrice, product.currency)}</span>
             </div>
           </div>
         )}

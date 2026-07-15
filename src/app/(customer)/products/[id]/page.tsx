@@ -72,8 +72,9 @@ export default function ProductDetailPage() {
       </button>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Image */}
-        <div className="aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden relative">
+        {/* Image. Height-capped on mobile so name + price + Add to Cart appear
+            on first paint instead of a full-viewport photo. */}
+        <div className="h-[38vh] md:h-auto md:aspect-square bg-white rounded-2xl border border-gray-100 flex items-center justify-center overflow-hidden relative">
           {!imgError ? (
             <Image
               src={`/api/images/product/${product.template_id}/512`}

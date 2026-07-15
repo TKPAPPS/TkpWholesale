@@ -56,6 +56,18 @@ async function createSchedule(args: {
   })
 }
 
+// Odoo business rejections (UserError: credit limit, blocked customer, etc.) are
+// short human-readable sentences worth showing verbatim. Anything that looks like
+// a server error (tracebacks, internal model/field names, walls of text) must not
+// reach a customer; show a generic message instead.
+function sanitizeOdooMessage(msg: string): string {
+  const generic = 'Your order could not be confirmed. Please contact your sales representative.'
+  if (!msg || msg.length > 300) return generic
+  if (/Traceback|odoo\.exceptions|psycopg2|File "|\.py"|ValueError|KeyError/i.test(msg)) return generic
+  if ((msg.match(/\n/g)?.length ?? 0) > 3) return generic
+  return msg
+}
+
 export async function POST(req: NextRequest) {
   const session = req.cookies.get('session')?.value
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
@@ -200,7 +212,10 @@ export async function POST(req: NextRequest) {
       await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
     } catch (confirmErr) {
       if (confirmErr instanceof OdooError && confirmErr.code === 'ODOO_ERROR') {
-        return NextResponse.json({ error: 'ORDER_REJECTED', message: confirmErr.message }, { status: 422 })
+        return NextResponse.json(
+          { error: 'ORDER_REJECTED', message: sanitizeOdooMessage(confirmErr.message) },
+          { status: 422 },
+        )
       }
       throw confirmErr
     }

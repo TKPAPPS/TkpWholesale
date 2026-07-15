@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-07-15 (Production readiness batch 3: observability + fail-safes + mobile polish)
+
+### Added: error reporting (Sentry, dormant until DSN set)
+- `@sentry/nextjs` wired for server, edge, and client (`sentry.*.config.ts`,
+  `src/instrumentation.ts`, `withSentryConfig` in next.config.mjs,
+  `experimental.instrumentationHook` required on Next 14). Both error
+  boundaries call `Sentry.captureException`. Everything no-ops until
+  `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN` are set in Vercel; source-map upload
+  disabled (no auth token needed). Client bundle cost: ~73 kB gz on first load.
+
+### Fixed: fail-safes
+- Middleware now 503s EVERY request on Vercel when `USE_MOCK_API` is not the
+  exact string 'false' (was: silently serving mock data, where login accepts
+  any email and checkout fakes an order). Gated on the `VERCEL` env var so
+  local prod-build mock testing still works. Middleware matcher now includes
+  /api routes for this guard; api requests return next() immediately after it.
+- Checkout 422 rejection text sanitized: Odoo UserErrors (credit limit etc.)
+  pass through, anything traceback-like or oversized becomes a generic message.
+
+### Changed: mobile polish
+- Product detail image height capped on mobile (38vh) so name + price + Add to
+  Cart are visible on first paint.
+- Product card price rows wrap instead of interleaving in the 2-col mobile grid.
+- Cart hover-preview only opens on hover-capable pointers; on touch it clipped
+  off-screen (RTL) and blocked the tap-through to /cart.
+- Login page: "Contact your sales representative" now links to /contact.
+
 ## 2026-07-15 (Production readiness batch 2: UX + robustness)
 
 ### Changed: UX

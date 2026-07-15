@@ -106,6 +106,10 @@ export function Navbar() {
   }
 
   const openCartPreview = () => {
+    // Hover-capable pointers only: on touch, a tap fired mouseenter and popped
+    // the preview over the page (clipping off-screen in RTL mobile) instead of
+    // just navigating to /cart.
+    if (typeof window !== 'undefined' && !window.matchMedia('(hover: hover)').matches) return
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
     setCartOpen(true)
   }
