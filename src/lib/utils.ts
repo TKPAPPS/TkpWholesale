@@ -43,3 +43,11 @@ export function getLangCookie(): 'en' | 'he' {
 export function setLangCookie(lang: 'en' | 'he') {
   document.cookie = `lang=${lang}; path=/; max-age=${365 * 24 * 3600}; SameSite=Lax`
 }
+
+// Whether a language cookie already exists. Must be checked BEFORE initLang()
+// (which writes the cookie): it distinguishes a first-ever visit (no cookie,
+// Odoo profile lang may apply) from a returning user whose choice must win.
+export function hasLangCookie(): boolean {
+  if (typeof document === 'undefined') return false
+  return /(?:^|;\s*)lang=(en|he)(?:;|$)/.test(document.cookie)
+}

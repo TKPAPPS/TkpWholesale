@@ -166,20 +166,6 @@ function ProductsContent() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        {/* Featured strip */}
-        {featured.length > 0 && !search && page === 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Star className="h-4 w-4 text-brand-700" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">{t(lang, 'featured.title')}</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {featured.map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
-            </div>
-            <hr className="mt-4 border-gray-100" />
-          </section>
-        )}
-
         {/* Breadcrumb (when a category is selected and not searching) */}
         {categoryPath.length > 0 && !search && (
           <nav className="flex items-center flex-wrap gap-1 text-xs text-gray-400 mb-3">
@@ -238,8 +224,24 @@ function ProductsContent() {
           </button>
         </div>
 
+        {/* Featured strip — below the toolbar: repeat buyers come here to find
+            a specific SKU, so search/sort/filter must be reachable without
+            scrolling past merchandising. */}
+        {featured.length > 0 && !search && page === 0 && (
+          <section className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Star className="h-4 w-4 text-brand-700" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">{t(lang, 'featured.title')}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {featured.map((p) => <ProductCard key={p.id} product={p} favorited={favoriteIds.has(p.template_id)} />)}
+            </div>
+            <hr className="mt-4 border-gray-100" />
+          </section>
+        )}
+
         {/* Results count */}
-        {!loading && <p className="text-xs text-gray-400 mb-3">{total} products</p>}
+        {!loading && <p className="text-xs text-gray-400 mb-3">{total} {t(lang, 'products.resultsCount')}</p>}
 
         {/* Error */}
         {odooError && <OdooUnavailable onRetry={loadProducts} />}

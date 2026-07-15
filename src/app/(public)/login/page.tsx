@@ -40,7 +40,9 @@ export default function LoginPage() {
         return
       }
       setUser(data.user)
-      const redirect = searchParams.get('redirect') ?? '/products'
+      // Land on the dashboard: order history + one-click Reorder is the core
+      // repeat-buyer flow, and /products is one click away.
+      const redirect = searchParams.get('redirect') ?? '/dashboard'
       router.push(redirect)
     } finally {
       setLoading(false)

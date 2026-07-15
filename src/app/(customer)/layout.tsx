@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/authStore'
 import { useLangStore, initLang } from '@/store/langStore'
+import { hasLangCookie } from '@/lib/utils'
 import { useCartStore } from '@/store/cartStore'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { useCategoriesStore } from '@/store/categoriesStore'
@@ -24,6 +25,10 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   useLayoutEffect(() => { hydrate() }, [])
 
   useEffect(() => {
+    // Capture BEFORE initLang() writes the cookie: a first-ever visit has no
+    // lang cookie and should adopt the Odoo profile lang; after that the
+    // user's (or a prior visit's) choice must not be stomped on every load.
+    const hadLangChoice = hasLangCookie()
     initLang()
     // Fire cart fetch immediately — it uses the session cookie directly
     // and doesn't need the auth result. Runs in parallel with auth check.
@@ -37,7 +42,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       })
       .then((user) => {
         setUser(user)
-        setLang(user.lang === 'he_IL' ? 'he' : 'en')
+        if (!hadLangChoice) setLang(user.lang === 'he_IL' ? 'he' : 'en')
       })
       .catch(() => {
         router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))

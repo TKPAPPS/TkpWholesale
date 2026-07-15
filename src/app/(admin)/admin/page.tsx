@@ -105,8 +105,9 @@ export default function AdminDashboard() {
   }
 
   const stats = [
-    { label: 'Orders Today', value: data ? String(data.orders_today) : '—' },
-    { label: 'Open Carts', value: data ? String(data.open_carts) : '—' },
+    // ?? guards: a partial API response must show the placeholder, not "undefined".
+    { label: 'Orders Today', value: String(data?.orders_today ?? '—') },
+    { label: 'Open Carts', value: String(data?.open_carts ?? '—') },
     { label: 'Odoo Status', value: error ? 'Error' : data ? 'Online' : '…' },
   ]
 

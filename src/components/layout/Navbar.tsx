@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList, CalendarClock, TrendingUp } from 'lucide-react'
+import { ShoppingCart, Heart, Package, LogOut, Menu, X, Search, FileText, Sparkles, Zap, RotateCcw, ClipboardList, CalendarClock, TrendingUp, Home } from 'lucide-react'
 import { NavOrders } from './NavMenus'
 import { useState, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
@@ -121,6 +121,7 @@ export function Navbar() {
 
   // Full flat list used by the mobile hamburger (overflow / long tail).
   const navLinks = [
+    { href: '/dashboard', label: t(lang, 'nav.home'), icon: Home },
     { href: '/products', label: t(lang, 'nav.products'), icon: Package },
     { href: '/new-arrivals', label: t(lang, 'newArrivals.title'), icon: Sparkles },
     { href: '/best-sellers', label: t(lang, 'bestSellers.title'), icon: TrendingUp },
@@ -133,7 +134,7 @@ export function Navbar() {
   ]
   // Desktop shows these as flat links; Orders is a dropdown. Category browsing
   // lives in the products-page sidebar + mobile drawer (no navbar dropdown).
-  const desktopPrimary = navLinks.slice(0, 4) // Products, New Arrivals, Best Sellers, Quick Order
+  const desktopPrimary = navLinks.slice(0, 5) // Home, Products, New Arrivals, Best Sellers, Quick Order
 
   return (
     <>
@@ -142,7 +143,7 @@ export function Navbar() {
           <div className="flex h-16 items-center justify-between gap-6">
 
             {/* Logo */}
-            <Link href="/products" className="shrink-0">
+            <Link href="/dashboard" className="shrink-0">
               <Logo className="h-10 w-auto" />
             </Link>
 

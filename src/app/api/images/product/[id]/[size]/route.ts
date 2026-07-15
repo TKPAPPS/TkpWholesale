@@ -31,7 +31,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
   } catch { /* proceed without auth — public images may still work */ }
 
   try {
-    const res = await fetch(url, { headers })
+    // 10s abort: this is the only Odoo call outside client.ts (which has its own
+    // 15s timeout). Without it, a hung Odoo + cold image cache pins one lambda
+    // per grid image until the platform timeout.
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) })
 
     if (!res.ok) return new NextResponse(null, { status: 404 })
 

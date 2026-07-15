@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-15 (Production readiness batch 2 — UX + robustness)
+
+### Changed — UX
+- `/dashboard` is now the desktop home: post-login redirect and logo link go to
+  the dashboard (one-click Reorder), and "Home" leads the desktop nav.
+- `/orders` list: status badge + Reorder button on every row (shared `OrderCard`
+  upgrade), labeled From/To date filters, singular/plural item count.
+- `/products`: search/sort/in-stock toolbar moved ABOVE the Featured strip;
+  results count now localized (was hardcoded "products").
+- Manual language choice persists across reloads: the Odoo profile lang applies
+  only on a first-ever visit (no `lang` cookie), instead of stomping the cookie
+  on every `/api/auth/me` resolve.
+
+### Fixed — robustness
+- Error boundaries added: root `global-error.tsx` + customer `error.tsx`
+  (branded retry instead of Next's unstyled crash page).
+- `/orders` page no longer shows an infinite spinner on network failure or a
+  fake "No orders" empty state on Odoo 503 — it shows the standard
+  OdooUnavailable retry state.
+- Admin dashboard stats render an em-free placeholder instead of literal
+  "undefined" on partial API responses.
+- Image proxy fetch got a 10s abort (was the only Odoo call with no timeout).
+- Order/invoice PDF routes validate the numeric id (NaN/negative -> 404),
+  matching their detail routes.
+
 ## 2026-07-15 (Launch cutover + production readiness batch 1)
 
 ### Changed — launch cutover

@@ -16,6 +16,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   const id = Number(params.id)
+  // Same guard as the invoice-detail route: never pass NaN/negative ids into Odoo.
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
+  }
 
   try {
     const sessionId = await getOdooSession()

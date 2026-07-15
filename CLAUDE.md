@@ -166,9 +166,11 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   customers) to save a serial Odoo hop on the percentage/formula path.
 
 ## Customer navigation & UI
-- **Top nav** (`Navbar.tsx`): desktop (`md+`) = `Categories ▾` · Products · New Arrivals ·
-  Quick Order · `Orders ▾` (Orders / Recently Ordered / Invoices) · Favorites. The two
-  dropdowns live in `NavMenus.tsx` (`NavCategories`, `NavOrders`, hover-intent). Right side:
+- **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best
+  Sellers · Quick Order · `Orders ▾` (Orders / Recently Ordered / Scheduled / Invoices) ·
+  Favorites. The logo and the post-login redirect both point to `/dashboard` (Home) — the
+  dashboard's one-click Reorder is the core repeat-buyer flow. Dropdowns live in
+  `NavMenus.tsx` (`NavOrders`, hover-intent). Right side:
   language switcher, global search overlay (icon → full-screen search), cart with hover
   preview, user name + logout. Mobile top bar keeps logo + lang + search + cart + hamburger;
   the hamburger lists the full flat set (`navLinks`) incl. Quick Order + Recently Ordered.
@@ -189,6 +191,14 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   targets). RTL-aware (`border-s`, `rtl:rotate-180`).
 - Customer stores live in `src/store/`: `authStore`, `langStore` (EN/HE + RTL), `cartStore`
   (optimistic), `toastStore`, `siteSettingsStore`, `categoriesStore`.
+- **Language resolution:** the Odoo profile lang applies ONLY on a first-ever visit (no
+  `lang` cookie). `(customer)/layout.tsx` captures `hasLangCookie()` BEFORE `initLang()`
+  (which writes the cookie) — do not re-add an unconditional `setLang(profile)` on
+  `/api/auth/me`, it stomped manual language choices on every reload.
+- **/products layout order:** breadcrumb → toolbar (search/sort/in-stock) → Featured strip →
+  grid. The toolbar must stay ABOVE Featured — repeat buyers land here to find a SKU.
+- **Error boundaries:** `src/app/global-error.tsx` (dependency-free, own html/body) +
+  `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted).
 
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
