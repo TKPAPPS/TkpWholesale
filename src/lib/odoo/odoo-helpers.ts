@@ -1027,23 +1027,6 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
   // the draft quotation in the Odoo backoffice — they are not cart items.
   const lines = rawLines.filter(l => !l.display_type && Array.isArray(l.product_id) && Array.isArray(l.product_template_id)) as unknown as OdooCartLine[]
 
-  // Fetch units-per-package for every packaging used in this order.
-  // Using product.packaging.qty (e.g. 12 for "Case of 12") is the only
-  // unambiguous way to compute the package price regardless of how
-  // product_packaging_qty is stored on the order line.
-  const packagingIds = lines
-    .map(l => l.product_packaging_id ? l.product_packaging_id[0] : 0)
-    .filter(Boolean)
-
-  const unitsPerPackMap = new Map<number, number>()
-  if (packagingIds.length > 0) {
-    const pkgs = await callKw(sessionId, 'product.packaging', 'read',
-      [packagingIds],
-      { fields: ['id', 'qty'] },
-    ) as { id: number; qty: number }[]
-    pkgs.forEach(p => unitsPerPackMap.set(p.id, p.qty))
-  }
-
   // Read the real Hebrew name and SKU per variant so server reconciliation matches
   // the optimistic line (which seeds name_he + sku from the product). Without this
   // the cart flips Hebrew names to English on reconcile and shows a blank SKU.
@@ -1059,11 +1042,14 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
 
   return lines.map(line => {
     const packagingId = line.product_packaging_id ? line.product_packaging_id[0] : 0
-    const unitsPerPack = unitsPerPackMap.get(packagingId) ?? 1
-    // price_unit is price per individual UOM unit; multiply by units per pack
-    // to get the customer-facing package price (what they pay per box/case/etc.)
-    const price_per_pack = Math.round(line.price_unit * unitsPerPack * 100) / 100
     const info = variantInfo.get(line.product_id[0])
+    // Customer-facing per-pack price must be TAX-INCLUSIVE: product cards, the
+    // optimistic cart line (cartStore.addLineOptimistic), and the displayed line
+    // total (price_total) are all inc-VAT. Deriving from price_unit (ex-VAT) made
+    // the cart look wrong (pack price × qty ≠ line total). Divide Odoo's own
+    // inc-VAT line total by the number of packs so the math always reconciles.
+    const packs = line.product_packaging_qty || line.product_uom_qty || 1
+    const price_per_pack = Math.round((line.price_total / packs) * 100) / 100
 
     return {
       line_id: line.id,

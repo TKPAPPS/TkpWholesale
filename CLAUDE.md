@@ -157,6 +157,10 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   after a successful line write surfaces to the client as a generic failure.
 - Optimistic prices use the card's tax-inclusive pack price, not the customer's
   pricelist `price_unit`; they are approximate until the server reconciles.
+- **`price_per_pack` on cart lines is TAX-INCLUSIVE** (since 2026-07-15):
+  `readCartLines` derives it as `price_total / packs` so pack price × qty always
+  equals the displayed line total and matches the cards + optimistic line. Do not
+  rebuild it from `price_unit` (ex-VAT) — that made cart math look wrong.
 - `lookupPricelistPrice` fetches the pricelist items and the template `list_price`
   in parallel (the `list_price` read is now unconditional, even for fixed-price
   customers) to save a serial Odoo hop on the percentage/formula path.
@@ -297,10 +301,10 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
 - `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).
 - Hebrew product search depends on Odoo translation data being populated for `product.template.name`. Missing translations = no Hebrew results for that product.
-- **Pre-launch:** production Vercel intentionally points at the **staging** Odoo while testing.
-  At launch, switch `ODOO_URL`/`ODOO_DB`/`ODOO_ADMIN_API_KEY` to production Odoo + redeploy.
-  After any Odoo DB switch, **sanity-check New Arrivals** (see the new-arrivals note above): if
-  empty, it's almost always data (nothing published within `newArrivalsDays`), not a code bug.
+- **LAUNCHED cutover 2026-07-15:** production Vercel now points at PRODUCTION Odoo
+  (`https://thekosherplace.odoo.com`, `ODOO_ADMIN_LOGIN=apps@kosher-place.com`). Verified live:
+  auth OK, website 3 present, 2,324 published products, New Arrivals non-empty (7). After any
+  future Odoo DB switch, re-run the New Arrivals sanity check (see the new-arrivals note above).
 - **Cost-field exposure (accepted for now):** portal users can read `standard_price` (cost) on
   products via Odoo's API. Owner accepted the risk for the ~50 known customers; the fix (a small
   Odoo.sh addon restricting the field to internal users) is deferred. Revisit before wider access.

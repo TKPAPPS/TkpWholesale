@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-15 (Launch cutover + production readiness batch 1)
+
+### Changed — launch cutover
+- Production Vercel now points at PRODUCTION Odoo (`thekosherplace.odoo.com`,
+  admin login `apps@kosher-place.com`). Verified live: auth OK (uid 688),
+  website 3 exists, 2,324 products published, New Arrivals has 7 candidates.
+
+### Fixed — production readiness (blockers)
+- Supabase RLS enabled on `scheduled_orders` (was fully exposed to the anon
+  key; `favorites`/`announcements` were already RLS-on in the live DB).
+  `supabase/schema.sql` corrected — it documented `disable row level security`
+  with a comment claiming the opposite effect.
+- `/api/announcements` was prerendered STATIC at build time (never revalidated,
+  so announcements could never appear or expire). Now `force-dynamic`, same as
+  `/api/site-settings`.
+- Brand logo rendered broken on every Hebrew/RTL page (SVG `<text>` re-anchored
+  by inherited RTL). Fixed with CSS `direction: ltr` + explicit `textAnchor`.
+- Cart line unit price was ex-VAT next to an inc-VAT line total (960 x 2 vs
+  2,016 read as an overcharge). `price_per_pack` from `readCartLines` is now
+  tax-inclusive (`price_total / packs`), matching product cards and the
+  optimistic cart line; also drops one `product.packaging` read per cart fetch.
+- Next.js 14.2.5 -> 14.2.35: fixes the critical middleware authorization
+  bypass (CVE-2025-29927) among others. Remaining npm-audit highs require
+  Next 15/16 (breaking) and are platform-mitigated on Vercel.
+
 ## 2026-07-08 (Review fixes + Scheduled/repeating orders)
 
 ### Added — Scheduled / repeating orders

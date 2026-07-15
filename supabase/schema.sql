@@ -12,8 +12,9 @@ create table if not exists favorites (
 );
 
 -- Only the service-role key (used server-side) can access this table.
--- Disable RLS so anon/authenticated Supabase users cannot read it directly.
-alter table favorites disable row level security;
+-- Enable RLS with NO policies: anon/authenticated are blocked entirely;
+-- the service-role key bypasses RLS so the server keeps working.
+alter table favorites enable row level security;
 
 -- Announcements: site-wide banner messages shown to customers.
 -- Managed from the admin dashboard (/api/admin/announcements). The public
@@ -33,7 +34,7 @@ create table if not exists announcements (
 alter table announcements add column if not exists starts_at timestamptz;
 
 -- Server-side (service-role) access only, same as favorites.
-alter table announcements disable row level security;
+alter table announcements enable row level security;
 
 -- Rate limiting: a sliding-window counter keyed by e.g. "login:<ip>". Used to throttle
 -- the login endpoints. Accessed only by the service-role key (server-side).
@@ -98,7 +99,7 @@ create index if not exists scheduled_orders_due_idx
   on scheduled_orders (next_run_date) where status = 'active';
 create index if not exists scheduled_orders_owner_idx
   on scheduled_orders (commercial_partner_id);
-alter table scheduled_orders disable row level security;
+alter table scheduled_orders enable row level security;  -- service-role only; no policies
 
 -- Atomic per-schedule claim. Stamps last_run_date = today and returns the row
 -- ONLY if it is active, due, and not already claimed today. An empty result means

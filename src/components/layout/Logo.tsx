@@ -5,11 +5,15 @@ export function Logo({ className = '' }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-label="The Kosher Place"
+      // The dir attribute alone does not stop an inherited RTL context from
+      // re-anchoring SVG <text>; CSS direction + explicit textAnchor do.
+      style={{ direction: 'ltr' }}
       {...{ dir: 'ltr' }}
     >
       {/* THE */}
       <text
         x="6" y="30"
+        textAnchor="start"
         fontFamily="Georgia, Cambria, 'Times New Roman', serif"
         fontSize="19"
         fontWeight="700"
@@ -20,6 +24,7 @@ export function Logo({ className = '' }: { className?: string }) {
       {/* KOSHER */}
       <text
         x="2" y="118"
+        textAnchor="start"
         fontFamily="Georgia, Cambria, 'Times New Roman', serif"
         fontSize="90"
         fontWeight="700"
@@ -29,6 +34,7 @@ export function Logo({ className = '' }: { className?: string }) {
       {/* PLACE */}
       <text
         x="250" y="143"
+        textAnchor="start"
         fontFamily="Georgia, Cambria, 'Times New Roman', serif"
         fontSize="19"
         fontWeight="700"
