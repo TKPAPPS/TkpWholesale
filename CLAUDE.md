@@ -160,7 +160,7 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - **`price_per_pack` on cart lines is TAX-INCLUSIVE** (since 2026-07-15):
   `readCartLines` derives it as `price_total / packs` so pack price × qty always
   equals the displayed line total and matches the cards + optimistic line. Do not
-  rebuild it from `price_unit` (ex-VAT) — that made cart math look wrong.
+  rebuild it from `price_unit` (ex-VAT); that made cart math look wrong.
 - `lookupPricelistPrice` fetches the pricelist items and the template `list_price`
   in parallel (the `list_price` read is now unconditional, even for fixed-price
   customers) to save a serial Odoo hop on the percentage/formula path.
@@ -168,7 +168,7 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 ## Customer navigation & UI
 - **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best
   Sellers · Quick Order · `Orders ▾` (Orders / Recently Ordered / Scheduled / Invoices) ·
-  Favorites. The logo and the post-login redirect both point to `/dashboard` (Home) — the
+  Favorites. The logo and the post-login redirect both point to `/dashboard` (Home); the
   dashboard's one-click Reorder is the core repeat-buyer flow. Dropdowns live in
   `NavMenus.tsx` (`NavOrders`, hover-intent). Right side:
   language switcher, global search overlay (icon → full-screen search), cart with hover
@@ -193,10 +193,10 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   (optimistic), `toastStore`, `siteSettingsStore`, `categoriesStore`.
 - **Language resolution:** the Odoo profile lang applies ONLY on a first-ever visit (no
   `lang` cookie). `(customer)/layout.tsx` captures `hasLangCookie()` BEFORE `initLang()`
-  (which writes the cookie) — do not re-add an unconditional `setLang(profile)` on
+  (which writes the cookie). Do not re-add an unconditional `setLang(profile)` on
   `/api/auth/me`, it stomped manual language choices on every reload.
 - **/products layout order:** breadcrumb → toolbar (search/sort/in-stock) → Featured strip →
-  grid. The toolbar must stay ABOVE Featured — repeat buyers land here to find a SKU.
+  grid. The toolbar must stay ABOVE Featured; repeat buyers land here to find a SKU.
 - **Error boundaries:** `src/app/global-error.tsx` (dependency-free, own html/body) +
   `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted).
 

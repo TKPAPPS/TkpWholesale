@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-07-15 (Production readiness batch 2 — UX + robustness)
+## 2026-07-15 (Production readiness batch 2: UX + robustness)
 
-### Changed — UX
+### Changed: UX
 - `/dashboard` is now the desktop home: post-login redirect and logo link go to
   the dashboard (one-click Reorder), and "Home" leads the desktop nav.
 - `/orders` list: status badge + Reorder button on every row (shared `OrderCard`
@@ -13,29 +13,29 @@
   only on a first-ever visit (no `lang` cookie), instead of stomping the cookie
   on every `/api/auth/me` resolve.
 
-### Fixed — robustness
+### Fixed: robustness
 - Error boundaries added: root `global-error.tsx` + customer `error.tsx`
   (branded retry instead of Next's unstyled crash page).
 - `/orders` page no longer shows an infinite spinner on network failure or a
-  fake "No orders" empty state on Odoo 503 — it shows the standard
+  fake "No orders" empty state on Odoo 503; it shows the standard
   OdooUnavailable retry state.
-- Admin dashboard stats render an em-free placeholder instead of literal
-  "undefined" on partial API responses.
+- Admin dashboard stats render a placeholder instead of literal "undefined"
+  on partial API responses.
 - Image proxy fetch got a 10s abort (was the only Odoo call with no timeout).
 - Order/invoice PDF routes validate the numeric id (NaN/negative -> 404),
   matching their detail routes.
 
 ## 2026-07-15 (Launch cutover + production readiness batch 1)
 
-### Changed — launch cutover
+### Changed: launch cutover
 - Production Vercel now points at PRODUCTION Odoo (`thekosherplace.odoo.com`,
   admin login `apps@kosher-place.com`). Verified live: auth OK (uid 688),
   website 3 exists, 2,324 products published, New Arrivals has 7 candidates.
 
-### Fixed — production readiness (blockers)
+### Fixed: production readiness (blockers)
 - Supabase RLS enabled on `scheduled_orders` (was fully exposed to the anon
   key; `favorites`/`announcements` were already RLS-on in the live DB).
-  `supabase/schema.sql` corrected — it documented `disable row level security`
+  `supabase/schema.sql` corrected; it documented `disable row level security`
   with a comment claiming the opposite effect.
 - `/api/announcements` was prerendered STATIC at build time (never revalidated,
   so announcements could never appear or expire). Now `force-dynamic`, same as

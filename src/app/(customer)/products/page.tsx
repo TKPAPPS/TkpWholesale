@@ -224,7 +224,7 @@ function ProductsContent() {
           </button>
         </div>
 
-        {/* Featured strip — below the toolbar: repeat buyers come here to find
+        {/* Featured strip below the toolbar: repeat buyers come here to find
             a specific SKU, so search/sort/filter must be reachable without
             scrolling past merchandising. */}
         {featured.length > 0 && !search && page === 0 && (
