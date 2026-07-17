@@ -8,7 +8,7 @@ import { t } from '@/lib/i18n/translations'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { Logo } from '@/components/layout/Logo'
 import { useAuthStore } from '@/store/authStore'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Check } from 'lucide-react'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -52,35 +52,61 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-white flex">
-      {/* Left panel — decorative */}
-      <div className="hidden lg:flex flex-col justify-between w-[44%] bg-brand-700 p-12">
-        <Logo className="h-20 w-auto brightness-0 invert opacity-90" />
+      {/* Left panel — decorative wine + gold */}
+      <div className="relative hidden lg:flex flex-col justify-between w-[46%] p-12 overflow-hidden bg-[linear-gradient(155deg,#541029_0%,#6B1535_48%,#3d0c1d_100%)]">
+        {/* Soft gold glow + subtle texture */}
+        <div className="pointer-events-none absolute -top-24 -end-24 h-96 w-96 rounded-full bg-gold/20 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.04] [background-image:radial-gradient(circle_at_1px_1px,#fff_1px,transparent_0)] [background-size:22px_22px]" />
+        {/* Gold hairline framing the panel */}
+        <div className="pointer-events-none absolute inset-6 rounded-2xl border border-gold/15" />
 
-        <div className="space-y-4">
-          <p className="text-white/60 text-sm uppercase tracking-widest font-medium">Wholesale Portal</p>
-          <h2 className="text-white text-4xl font-serif font-bold leading-tight">
-            The Kosher Place<br />Wholesale Website.
-          </h2>
-          <p className="text-white/50 text-sm">Private portal for registered customers only.</p>
+        <div className="relative">
+          <Logo className="h-20 w-auto brightness-0 invert opacity-95" />
         </div>
 
-        <p className="text-white/40 text-xs">
+        <div className="relative space-y-6">
+          <div className="space-y-4">
+            <p className="text-gold text-xs uppercase tracking-[0.25em] font-semibold">{t(lang, 'auth.brandEyebrow')}</p>
+            <h2 className="text-white text-[2.6rem] font-serif font-bold leading-[1.1]">
+              The Kosher Place
+            </h2>
+            <div className="h-px w-16 bg-gold/70" />
+            <p className="text-white/60 text-sm max-w-xs leading-relaxed">
+              {t(lang, 'auth.brandTagline')}
+            </p>
+          </div>
+
+          <ul className="space-y-2.5 pt-2">
+            {[t(lang, 'auth.brandFeature1'), t(lang, 'auth.brandFeature2'), t(lang, 'auth.brandFeature3')].map((item) => (
+              <li key={item} className="flex items-center gap-3 text-white/75 text-sm">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold/15 ring-1 ring-gold/30">
+                  <Check className="h-3 w-3 text-gold" />
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative text-white/40 text-xs">
           © {new Date().getFullYear()} The Kosher Place (Thailand) Co. Ltd.
         </p>
       </div>
 
       {/* Right panel — form */}
-      <div className="flex flex-col items-center justify-center flex-1 px-6 py-12">
+      <div className="flex flex-col items-center justify-center flex-1 px-6 py-12 bg-[#fdfbfa]">
         <div className="w-full max-w-sm space-y-8">
 
           {/* Logo (mobile) */}
-          <div className="lg:hidden flex justify-center">
+          <div className="lg:hidden flex flex-col items-center gap-3">
             <Logo className="h-16 w-auto" />
+            <div className="h-px w-12 bg-gold/70" />
           </div>
 
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t(lang, 'auth.welcome')}</h1>
-            <p className="text-sm text-gray-500 mt-1">{t(lang, 'auth.privatePortal')}</p>
+            <div className="mt-2 h-0.5 w-10 rounded-full bg-gold" />
+            <p className="text-sm text-gray-500 mt-3">{t(lang, 'auth.privatePortal')}</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
@@ -130,12 +156,12 @@ export default function LoginPage() {
           </div>
 
           <p className="text-center text-xs text-gray-400 leading-relaxed">
-            Access restricted to registered wholesale customers.
+            {t(lang, 'auth.accessNote')}
             <br />
             <Link href="/contact" className="text-brand-700 hover:underline">
-              Contact your sales representative
+              {t(lang, 'auth.contactRep')}
             </Link>{' '}
-            to request access.
+            {t(lang, 'auth.toRequestAccess')}
           </p>
         </div>
       </div>
