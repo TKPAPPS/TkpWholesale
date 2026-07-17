@@ -8,7 +8,7 @@ import { t } from '@/lib/i18n/translations'
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 import { Logo } from '@/components/layout/Logo'
 import { useAuthStore } from '@/store/authStore'
-import { Eye, EyeOff, Check } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -64,28 +64,15 @@ export default function LoginPage() {
           <Logo className="h-20 w-auto brightness-0 invert opacity-95" />
         </div>
 
-        <div className="relative space-y-6">
-          <div className="space-y-4">
-            <p className="text-gold text-xs uppercase tracking-[0.25em] font-semibold">{t(lang, 'auth.brandEyebrow')}</p>
-            <h2 className="text-white text-[2.6rem] font-serif font-bold leading-[1.1]">
-              The Kosher Place
-            </h2>
-            <div className="h-px w-16 bg-gold/70" />
-            <p className="text-white/60 text-sm max-w-xs leading-relaxed">
-              {t(lang, 'auth.brandTagline')}
-            </p>
-          </div>
-
-          <ul className="space-y-2.5 pt-2">
-            {[t(lang, 'auth.brandFeature1'), t(lang, 'auth.brandFeature2'), t(lang, 'auth.brandFeature3')].map((item) => (
-              <li key={item} className="flex items-center gap-3 text-white/75 text-sm">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold/15 ring-1 ring-gold/30">
-                  <Check className="h-3 w-3 text-gold" />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
+        <div className="relative space-y-4">
+          <p className="text-gold text-xs uppercase tracking-[0.25em] font-semibold">{t(lang, 'auth.brandEyebrow')}</p>
+          <h2 className="text-white text-[2.6rem] font-serif font-bold leading-[1.1]">
+            The Kosher Place
+          </h2>
+          <div className="h-px w-16 bg-gold/70" />
+          <p className="text-white/55 text-sm max-w-xs leading-relaxed">
+            {t(lang, 'auth.brandTagline')}
+          </p>
         </div>
 
         <p className="relative text-white/40 text-xs">
