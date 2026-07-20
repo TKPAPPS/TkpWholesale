@@ -36,6 +36,9 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
 - **Project**: `tkp-wholesale` — `prj_FhdXBreMoTUpsE5MgE8oxgFuELgo`
 - **Team**: `team_p1fOxoCiPu2Hj4jqkBZu22AT`
+- **Prod domain**: `wholesale.tkpapps.com` (custom, verified) + `tkp-wholesale.vercel.app`
+  (both serve the app, no redirect between them). The app has NO hardcoded base URL —
+  all absolute redirects use `req.url` (host-relative), so it works on any attached domain.
 - **Token**: stored in user memory (ask user)
 - **GitHub**: `TKPAPPS/TkpWholesale` — push with the PAT stored in user memory
 - **Region**: `sin1` (Singapore) — set in `vercel.json` and `src/app/layout.tsx`
