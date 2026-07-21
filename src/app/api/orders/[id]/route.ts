@@ -61,6 +61,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const skuMap: Record<number, string> = {}
     variants.forEach((v) => { skuMap[v.id] = v.default_code || '' })
 
+    // Product names in BOTH languages — the admin session context is English, so
+    // reading only product_template_id[1] gave Hebrew customers English names.
+    // Read the template names under en_US + he_IL contexts (same pattern as
+    // readOrderItemsForSchedule) and map per language.
+    const templateIds = Array.from(new Set(lines.map((l) => l.product_template_id[0]).filter(Boolean)))
+    const [enNames, heNames] = templateIds.length > 0
+      ? await Promise.all([
+          callKw(sessionId, 'product.template', 'read', [templateIds], {
+            fields: ['id', 'name'], context: { lang: 'en_US' },
+          }) as Promise<{ id: number; name: string }[]>,
+          callKw(sessionId, 'product.template', 'read', [templateIds], {
+            fields: ['id', 'name'], context: { lang: 'he_IL' },
+          }) as Promise<{ id: number; name: string }[]>,
+        ])
+      : [[], []]
+    const enNameMap: Record<number, string> = {}
+    enNames.forEach((t) => { enNameMap[t.id] = t.name })
+    const heNameMap: Record<number, string> = {}
+    heNames.forEach((t) => { heNameMap[t.id] = t.name })
+
     // Fetch shipping address
     const shippingId = order.partner_shipping_id ? order.partner_shipping_id[0] : null
     let shippingAddress = { id: 0, name: '', street: '', city: '', zip: '', country: '' }
@@ -101,8 +121,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         product_id: l.product_id[0],
         template_id: l.product_template_id[0],
         packaging_id: l.product_packaging_id ? l.product_packaging_id[0] : null,
-        product_name: l.product_template_id[1] ?? l.name,
-        product_name_he: l.product_template_id[1] ?? l.name,
+        product_name: enNameMap[l.product_template_id[0]] ?? l.product_template_id[1] ?? l.name,
+        product_name_he: heNameMap[l.product_template_id[0]] ?? enNameMap[l.product_template_id[0]] ?? l.product_template_id[1] ?? l.name,
         sku: skuMap[l.product_id[0]] ?? '',
         packaging_name: l.product_packaging_id ? l.product_packaging_id[1] : 'Unit',
         packaging_qty: l.product_packaging_qty,

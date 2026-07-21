@@ -168,9 +168,6 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   `readCartLines` derives it as `price_total / packs` so pack price × qty always
   equals the displayed line total and matches the cards + optimistic line. Do not
   rebuild it from `price_unit` (ex-VAT); that made cart math look wrong.
-- `lookupPricelistPrice` fetches the pricelist items and the template `list_price`
-  in parallel (the `list_price` read is now unconditional, even for fixed-price
-  customers) to save a serial Odoo hop on the percentage/formula path.
 
 ## Customer navigation & UI
 - **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best

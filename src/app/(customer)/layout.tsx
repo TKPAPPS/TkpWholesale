@@ -42,7 +42,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
       })
       .then((user) => {
         setUser(user)
-        if (!hadLangChoice) setLang(user.lang === 'he_IL' ? 'he' : 'en')
+        if (!hadLangChoice) setLang(user.lang === 'he' ? 'he' : 'en')
       })
       .catch(() => {
         router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))
