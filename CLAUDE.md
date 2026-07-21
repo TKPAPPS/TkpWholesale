@@ -310,7 +310,7 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   an explicit localized alphabetical option (Odoo orders by the active language's name).
 
 ## Known issues / follow-ups
-- PDF download: `ir.attachment` strategy implemented but not confirmed working end-to-end on SaaS.
+- PDF download: `ir.attachment` + `render_qweb_pdf` fallback. Confirmed working end-to-end on production SaaS (order + invoice PDFs verified 2026-07-21).
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
 - `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).
