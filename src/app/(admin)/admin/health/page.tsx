@@ -36,7 +36,7 @@ export default function HealthPage() {
   function statusBadge(status: string) {
     if (status === 'ok') return 'bg-green-50 text-green-700'
     if (status === 'error') return 'bg-red-50 text-red-700'
-    if (status === 'configured') return 'bg-blue-50 text-blue-700'
+    if (status === 'not configured') return 'bg-amber-50 text-amber-700'
     return 'bg-gray-100 text-gray-500'
   }
 
