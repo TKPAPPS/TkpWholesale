@@ -6,8 +6,8 @@ export default function ContactPage() {
       <Link href="/" className="text-sm text-brand-700 hover:underline">← Back</Link>
       <h1 className="text-2xl font-bold mt-4 mb-6">Contact</h1>
       <div className="text-gray-600 space-y-2 text-sm">
-        <p>For portal access or order support, contact your sales representative directly.</p>
-        <p className="mt-4 font-medium">Support hours: Sun–Thu, 8:00–17:00</p>
+        <p>For portal access or order support, contact our Sales Manager, Michael, directly.</p>
+        <p className="mt-4 font-medium">Support hours: Sun-Thu, 8:00-17:00</p>
       </div>
     </main>
   )
