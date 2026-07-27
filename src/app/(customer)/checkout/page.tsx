@@ -85,7 +85,7 @@ export default function CheckoutPage() {
 
   useEffect(() => { fetchReview() }, [])
 
-  const confirm = async () => {
+  const confirm = async (removeUnavailable = false) => {
     if (!selectedAddress) return
     setConfirming(true)
     setConfirmError('')
@@ -100,19 +100,51 @@ export default function CheckoutPage() {
       const res = await fetch('/api/checkout/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delivery_address_id: selectedAddress, note, po_ref: poRef, delivery_date: deliveryDate, schedule }),
+        body: JSON.stringify({ delivery_address_id: selectedAddress, note, po_ref: poRef, delivery_date: deliveryDate, schedule, remove_unavailable: removeUnavailable }),
       })
       const data = await res.json()
-      if (!res.ok) { setConfirmError(data.message ?? 'Could not confirm order.'); return }
+      if (!res.ok) {
+        // Stock changed since the page loaded: re-fetch so the out-of-stock items get
+        // split out, then let the buyer place the order with the remainder.
+        if (data.error === 'ITEMS_OUT_OF_STOCK') {
+          await fetchReview()
+          setConfirmError(t(lang, 'checkout.stockChangedReview'))
+          return
+        }
+        if (data.error === 'ALL_ITEMS_OUT_OF_STOCK') {
+          await fetchReview()
+          setConfirmError(t(lang, 'checkout.allOutOfStock'))
+          return
+        }
+        setConfirmError(data.message ?? 'Could not confirm order.')
+        return
+      }
       const params = new URLSearchParams({ name: data.order_name ?? '' })
       if (data.schedule_id) params.set('scheduled', '1')
       if (data.schedule_error) params.set('schedule_error', '1')
+      if (data.removed_count) params.set('removed', String(data.removed_count))
       router.push(`/order-confirmation/${data.order_id}?${params.toString()}`)
     } catch { setConfirmError('Unexpected error. Please try again.') }
     finally { setConfirming(false) }
   }
 
   if (loading) return <LoadingSpinner />
+
+  // Split the cart into orderable vs out-of-stock (flagged by the review route). The order
+  // total shown reflects only the orderable lines, since the OOS items won't be ordered.
+  const isOos = (l: Cart['lines'][number]) => l.warnings.includes('OUT_OF_STOCK')
+  const oosLines = review?.lines.filter(isOos) ?? []
+  const orderableLines = review?.lines.filter((l) => !isOos(l)) ?? []
+  const hasOos = oosLines.length > 0
+  const displayCart: ReviewData | null = review
+    ? {
+        ...review,
+        lines: orderableLines,
+        amount_untaxed: orderableLines.reduce((s, l) => s + l.price_subtotal, 0),
+        amount_tax: orderableLines.reduce((s, l) => s + (l.price_total - l.price_subtotal), 0),
+        amount_total: orderableLines.reduce((s, l) => s + l.price_total, 0),
+      }
+    : null
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -122,27 +154,41 @@ export default function CheckoutPage() {
 
       {review && (
         <div className="space-y-6">
-          {/* Lines summary */}
+          {/* Lines summary (orderable items only) */}
           <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Order Items</h2>
-            {review.lines.map((line) => (
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">{t(lang, 'checkout.orderItems')}</h2>
+            {orderableLines.map((line) => (
               <div key={line.line_id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
                 <div className="flex items-center gap-2 min-w-0">
                   <LineThumb src={line.product_image_url} />
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                     <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
-                    {line.warnings.length > 0 && (
-                      <p className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />
-                        {line.warnings[0] === 'OUT_OF_STOCK' ? t(lang, 'checkout.lineOutOfStock') : line.warnings[0]}
-                      </p>
-                    )}
                   </div>
                 </div>
                 <span className="font-medium">{formatCurrency(line.price_total, review.currency)}</span>
               </div>
             ))}
           </div>
+
+          {/* Out-of-stock items — separated, will NOT be ordered */}
+          {hasOos && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-amber-800 mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 shrink-0" /> {t(lang, 'checkout.outOfStockSectionTitle')}
+              </h2>
+              <p className="text-xs text-amber-700 mb-3">{t(lang, 'checkout.outOfStockSectionNote')}</p>
+              {oosLines.map((line) => (
+                <div key={line.line_id} className="flex items-center gap-2 py-2 border-b border-amber-100 last:border-0 text-sm">
+                  <LineThumb src={line.product_image_url} />
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-600 line-through">{lang === 'he' ? line.product_name_he : line.product_name}</p>
+                    <p className="text-xs text-amber-700">{t(lang, 'checkout.lineOutOfStock')}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Delivery address */}
           <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -284,24 +330,20 @@ export default function CheckoutPage() {
             )}
           </div>
 
-          {/* Totals */}
-          <CartSummary cart={review} showCheckoutButton={false} />
+          {/* Totals (orderable items only) */}
+          <CartSummary cart={displayCart!} showCheckoutButton={false} />
 
           {/* Confirm */}
           {confirmError && <p className="text-sm text-red-600 text-center">{confirmError}</p>}
-          {!review.valid && (
+          {review.lines.length > 0 && orderableLines.length === 0 && (
             <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
-              {review.blocking_errors?.includes('OUT_OF_STOCK_ITEMS') ? (
-                <span>{t(lang, 'checkout.outOfStockBlock')} <Link href="/cart" className="underline font-medium">{t(lang, 'cart.title')}</Link></span>
-              ) : (
-                t(lang, 'checkout.validationFailed')
-              )}
+              {t(lang, 'checkout.allOutOfStock')}
             </div>
           )}
           <p className="text-xs text-gray-400 text-center">{t(lang, 'checkout.confirmWarning')}</p>
-          <Button onClick={confirm} loading={confirming} disabled={!review.valid || !selectedAddress} className="w-full" size="lg">
+          <Button onClick={() => confirm(hasOos)} loading={confirming} disabled={!selectedAddress || orderableLines.length === 0} className="w-full" size="lg">
             <CheckCircle className="h-4 w-4 me-2" />
-            {t(lang, 'checkout.confirmOrder')}
+            {hasOos ? t(lang, 'checkout.removeAndPlaceOrder') : t(lang, 'checkout.confirmOrder')}
           </Button>
           <div className="text-center">
             <Link href="/cart" className="text-sm text-brand-700 hover:underline">{t(lang, 'common.back')} to cart</Link>

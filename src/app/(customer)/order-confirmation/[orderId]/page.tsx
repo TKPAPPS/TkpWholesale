@@ -14,6 +14,7 @@ export default function OrderConfirmationPage() {
   const [orderName, setOrderName] = useState<string | null>(searchParams.get('name'))
   const scheduled = searchParams.get('scheduled') === '1'
   const scheduleError = searchParams.get('schedule_error') === '1'
+  const removedCount = Number(searchParams.get('removed')) || 0
 
   useEffect(() => {
     if (orderName) return
@@ -45,6 +46,12 @@ export default function OrderConfirmationPage() {
         <div className="mb-8 flex items-center justify-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>{t(lang, 'checkout.scheduleError')}</span>
+        </div>
+      )}
+      {removedCount > 0 && (
+        <div className="mb-8 flex items-center justify-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{t(lang, 'confirmation.itemsRemoved').replace('{n}', String(removedCount))}</span>
         </div>
       )}
       <div className="flex flex-col sm:flex-row gap-3 justify-center">

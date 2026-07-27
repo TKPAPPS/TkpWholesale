@@ -74,6 +74,22 @@ the listing and the search route, so both must pass the in-stock set **and** the
 set. A `null` in-stock set (lookup failed) means "do not hide on stock" so a transient failure
 shows products rather than emptying the catalog.
 
+**Checkout stock recheck + out-of-stock separation.** A cart can sit for days, so both the
+checkout review (`/api/checkout/review`) and the final confirm (`/api/checkout/confirm`)
+re-check stock via `findUnorderableTemplateIdsLive` — a LIVE per-item `qty_available` read
+for just the cart's template ids (not the 60s-cached whole-catalog set), so a recent stock
+drop can't slip an OOS item into a placed order. It's cheap because a cart is a small id
+set. Same orderability rule as `_fetchInStockIds` (type `consu` AND (not `is_storable` OR
+`qty_available>0`), OR `allow_out_of_stock_order`); fails open (empty set) on a lookup error.
+The checkout page splits the cart into orderable vs out-of-stock and shows the OOS items in a
+separate amber section; the order total reflects only orderable lines. Confirm returns 409
+`ITEMS_OUT_OF_STOCK` (with `template_ids`) when OOS items are present and the client has not
+acknowledged; the client re-fetches review and the button becomes "Remove out-of-stock items
+and place order", which POSTs `remove_unavailable:true`. Confirm then `unlink`s the OOS
+`sale.order.line`s, places the order with the rest, and returns `removed_count` (surfaced as a
+banner on the confirmation page via `?removed=N`). If EVERY line is OOS it returns 409
+`ALL_ITEMS_OUT_OF_STOCK`.
+
 **Storefront rules are admin-configurable** via `b2b_portal.site_settings` (one JSON config
 param): low-stock badge threshold, new-arrivals window, products/orders/invoices page sizes,
 and checkout note max length. Shape + defaults + clamping live in `src/lib/site-settings.ts`

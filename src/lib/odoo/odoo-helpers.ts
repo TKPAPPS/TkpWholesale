@@ -351,6 +351,41 @@ export async function findUnorderableTemplateIds(
   return out
 }
 
+// Like findUnorderableTemplateIds, but reads qty_available LIVE for exactly these template
+// ids instead of the 60s-cached whole-catalog in-stock set. Used at the final checkout
+// confirm so a stock drop within the cache window can't slip an out-of-stock item into a
+// placed order. Safe because a cart is a small set of ids, so this doesn't trigger the
+// expensive catalog-wide qty_available compute the listing avoids. Same Odoo-18 rule as
+// _fetchInStockIds: orderable = type 'consu' AND (not is_storable OR qty_available > 0), OR
+// the template is flagged allow_out_of_stock_order. Fails open (empty set) on a lookup error.
+export async function findUnorderableTemplateIdsLive(
+  sessionId: string,
+  templateIds: number[],
+): Promise<Set<number>> {
+  const out = new Set<number>()
+  const ids = Array.from(new Set(templateIds.filter(Boolean)))
+  if (ids.length === 0) return out
+  try {
+    const [rows, settingsMap] = await Promise.all([
+      callKw(sessionId, 'product.template', 'read', [ids], {
+        fields: ['id', 'type', 'is_storable', 'qty_available'],
+      }) as Promise<{ id: number; type: string; is_storable: boolean; qty_available: number }[]>,
+      fetchWebsitePublishedSettings(sessionId),
+    ])
+    const byId = new Map(rows.map(r => [r.id, r]))
+    for (const tid of ids) {
+      if (settingsMap.get(tid)) continue // allow_out_of_stock_order → always orderable
+      const r = byId.get(tid)
+      const inStock = !!r && r.type === 'consu' && (r.is_storable === false || r.qty_available > 0)
+      if (!inStock) out.add(tid)
+    }
+    return out
+  } catch (err) {
+    console.warn('findUnorderableTemplateIdsLive error (failing open):', err)
+    return out
+  }
+}
+
 // Cached per-uid "is this Odoo user still active?" check (revalidate 5 min). Lets the
 // portal revoke a customer's access shortly after an admin deactivates them in Odoo,
 // instead of waiting out the full session TTL. Fails OPEN (treats as active) on an

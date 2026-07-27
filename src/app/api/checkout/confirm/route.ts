@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a moment and try again.' }, { status: 429 })
   }
 
-  const { delivery_address_id, note, po_ref, delivery_date, schedule } = await req.json()
+  const { delivery_address_id, note, po_ref, delivery_date, schedule, remove_unavailable } = await req.json()
 
   if (!Number.isInteger(delivery_address_id) || delivery_address_id <= 0) {
     return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address is required.' }, { status: 400 })
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart, findUnorderableTemplateIds } = await import('@/lib/odoo/odoo-helpers')
+    const { findCart, findUnorderableTemplateIdsLive } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead, OdooError } = await import('@/lib/odoo/client')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
@@ -171,18 +171,41 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Hard stock re-check (safety net even if the review was stale): refuse to confirm an order
-    // that contains an item which is now out of stock and not allow-out-of-stock.
+    // Live stock re-check at the moment of ordering (catches a stock drop within the
+    // review cache window). Out-of-stock lines are SEPARATED from the order, never sent
+    // to Odoo. Without an explicit acknowledgement we return the offending template ids so
+    // the checkout page can show the split and ask the buyer to confirm removing them;
+    // with remove_unavailable we unlink those lines here and place the order with the rest.
     const lineRows = await searchRead(sessionId, 'sale.order.line',
-      [['order_id', '=', cartId]], ['product_template_id'],
-    ) as { product_template_id: [number, string] | false }[]
-    const lineTemplateIds = lineRows.map(r => (Array.isArray(r.product_template_id) ? r.product_template_id[0] : 0)).filter(Boolean)
-    const unorderable = await findUnorderableTemplateIds(sessionId, lineTemplateIds)
+      [['order_id', '=', cartId]], ['id', 'product_template_id'],
+    ) as { id: number; product_template_id: [number, string] | false }[]
+    const templateIdOf = (r: typeof lineRows[number]) => (Array.isArray(r.product_template_id) ? r.product_template_id[0] : 0)
+    const lineTemplateIds = lineRows.map(templateIdOf).filter(Boolean)
+    const unorderable = await findUnorderableTemplateIdsLive(sessionId, lineTemplateIds)
+    let removedCount = 0
     if (unorderable.size > 0) {
-      return NextResponse.json(
-        { error: 'ITEMS_OUT_OF_STOCK', message: 'Some items are no longer in stock. Please review your cart.' },
-        { status: 409 },
-      )
+      if (!remove_unavailable) {
+        return NextResponse.json(
+          {
+            error: 'ITEMS_OUT_OF_STOCK',
+            message: 'Some items are no longer in stock.',
+            template_ids: Array.from(unorderable),
+          },
+          { status: 409 },
+        )
+      }
+      // Acknowledged: drop the out-of-stock lines from the cart, then continue.
+      const removeLineIds = lineRows.filter(r => unorderable.has(templateIdOf(r))).map(r => r.id)
+      if (removeLineIds.length > 0) {
+        await callKw(sessionId, 'sale.order.line', 'unlink', [removeLineIds], {})
+        removedCount = removeLineIds.length
+      }
+      if (removeLineIds.length >= lineRows.length) {
+        return NextResponse.json(
+          { error: 'ALL_ITEMS_OUT_OF_STOCK', message: 'Every item in your cart is out of stock.' },
+          { status: 409 },
+        )
+      }
     }
 
     // Validate delivery address belongs to this commercial partner
@@ -257,6 +280,7 @@ export async function POST(req: NextRequest) {
         already_confirmed: false,
         schedule_id: scheduleId,
         schedule_error: scheduleError || undefined,
+        removed_count: removedCount || undefined,
       })
     } catch (readErr) {
       console.error('checkout confirm read-back failed (order already confirmed):', readErr)
@@ -269,6 +293,7 @@ export async function POST(req: NextRequest) {
         already_confirmed: false,
         schedule_id: scheduleId,
         schedule_error: scheduleError || undefined,
+        removed_count: removedCount || undefined,
       })
     }
   } catch (err) {

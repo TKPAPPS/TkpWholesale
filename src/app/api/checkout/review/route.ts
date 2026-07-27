@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart, readCart, emptyCart, fetchDeliveryAddresses, findUnorderableTemplateIds } = await import('@/lib/odoo/odoo-helpers')
+    const { findCart, readCart, emptyCart, fetchDeliveryAddresses, findUnorderableTemplateIdsLive } = await import('@/lib/odoo/odoo-helpers')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
     const [cart, delivery_addresses] = await Promise.all([
@@ -32,8 +32,9 @@ export async function GET(req: NextRequest) {
     ])
 
     // Re-check stock now (the cart may have sat for days): flag any line whose product is no
-    // longer orderable so the buyer sees it and can't confirm until it's removed.
-    const unorderable = await findUnorderableTemplateIds(sessionId, cart.lines.map(l => l.template_id))
+    // longer orderable so the buyer sees the out-of-stock items split out on the checkout page.
+    // Live per-item read (cart is small) so the split shown matches what confirm will enforce.
+    const unorderable = await findUnorderableTemplateIdsLive(sessionId, cart.lines.map(l => l.template_id))
     const lines = cart.lines.map(l =>
       unorderable.has(l.template_id) ? { ...l, warnings: [...l.warnings, 'OUT_OF_STOCK'] } : l,
     )
