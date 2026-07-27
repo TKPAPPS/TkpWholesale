@@ -329,35 +329,15 @@ export async function getInStockIds(): Promise<Set<number> | null> {
 
 export function bustProductCache() { revalidateTag('odoo-products') }
 
-// Given a set of template ids (e.g. the cart's), return the ones that can NOT currently be
-// ordered: out of stock AND not flagged allow-out-of-stock on this website. Used to warn at
-// checkout review and to hard-block at confirm, so an item that went OOS while a cart sat for
-// days can't slip through. Returns an empty set when stock is unknown (fails open).
-export async function findUnorderableTemplateIds(
-  sessionId: string,
-  templateIds: number[],
-): Promise<Set<number>> {
-  const out = new Set<number>()
-  if (templateIds.length === 0) return out
-  const [inStockIds, settingsMap] = await Promise.all([
-    getInStockIds(),
-    fetchWebsitePublishedSettings(sessionId),
-  ])
-  if (inStockIds === null) return out // stock lookup failed → don't block
-  for (const tid of Array.from(new Set(templateIds))) {
-    const allowOos = settingsMap.get(tid) ?? false
-    if (!inStockIds.has(tid) && !allowOos) out.add(tid)
-  }
-  return out
-}
-
-// Like findUnorderableTemplateIds, but reads qty_available LIVE for exactly these template
-// ids instead of the 60s-cached whole-catalog in-stock set. Used at the final checkout
-// confirm so a stock drop within the cache window can't slip an out-of-stock item into a
-// placed order. Safe because a cart is a small set of ids, so this doesn't trigger the
-// expensive catalog-wide qty_available compute the listing avoids. Same Odoo-18 rule as
-// _fetchInStockIds: orderable = type 'consu' AND (not is_storable OR qty_available > 0), OR
-// the template is flagged allow_out_of_stock_order. Fails open (empty set) on a lookup error.
+// Return the template ids (from a given set, e.g. a cart's) that can NOT currently be ordered:
+// out of stock AND not flagged allow_out_of_stock_order on this website. Reads qty_available
+// LIVE for exactly these ids rather than the 60s-cached whole-catalog in-stock set, so a stock
+// drop within the cache window can't slip an out-of-stock item into a placed order. Cheap
+// because a cart is a small id set, so it avoids the expensive catalog-wide qty_available
+// compute the listing deliberately avoids. Orderability rule matches _fetchInStockIds: type
+// 'consu' AND (not is_storable OR qty_available > 0), OR allow_out_of_stock_order. Used by
+// checkout review (to split the cart) and confirm (to remove OOS lines). Fails open (empty
+// set) on a lookup error.
 export async function findUnorderableTemplateIdsLive(
   sessionId: string,
   templateIds: number[],

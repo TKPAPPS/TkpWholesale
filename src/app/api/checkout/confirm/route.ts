@@ -195,12 +195,15 @@ export async function POST(req: NextRequest) {
         )
       }
       // Acknowledged: drop the out-of-stock lines from the cart, then continue.
+      // Compare against product lines only (ignore any section/note display_type rows)
+      // so removing every product still trips the all-out-of-stock guard.
+      const productLineIds = lineRows.filter(r => templateIdOf(r)).map(r => r.id)
       const removeLineIds = lineRows.filter(r => unorderable.has(templateIdOf(r))).map(r => r.id)
       if (removeLineIds.length > 0) {
         await callKw(sessionId, 'sale.order.line', 'unlink', [removeLineIds], {})
         removedCount = removeLineIds.length
       }
-      if (removeLineIds.length >= lineRows.length) {
+      if (removeLineIds.length >= productLineIds.length) {
         return NextResponse.json(
           { error: 'ALL_ITEMS_OUT_OF_STOCK', message: 'Every item in your cart is out of stock.' },
           { status: 409 },
