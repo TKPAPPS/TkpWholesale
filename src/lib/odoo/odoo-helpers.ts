@@ -257,6 +257,10 @@ export function buildVisibilityDomain(
     return [
       ['id', 'in', visibleIds],
       ['type', '=', 'consu'],
+      // Only products flagged "Can be Sold" (sale_ok). A product can be published on the
+      // website with allow_out_of_stock_order set, but if Sales is turned off in Odoo it is
+      // not for sale and must never appear (nor be orderable) on the portal.
+      ['sale_ok', '=', true],
       ...catExclusion,
       ...extra,
     ]
@@ -265,6 +269,7 @@ export function buildVisibilityDomain(
   return [
     ['id', 'in', publishedVisible],
     ['type', 'in', ['consu', 'storable']],
+    ['sale_ok', '=', true],
     ...catExclusion,
     ...extra,
   ]

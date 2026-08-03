@@ -39,12 +39,14 @@ export async function POST(req: NextRequest) {
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
       getOrCreateCart(sessionId, parsed.partner_id),
       fetchWebsitePublishedSettings(sessionId),
-      custHidden.length
-        ? (callKw(sessionId, 'product.template', 'search_count', [[['id', '=', product_id], ...custHidden]], {}) as Promise<number>)
-        : Promise.resolve(1),
+      // Must be for sale (sale_ok) and not hidden for this customer — blocks a not-for-sale
+      // or hidden product from being added via reorder / quick-order.
+      callKw(sessionId, 'product.template', 'search_count',
+        [[['id', '=', product_id], ['sale_ok', '=', true], ...custHidden]], {},
+      ) as Promise<number>,
     ])
 
-    // Reject orders for products not published on the portal, or hidden for this customer.
+    // Reject orders for products not published on the portal, not for sale, or hidden.
     if (!publishedMap.has(product_id) || allowedCount === 0) {
       return NextResponse.json({ error: 'PRODUCT_NOT_AVAILABLE' }, { status: 404 })
     }
