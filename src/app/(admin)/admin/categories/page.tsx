@@ -34,16 +34,21 @@ function CategoryRow({
   node,
   depth,
   hiddenIds,
+  inheritedHidden,
   onToggle,
   onToggleSubtree,
 }: {
   node: CategoryNode
   depth: number
   hiddenIds: Set<number>
+  inheritedHidden: boolean
   onToggle: (id: number) => void
   onToggleSubtree: (node: CategoryNode, hide: boolean) => void
 }) {
-  const isHidden = hiddenIds.has(node.id)
+  const ownHidden = hiddenIds.has(node.id)
+  // A category is effectively hidden if it or any ancestor is hidden. A child of a hidden
+  // parent is excluded from the storefront regardless of its own toggle, so show it as such.
+  const effectiveHidden = inheritedHidden || ownHidden
   const hasChildren = node.children.length > 0
 
   const allChildrenHidden = hasChildren && node.children.every(c => hiddenIds.has(c.id))
@@ -51,13 +56,16 @@ function CategoryRow({
 
   return (
     <>
-      <tr className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isHidden ? 'opacity-50' : ''}`}>
+      <tr className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${effectiveHidden ? 'opacity-50' : ''}`}>
         <td className="py-2.5 px-4">
           <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
             {depth > 0 && <span className="text-gray-300 select-none">└</span>}
             <span className="text-sm text-gray-800">{node.name}</span>
             {node.name_he && node.name_he !== node.name && (
               <span className="text-xs text-gray-400 hidden sm:inline">· {node.name_he}</span>
+            )}
+            {inheritedHidden && (
+              <span className="text-[10px] text-gray-400 italic whitespace-nowrap">hidden by parent</span>
             )}
           </div>
         </td>
@@ -72,9 +80,10 @@ function CategoryRow({
         <td className="py-2.5 px-4 text-center">
           <input
             type="checkbox"
-            checked={!isHidden}
+            checked={!effectiveHidden}
+            disabled={inheritedHidden}
             onChange={() => onToggle(node.id)}
-            className="h-4 w-4 rounded border-gray-300 text-brand-700 focus:ring-brand-700/20 cursor-pointer"
+            className="h-4 w-4 rounded border-gray-300 text-brand-700 focus:ring-brand-700/20 cursor-pointer disabled:cursor-not-allowed"
           />
         </td>
         {hasChildren && (
@@ -95,6 +104,7 @@ function CategoryRow({
           node={child}
           depth={depth + 1}
           hiddenIds={hiddenIds}
+          inheritedHidden={effectiveHidden}
           onToggle={onToggle}
           onToggleSubtree={onToggleSubtree}
         />
@@ -171,7 +181,21 @@ export default function CategoriesPage() {
 
   const dirty = JSON.stringify(Array.from(hiddenIds).sort()) !== JSON.stringify(Array.from(original).sort())
   const tree = buildTree(cats)
-  const visibleCount = cats.length - hiddenIds.size
+  // Count categories effectively hidden (own toggle OR any ancestor hidden), so the header
+  // matches what the storefront actually shows.
+  const effectiveHiddenCount = (() => {
+    let count = 0
+    const walk = (nodes: CategoryNode[], inherited: boolean) => {
+      for (const n of nodes) {
+        const eff = inherited || hiddenIds.has(n.id)
+        if (eff) count++
+        walk(n.children, eff)
+      }
+    }
+    walk(tree, false)
+    return count
+  })()
+  const visibleCount = cats.length - effectiveHiddenCount
 
   return (
     <div>
@@ -219,6 +243,7 @@ export default function CategoriesPage() {
                     node={node}
                     depth={0}
                     hiddenIds={hiddenIds}
+                    inheritedHidden={false}
                     onToggle={toggle}
                     onToggleSubtree={toggleSubtree}
                   />

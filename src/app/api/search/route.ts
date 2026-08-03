@@ -29,18 +29,19 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
     // is restricted to published + in-stock + not-admin-hidden products — same rules
     // as the listing. Stock is resolved against the cached in-stock id set, not a
     // slow `qty_available` SQL term. locCtx scopes the per-hit qty_available read below
     // to the sellable location (R4/Stock), same as the listing.
-    const [websiteMap, hideOos, inStockIds, hiddenIds, locCtx] = await Promise.all([
+    const [websiteMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds, locCtx] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
+      getHiddenCategoryIds(),
       stockLocationContext(),
     ])
 
@@ -48,8 +49,8 @@ export async function GET(req: NextRequest) {
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
     // extra list — Odoo rejects the nested form with "Invalid field ...|".
     const skuDomain = ['default_code', 'ilike', q]
-    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, ['|', ['name', 'ilike', q], skuDomain])
-    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, [['name', 'ilike', q]])
+    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, ['|', ['name', 'ilike', q], skuDomain], hiddenCategoryIds)
+    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, [['name', 'ilike', q]], hiddenCategoryIds)
     const [enResults, heResults] = await Promise.all([
       searchRead(sessionId, 'product.template', enDomain,
         ['id'], { limit: 50, context: { lang: 'en_US' } },

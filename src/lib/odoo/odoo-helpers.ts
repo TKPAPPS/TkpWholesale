@@ -235,7 +235,13 @@ export function buildVisibilityDomain(
   inStockIds: Set<number> | null,      // in-stock template ids; null = stock unknown
   hiddenIds: Set<number>,              // admin-hidden template ids (always excluded)
   extra: unknown[] = [],
+  hiddenCategoryIds: number[] = [],    // admin-hidden category roots; products in these (or any descendant) are excluded
 ): unknown[] {
+  // Exclude products in a hidden category or any of its children. `child_of` on the
+  // public_categ_ids many2many resolves the whole subtree, so hiding a parent cascades.
+  const catExclusion = hiddenCategoryIds.length
+    ? ['!', ['public_categ_ids', 'child_of', hiddenCategoryIds]]
+    : []
   if (hideOos) {
     // Resolve stock in JS against the cached in-stock set instead of via a
     // `qty_available > 0` SQL term (which forces Odoo to compute live stock for the
@@ -251,6 +257,7 @@ export function buildVisibilityDomain(
     return [
       ['id', 'in', visibleIds],
       ['type', '=', 'consu'],
+      ...catExclusion,
       ...extra,
     ]
   }
@@ -258,6 +265,7 @@ export function buildVisibilityDomain(
   return [
     ['id', 'in', publishedVisible],
     ['type', 'in', ['consu', 'storable']],
+    ...catExclusion,
     ...extra,
   ]
 }
@@ -287,7 +295,14 @@ export function bustWebsiteSettingsCache() {
   revalidateTag('odoo-products')
 }
 
-export function bustCategoriesCache() { revalidateTag('odoo-categories') }
+export function bustCategoriesCache() {
+  // Nav tree, the hidden-category set, and the product listing (which now excludes
+  // products in hidden categories) all depend on this — bust all three so an admin
+  // category toggle reaches both the nav and the storefront immediately.
+  revalidateTag('odoo-categories')
+  revalidateTag('odoo-hidden-categories')
+  revalidateTag('odoo-products')
+}
 
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
 // This is the source of truth — product.template.website_published is global, not per-website.
@@ -535,6 +550,20 @@ export function bustHiddenProductsCache() { revalidateTag('odoo-hidden-products'
 export async function getHiddenProductIds(): Promise<Set<number>> {
   try { return new Set(await _fetchHiddenProductIds()) } catch { return new Set() }
 }
+
+// Hidden categories: portal-level hide of a category (and its subtree). Stored as the
+// ROOT ids the admin toggled; buildVisibilityDomain expands to descendants at query time
+// via Odoo `child_of`, so products in a hidden category or any of its children are excluded
+// from every product surface. Same param the admin categories editor writes.
+const HIDDEN_CATEGORIES_KEY = 'b2b_portal.hidden_category_ids'
+const _fetchHiddenCategoryIds = unstable_cache(
+  async (): Promise<number[]> => readIdListParam(HIDDEN_CATEGORIES_KEY),
+  ['odoo-hidden-categories'],
+  { revalidate: 300, tags: ['odoo-hidden-categories'] },
+)
+export async function getHiddenCategoryIds(): Promise<number[]> {
+  try { return await _fetchHiddenCategoryIds() } catch { return [] }
+}
 export function readHiddenProductIdsUncached() { return readIdListParam(HIDDEN_PRODUCTS_KEY) }
 export async function writeHiddenProductIds(ids: number[]): Promise<void> {
   await writeIdListParam(HIDDEN_PRODUCTS_KEY, ids)
@@ -603,13 +632,14 @@ async function resolveEffectivePrices(
 const _fetchPriceOrderedIds = unstable_cache(
   async (pricelistId: number): Promise<number[]> => {
     const sessionId = await getOdooSession()
-    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
+      getHiddenCategoryIds(),
     ])
-    const domain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, [])
+    const domain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, [], hiddenCategoryIds)
     const prods = await searchRead(sessionId, 'product.template', domain,
       ['id', 'list_price', 'categ_id', 'product_variant_ids'], {},
     ) as unknown as OdooProduct[]
@@ -703,11 +733,12 @@ const _fetchProductsCached = unstable_cache(
     // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and the
     // hidden id set in parallel — avoids a sequential preflight, and all four are
     // cached so cold requests rarely pay the full cost.
-    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
+      getHiddenCategoryIds(),
     ])
     if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
@@ -728,7 +759,7 @@ const _fetchProductsCached = unstable_cache(
     }
 
     // Visibility rules (published + stock + admin hide) — shared with the search route.
-    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, effectiveDomain)
+    const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, effectiveDomain, hiddenCategoryIds)
 
     // The product listing renders one language at a time and refetches on language
     // switch, so reading both EN + HE is wasted Odoo work. Read the active language
