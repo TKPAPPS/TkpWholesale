@@ -564,6 +564,42 @@ const _fetchHiddenCategoryIds = unstable_cache(
 export async function getHiddenCategoryIds(): Promise<number[]> {
   try { return await _fetchHiddenCategoryIds() } catch { return [] }
 }
+
+// Per-CUSTOMER hidden products/categories. This is an Odoo customization: res.partner has
+// many2many `hidden_product_ids` (-> product.template) and `hidden_category_ids`
+// (-> product.public.category). When set on a customer, those products/categories must be
+// hidden FOR THAT CUSTOMER on the portal. Read from BOTH the login contact and its company
+// (commercial partner) and union, so a hide on either level applies. Cached per partner pair
+// (5 min); fails open (hides nothing) so a lookup blip never empties a customer's catalog.
+const _fetchCustomerHiddenIds = unstable_cache(
+  async (partnerId: number, commercialPartnerId: number): Promise<{ categoryIds: number[]; productIds: number[] }> => {
+    const sessionId = await getOdooSession()
+    const ids = Array.from(new Set([partnerId, commercialPartnerId].filter(Boolean)))
+    if (ids.length === 0) return { categoryIds: [], productIds: [] }
+    const rows = await callKw(sessionId, 'res.partner', 'read', [ids],
+      { fields: ['hidden_category_ids', 'hidden_product_ids'] },
+    ) as { hidden_category_ids: number[]; hidden_product_ids: number[] }[]
+    const categoryIds = Array.from(new Set(rows.flatMap(r => r.hidden_category_ids || [])))
+    const productIds = Array.from(new Set(rows.flatMap(r => r.hidden_product_ids || [])))
+    return { categoryIds, productIds }
+  },
+  ['odoo-customer-hidden'],
+  { revalidate: 300, tags: ['odoo-customer-hidden'] },
+)
+export async function getCustomerHiddenIds(partnerId: number, commercialPartnerId: number): Promise<{ categoryIds: number[]; productIds: number[] }> {
+  try { return await _fetchCustomerHiddenIds(partnerId, commercialPartnerId) } catch { return { categoryIds: [], productIds: [] } }
+}
+
+// Odoo domain terms (implicit-AND) that exclude the customer's hidden products + categories
+// (categories are descendant-aware via child_of). Spread into any product-query domain, or
+// into buildVisibilityDomain's `extra`. Empty when the customer has nothing hidden.
+export async function getCustomerHiddenDomain(partnerId: number, commercialPartnerId: number): Promise<unknown[]> {
+  const { categoryIds, productIds } = await getCustomerHiddenIds(partnerId, commercialPartnerId)
+  const terms: unknown[] = []
+  if (productIds.length) terms.push(['id', 'not in', productIds])
+  if (categoryIds.length) terms.push('!', ['public_categ_ids', 'child_of', categoryIds])
+  return terms
+}
 export function readHiddenProductIdsUncached() { return readIdListParam(HIDDEN_PRODUCTS_KEY) }
 export async function writeHiddenProductIds(ids: number[]): Promise<void> {
   await writeIdListParam(HIDDEN_PRODUCTS_KEY, ids)

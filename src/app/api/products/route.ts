@@ -35,12 +35,19 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds, getInStockIds } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds, getInStockIds, getCustomerHiddenIds } = await import('@/lib/odoo/odoo-helpers')
     const { searchRead } = await import('@/lib/odoo/client')
 
     // Resolve the partner's CURRENT pricelist (cached) rather than trusting the login-time
     // cookie value, so changing a customer's pricelist in Odoo takes effect without re-login.
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+
+    // Per-customer hidden products/categories (Odoo res.partner customization). Build domain
+    // terms to exclude them from the grid for this customer.
+    const custHidden = await getCustomerHiddenIds(parsed.partner_id, parsed.commercial_partner_id)
+    const custHiddenTerms: unknown[] = []
+    if (custHidden.productIds.length) custHiddenTerms.push(['id', 'not in', custHidden.productIds])
+    if (custHidden.categoryIds.length) custHiddenTerms.push('!', ['public_categ_ids', 'child_of', custHidden.categoryIds])
 
     // PRICE SORT: the grid shows the pricelist price, but Odoo can only sort by list_price, so a
     // naive sort looks "mixed". Order by the resolved effective price instead (cached per
@@ -62,6 +69,18 @@ export async function GET(req: NextRequest) {
         const ins = await getInStockIds()
         if (ins) ordered = ordered.filter(id => ins.has(id))
       }
+      // Drop the customer's hidden products + products in their hidden category subtree,
+      // before paging, so `total` and the page are both correct.
+      if (custHidden.productIds.length || custHidden.categoryIds.length) {
+        const excl = new Set<number>(custHidden.productIds)
+        if (custHidden.categoryIds.length) {
+          const rows = await searchRead(sessionId, 'product.template',
+            [['public_categ_ids', 'child_of', custHidden.categoryIds]], ['id'], { limit: 0 },
+          ) as { id: number }[]
+          rows.forEach(r => excl.add(r.id))
+        }
+        if (excl.size) ordered = ordered.filter(id => !excl.has(id))
+      }
       const total = ordered.length
       const pageIds = ordered.slice(offset, offset + perPage)
       if (pageIds.length === 0) {
@@ -78,7 +97,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const domain: unknown[] = []
+    const domain: unknown[] = [...custHiddenTerms]
     if (categoryId) domain.push(['public_categ_ids', 'child_of', categoryId])
 
     // For non-new-arrivals createdAfter, filter by product template create_date directly.

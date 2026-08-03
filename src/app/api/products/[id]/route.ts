@@ -22,10 +22,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    // Per-customer hidden products/categories: a hidden product returns empty -> 404, so a
+    // customer can't open one via a direct link either.
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const { products } = await fetchOdooProducts(
-      sessionId, [['id', '=', id]], { limit: 1 }, pricelistId,
+      sessionId, [['id', '=', id], ...custHidden], { limit: 1 }, pricelistId,
     )
 
     if (products.length === 0) {

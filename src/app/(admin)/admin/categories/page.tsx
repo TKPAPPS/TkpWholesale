@@ -15,15 +15,21 @@ interface AdminCategory {
 
 interface CategoryNode extends AdminCategory {
   children: CategoryNode[]
+  orphaned: boolean   // parent exists in Odoo but is outside the wholesale website set
 }
 
 function buildTree(cats: AdminCategory[]): CategoryNode[] {
-  const map = new Map<number, CategoryNode>(cats.map(c => [c.id, { ...c, children: [] }]))
+  const map = new Map<number, CategoryNode>(cats.map(c => [c.id, { ...c, children: [], orphaned: false }]))
   const roots: CategoryNode[] = []
   Array.from(map.values()).forEach(node => {
     if (node.parent_id && map.has(node.parent_id)) {
       map.get(node.parent_id)!.children.push(node)
     } else {
+      // parent_id is set but the parent isn't in the wholesale category set — it belongs
+      // to another website (e.g. a J Cafe / Jdeli restaurant menu). The customer nav only
+      // walks down from real top-level categories, so this one never renders there even
+      // though it isn't explicitly hidden. Flag it so the admin display tells the truth.
+      if (node.parent_id) node.orphaned = true
       roots.push(node)
     }
   })
@@ -46,9 +52,10 @@ function CategoryRow({
   onToggleSubtree: (node: CategoryNode, hide: boolean) => void
 }) {
   const ownHidden = hiddenIds.has(node.id)
-  // A category is effectively hidden if it or any ancestor is hidden. A child of a hidden
-  // parent is excluded from the storefront regardless of its own toggle, so show it as such.
-  const effectiveHidden = inheritedHidden || ownHidden
+  // A category is effectively hidden if it or any ancestor is hidden, OR it is orphaned
+  // (parent outside the wholesale site) so it can never render in the customer nav.
+  const effectiveHidden = inheritedHidden || ownHidden || node.orphaned
+  const cannotShow = inheritedHidden || node.orphaned   // toggling won't make it appear
   const hasChildren = node.children.length > 0
 
   const allChildrenHidden = hasChildren && node.children.every(c => hiddenIds.has(c.id))
@@ -64,9 +71,11 @@ function CategoryRow({
             {node.name_he && node.name_he !== node.name && (
               <span className="text-xs text-gray-400 hidden sm:inline">· {node.name_he}</span>
             )}
-            {inheritedHidden && (
+            {node.orphaned ? (
+              <span className="text-[10px] text-gray-400 italic whitespace-nowrap">not on portal (parent elsewhere)</span>
+            ) : inheritedHidden ? (
               <span className="text-[10px] text-gray-400 italic whitespace-nowrap">hidden by parent</span>
-            )}
+            ) : null}
           </div>
         </td>
         <td className="py-2.5 px-4">
@@ -81,7 +90,7 @@ function CategoryRow({
           <input
             type="checkbox"
             checked={!effectiveHidden}
-            disabled={inheritedHidden}
+            disabled={cannotShow}
             onChange={() => onToggle(node.id)}
             className="h-4 w-4 rounded border-gray-300 text-brand-700 focus:ring-brand-700/20 cursor-pointer disabled:cursor-not-allowed"
           />
@@ -187,7 +196,7 @@ export default function CategoriesPage() {
     let count = 0
     const walk = (nodes: CategoryNode[], inherited: boolean) => {
       for (const n of nodes) {
-        const eff = inherited || hiddenIds.has(n.id)
+        const eff = inherited || hiddenIds.has(n.id) || n.orphaned
         if (eff) count++
         walk(n.children, eff)
       }

@@ -44,13 +44,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    // A customer's hidden products/categories can't be added via quick-order paste either.
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
 
     // Visibility + pricelist applied by fetchOdooProducts; limit covers the requested set.
     const { products } = await fetchOdooProducts(
       sessionId,
-      [['default_code', 'in', skus]],
+      [['default_code', 'in', skus], ...custHidden],
       { limit: skus.length },
       pricelistId,
       undefined,

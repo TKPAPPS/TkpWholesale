@@ -23,21 +23,29 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, fetchWebsitePublishedSettings, readCart } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, fetchWebsitePublishedSettings, readCart, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
+
+    // Per-customer hidden products/categories: a hidden product must not be addable even via
+    // reorder or quick-order. `product_id` here is the product.template id (same key the
+    // published check + hidden_product_ids/public_categ_ids use).
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
 
     // Run all independent operations in parallel, including published-status check.
     // We deliberately do NOT compute price_unit here — the cart carries the partner's current
     // pricelist (Odoo sets it from the partner on create), so Odoo computes the exact line
     // price natively. That keeps card/cart/review/Odoo prices identical.
-    const [pkgInfo, cartId, publishedMap] = await Promise.all([
+    const [pkgInfo, cartId, publishedMap, allowedCount] = await Promise.all([
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
       getOrCreateCart(sessionId, parsed.partner_id),
       fetchWebsitePublishedSettings(sessionId),
+      custHidden.length
+        ? (callKw(sessionId, 'product.template', 'search_count', [[['id', '=', product_id], ...custHidden]], {}) as Promise<number>)
+        : Promise.resolve(1),
     ])
 
-    // Reject orders for products not published on the portal
-    if (!publishedMap.has(product_id)) {
+    // Reject orders for products not published on the portal, or hidden for this customer.
+    if (!publishedMap.has(product_id) || allowedCount === 0) {
       return NextResponse.json({ error: 'PRODUCT_NOT_AVAILABLE' }, { status: 404 })
     }
 

@@ -26,14 +26,15 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getBestSellerIds, fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+    const { getBestSellerIds, fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
     const ids = await getBestSellerIds()
     if (ids.length === 0) return NextResponse.json({ products: [] })
 
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const { products } = await fetchOdooProducts(
       sessionId,
-      [['id', 'in', ids]],
+      [['id', 'in', ids], ...custHidden],
       { limit: ids.length },
       pricelistId,
       undefined,

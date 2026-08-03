@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
     // is restricted to published + in-stock + not-admin-hidden products — same rules
@@ -48,9 +48,11 @@ export async function GET(req: NextRequest) {
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
     // extra list — Odoo rejects the nested form with "Invalid field ...|".
+    // Per-customer hidden products/categories exclude their matches from search too.
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const skuDomain = ['default_code', 'ilike', q]
-    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, ['|', ['name', 'ilike', q], skuDomain], hiddenCategoryIds)
-    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, [['name', 'ilike', q]], hiddenCategoryIds)
+    const enDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, ['|', ['name', 'ilike', q], skuDomain, ...custHidden], hiddenCategoryIds)
+    const heDomain = buildVisibilityDomain(websiteMap, hideOos, inStockIds, hiddenIds, [['name', 'ilike', q], ...custHidden], hiddenCategoryIds)
     const [enResults, heResults] = await Promise.all([
       searchRead(sessionId, 'product.template', enDomain,
         ['id'], { limit: 50, context: { lang: 'en_US' } },

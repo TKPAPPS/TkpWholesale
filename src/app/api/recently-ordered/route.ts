@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead } = await import('@/lib/odoo/client')
-    const { fetchOdooProducts, getPartnerPricelistId } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
 
     // Find recently ordered product template IDs from confirmed orders. Scan more lines so we
     // can surface a fuller reorder history (the customer may reorder many of the same items).
@@ -48,9 +48,10 @@ export async function GET(req: NextRequest) {
     }
 
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const { products } = await fetchOdooProducts(
       sessionId,
-      [['id', 'in', recentTemplateIds]],
+      [['id', 'in', recentTemplateIds], ...custHidden],
       { limit: MAX_RECENT },
       pricelistId,
     )
