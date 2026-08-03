@@ -44,8 +44,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } = await import('@/lib/odoo/odoo-helpers')
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const fiscalPositionId = await getPartnerFiscalPositionId(parsed.partner_id)
     // A customer's hidden products/categories can't be added via quick-order paste either.
     const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
 
@@ -57,6 +58,8 @@ export async function POST(req: NextRequest) {
       pricelistId,
       undefined,
       lang,
+      false,
+      fiscalPositionId,
     )
 
     const bySku = new Map<string, Product>()

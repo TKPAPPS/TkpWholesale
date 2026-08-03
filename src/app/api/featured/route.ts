@@ -22,11 +22,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getFeaturedIds, fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { getFeaturedIds, fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } = await import('@/lib/odoo/odoo-helpers')
     const ids = await getFeaturedIds()
     if (ids.length === 0) return NextResponse.json({ products: [] })
 
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const fiscalPositionId = await getPartnerFiscalPositionId(parsed.partner_id)
     const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const { products } = await fetchOdooProducts(
       sessionId,
@@ -35,6 +36,8 @@ export async function GET(req: NextRequest) {
       pricelistId,
       undefined,
       lang,
+      false,
+      fiscalPositionId,
     )
 
     // Preserve the admin-defined order (fetchOdooProducts sorts by name).

@@ -26,11 +26,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getBestSellerIds, fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { getBestSellerIds, fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } = await import('@/lib/odoo/odoo-helpers')
     const ids = await getBestSellerIds()
     if (ids.length === 0) return NextResponse.json({ products: [] })
 
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const fiscalPositionId = await getPartnerFiscalPositionId(parsed.partner_id)
     const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const { products } = await fetchOdooProducts(
       sessionId,
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
       pricelistId,
       undefined,
       lang,
+      false,
+      fiscalPositionId,
     )
 
     // Preserve the best-seller rank order (fetchOdooProducts sorts by its own default), then

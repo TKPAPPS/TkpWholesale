@@ -51,6 +51,7 @@ interface OdooTax {
   name: string
   amount: number
   price_include: boolean
+  company_id: [number, string] | false
 }
 
 interface OdooCategory {
@@ -156,6 +157,58 @@ export async function getPartnerPricelistId(partnerId: number): Promise<number |
   } catch {
     return null
   }
+}
+
+// The customer's fiscal position (res.partner.property_account_position_id). Some customers
+// (Chabad branches, Phuket, ...) use a "NO VAT" position that removes the 7% VAT. Cached per
+// partner. Returns null when the partner has no fiscal position (standard taxes apply).
+const _fetchPartnerFiscalPositionId = unstable_cache(
+  async (partnerId: number): Promise<number | null> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]],
+      { fields: ['property_account_position_id'] },
+    ) as { property_account_position_id: [number, string] | false }[]
+    const fp = rows[0]?.property_account_position_id
+    return Array.isArray(fp) ? fp[0] : null
+  },
+  ['odoo-partner-fiscal-position'],
+  { revalidate: 300, tags: ['odoo-partner-fiscal-position'] },
+)
+export async function getPartnerFiscalPositionId(partnerId: number): Promise<number | null> {
+  try { return await _fetchPartnerFiscalPositionId(partnerId) } catch { return null }
+}
+
+// A fiscal position's tax mapping: src tax id -> dest tax id (or null = removed). Plus the
+// dest taxes' amount/price_include so we can recompute the customer's effective tax on the
+// product cards. Cached per fiscal position.
+const _fetchFiscalTaxMap = unstable_cache(
+  async (fiscalPositionId: number): Promise<{ srcToDest: Record<number, number | null>; destDetails: Record<number, { amount: number; price_include: boolean }> }> => {
+    const sessionId = await getOdooSession()
+    const maps = await callKw(sessionId, 'account.fiscal.position.tax', 'search_read',
+      [[['position_id', '=', fiscalPositionId]]], { fields: ['tax_src_id', 'tax_dest_id'] },
+    ) as { tax_src_id: [number, string]; tax_dest_id: [number, string] | false }[]
+    const srcToDest: Record<number, number | null> = {}
+    const destIds = new Set<number>()
+    for (const m of maps) {
+      const dest = Array.isArray(m.tax_dest_id) ? m.tax_dest_id[0] : null
+      srcToDest[m.tax_src_id[0]] = dest
+      if (dest) destIds.add(dest)
+    }
+    const destDetails: Record<number, { amount: number; price_include: boolean }> = {}
+    if (destIds.size > 0) {
+      const rows = await callKw(sessionId, 'account.tax', 'read', [Array.from(destIds)],
+        { fields: ['id', 'amount', 'price_include'] },
+      ) as { id: number; amount: number; price_include: boolean }[]
+      rows.forEach(r => { destDetails[r.id] = { amount: r.amount, price_include: r.price_include } })
+    }
+    return { srcToDest, destDetails }
+  },
+  ['odoo-fiscal-taxmap'],
+  { revalidate: 3600, tags: ['odoo-fiscal-taxmap'] },
+)
+export async function getFiscalTaxMap(fiscalPositionId: number | null): Promise<{ srcToDest: Record<number, number | null>; destDetails: Record<number, { amount: number; price_include: boolean }> }> {
+  if (!fiscalPositionId) return { srcToDest: {}, destDetails: {} }
+  try { return await _fetchFiscalTaxMap(fiscalPositionId) } catch { return { srcToDest: {}, destDetails: {} } }
 }
 
 interface OdooCartLine {
@@ -357,6 +410,23 @@ export async function getSellableLocationId(): Promise<number | null> {
   } catch {
     return null
   }
+}
+
+// The website's company id (website 3 -> The Kosher Place Thailand, company 1). Products are
+// shared across ~20 companies and carry a 7% VAT tax PER company; only this company's taxes
+// apply on the portal, so tax/price computation filters to it. Cached a day.
+const _fetchWebsiteCompanyId = unstable_cache(
+  async (): Promise<number | null> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'website', 'read', [[WEBSITE_ID]], { fields: ['company_id'] }) as { company_id: [number, string] | false }[]
+    const c = rows[0]?.company_id
+    return Array.isArray(c) ? c[0] : null
+  },
+  ['odoo-website-company'],
+  { revalidate: 86400, tags: ['odoo-website-company'] },
+)
+export async function getWebsiteCompanyId(): Promise<number | null> {
+  try { return await _fetchWebsiteCompanyId() } catch { return null }
 }
 
 // Odoo context that scopes qty_available to the sellable location subtree. Merge into any
@@ -782,10 +852,18 @@ const _fetchProductsCached = unstable_cache(
     newArrivalsAfter: string,  // '' = not a new-arrivals query
     lang: 'en' | 'he' | 'both',
     inStockOnly: boolean,      // true = restrict to currently in-stock products
+    fiscalPositionId: number,  // 0 = none; else the customer's fiscal position (e.g. NO VAT)
   ): Promise<{ products: Product[]; total: number }> => {
     const domain: unknown[] = JSON.parse(domainJson)
     const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
     const sessionId = await getOdooSession()
+    // Customer's fiscal-position tax mapping (empty when none) — applied to each product's
+    // displayed price so e.g. NO-VAT customers see the ex-VAT price the cart will charge.
+    // websiteCompanyId filters out the same product's other-company VAT taxes.
+    const [fiscalMap, websiteCompanyId] = await Promise.all([
+      getFiscalTaxMap(fiscalPositionId || null),
+      getWebsiteCompanyId(),
+    ])
 
     // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and the
     // hidden id set in parallel — avoids a sequential preflight, and all four are
@@ -888,7 +966,7 @@ const _fetchProductsCached = unstable_cache(
         : Promise.resolve([] as OdooPackaging[]),
       allTaxIds.length > 0
         ? callKw(sessionId, 'account.tax', 'read', [allTaxIds], {
-            fields: ['id', 'name', 'amount', 'price_include'],
+            fields: ['id', 'name', 'amount', 'price_include', 'company_id'],
           }) as unknown as Promise<OdooTax[]>
         : Promise.resolve([] as OdooTax[]),
       allCatIds.length > 0
@@ -950,6 +1028,10 @@ const _fetchProductsCached = unstable_cache(
     const uniqueTaxes = raw.taxes_id
       .map(tid => taxMap.get(tid))
       .filter((t): t is OdooTax => !!t && t.amount > 0)
+      // Products are shared across companies and carry a 7% VAT PER company; keep only the
+      // website company's taxes (+ company-less shared taxes) so other companies' VAT — and
+      // fiscal-position mappings that only cover this company's taxes — resolve correctly.
+      .filter(t => !websiteCompanyId || !t.company_id || t.company_id[0] === websiteCompanyId)
       .filter(t => {
         const sig = `${t.amount}:${t.price_include}`
         if (seenTaxSigs.has(sig)) return false
@@ -957,24 +1039,38 @@ const _fetchProductsCached = unstable_cache(
         return true
       })
 
-    // When both a price-inclusive and price-exclusive tax exist at the same rate (e.g. 7%
-    // incl + 7% excl), they cancel each other: incl strips 7% from base, excl adds 7% back.
-    // In practice the customer's fiscal position removes the excl tax so the customer pays
-    // exactly the list_price / pricelist price. Drop the excl tax to avoid double-counting.
-    const inclAmounts = new Set(uniqueTaxes.filter(t => t.price_include).map(t => t.amount))
-    const effectiveTaxes = uniqueTaxes.filter(t => t.price_include || !inclAmounts.has(t.amount))
+    // Original product included-tax rate — used to back out the tax-inclusive base price
+    // (the pricelist/list price includes it). Customer-independent. Drop excl taxes that have
+    // a matching incl rate to avoid double-counting.
+    const origInclAmounts = new Set(uniqueTaxes.filter(t => t.price_include).map(t => t.amount))
+    const origEffective = uniqueTaxes.filter(t => t.price_include || !origInclAmounts.has(t.amount))
+    const productInclRate = origEffective.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
 
-    const inclRate = effectiveTaxes.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
-    const exclRate = effectiveTaxes.filter(t => !t.price_include).reduce((s, t) => s + t.amount, 0)
-    const taxNames = Array.from(new Set(effectiveTaxes.map(t => t.name)))
+    // Map the product's taxes through the customer's fiscal position (NO VAT removes them;
+    // Wholesale VAT rewrites incl->excl at the same rate; no position = unchanged), then take
+    // the customer's effective tax rate. A removed tax means the customer pays the ex-VAT price.
+    const mappedTaxes = uniqueTaxes.flatMap((t): { amount: number; price_include: boolean; name: string }[] => {
+      if (t.id in fiscalMap.srcToDest) {
+        const dest = fiscalMap.srcToDest[t.id]
+        if (dest == null) return []                       // removed (e.g. NO VAT)
+        const d = fiscalMap.destDetails[dest]
+        return d ? [{ amount: d.amount, price_include: d.price_include, name: t.name }] : []
+      }
+      return [{ amount: t.amount, price_include: t.price_include, name: t.name }]
+    }).filter(t => t.amount > 0)
+    const custInclAmounts = new Set(mappedTaxes.filter(t => t.price_include).map(t => t.amount))
+    const custEffective = mappedTaxes.filter(t => t.price_include || !custInclAmounts.has(t.amount))
+    const custTaxRate = custEffective.reduce((s, t) => s + t.amount, 0)
+    const taxNames = Array.from(new Set(custEffective.map(t => t.name)))
 
     // Use pricelist price when available; fall back to list_price.
     const basePrice = plPriceMap.get(raw.id) ?? raw.list_price
-    // back-compute excl-tax price if taxes are price_include
-    const unitPriceExcl = inclRate > 0
-      ? Math.round(basePrice / (1 + inclRate / 100) * 100) / 100
+    // Strip the product's included VAT to get the ex-tax base, then re-add ONLY the customer's
+    // effective tax. NO-VAT customer => incl == excl (ex-VAT price shown, matching the cart).
+    const unitPriceExcl = productInclRate > 0
+      ? Math.round(basePrice / (1 + productInclRate / 100) * 100) / 100
       : basePrice
-    const unitPriceIncl = Math.round(unitPriceExcl * (1 + (inclRate + exclRate) / 100) * 100) / 100
+    const unitPriceIncl = Math.round(unitPriceExcl * (1 + custTaxRate / 100) * 100) / 100
 
     const templatePackagings = packagings.filter(p => raw.packaging_ids.includes(p.id) && p.sales)
     const packagingOptions: PackagingOption[] = templatePackagings.map((pkg, idx) => ({
@@ -1059,6 +1155,7 @@ export async function fetchOdooProducts(
   newArrivalsAfter?: string,
   lang: 'en' | 'he' | 'both' = 'both',
   inStockOnly = false,
+  fiscalPositionId?: number | null,
 ): Promise<{ products: Product[]; total: number }> {
   return _fetchProductsCached(
     JSON.stringify(domain),
@@ -1067,6 +1164,7 @@ export async function fetchOdooProducts(
     newArrivalsAfter ?? '',
     lang,
     inStockOnly,
+    fiscalPositionId ?? 0,
   )
 }
 

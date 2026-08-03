@@ -35,12 +35,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds, getInStockIds, getCustomerHiddenIds } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchOdooProducts, getPartnerPricelistId, getPriceOrderedIds, getInStockIds, getCustomerHiddenIds, getPartnerFiscalPositionId } = await import('@/lib/odoo/odoo-helpers')
     const { searchRead } = await import('@/lib/odoo/client')
 
     // Resolve the partner's CURRENT pricelist (cached) rather than trusting the login-time
     // cookie value, so changing a customer's pricelist in Odoo takes effect without re-login.
     const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    // Customer's fiscal position (e.g. NO VAT) so card prices match what Odoo charges them.
+    const fiscalPositionId = await getPartnerFiscalPositionId(parsed.partner_id)
 
     // Per-customer hidden products/categories (Odoo res.partner customization). Build domain
     // terms to exclude them from the grid for this customer.
@@ -87,7 +89,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ products: [], total, page, per_page: perPage })
       }
       const { products } = await fetchOdooProducts(
-        sessionId, [['id', 'in', pageIds]], { limit: perPage }, pricelistId, undefined, lang,
+        sessionId, [['id', 'in', pageIds]], { limit: perPage }, pricelistId, undefined, lang, false, fiscalPositionId,
       )
       // Re-impose the price order (fetchOdooProducts sorts by its own default).
       const idx = new Map(pageIds.map((id, i) => [id, i]))
@@ -127,6 +129,7 @@ export async function GET(req: NextRequest) {
       sort === 'new_arrivals' && createdAfter ? createdAfter : undefined,
       lang,
       inStockOnly,
+      fiscalPositionId,
     )
 
     return NextResponse.json({ products, total, page, per_page: perPage }, {

@@ -75,6 +75,20 @@ the listing and the search route, so both must pass the in-stock set **and** the
 set. A `null` in-stock set (lookup failed) means "do not hide on stock" so a transient failure
 shows products rather than emptying the catalog.
 
+**Card prices are fiscal-position-aware.** Product prices are stored tax-inclusive (Output
+VAT 7% incl). Some customers use a "NO VAT" fiscal position (`res.partner.property_account_
+position_id`) that removes VAT (Chabad branches, Phuket, ...). The price preview in
+`_fetchProductsCached` now: (1) filters the product's taxes to the WEBSITE's company
+(`getWebsiteCompanyId`, website 3 = company 1) — products are shared across ~20 companies and
+carry a 7% VAT tax each, so without this filter other companies' VAT leaks in; (2) strips the
+product's own included VAT to get the ex-tax base; (3) re-adds only the customer's EFFECTIVE
+tax after mapping through their fiscal position (`getFiscalTaxMap`). So a NO-VAT customer sees
+the ex-VAT price on the card, matching what Odoo charges at checkout (verified: Gravlax ฿130
+list -> ฿121.50 for NO VAT). `fiscalPositionId` is resolved per-request (`getPartnerFiscalPositionId`)
+and threaded into `fetchOdooProducts` (part of the cache key), so it's applied on the listing,
+detail, featured, best-sellers, recently-ordered, favorites, and quick-order. NOTE: the
+lightweight `/api/search` preview still uses raw list_price and is NOT yet fiscal-aware.
+
 **Stock is scoped to one warehouse location (R4/Stock).** Odoo's `qty_available` is
 global (nets all ~20 companies + every internal location), so it is the wrong number for
 the storefront. `getSellableLocationId()` resolves `ODOO_STOCK_WAREHOUSE_CODE` (default

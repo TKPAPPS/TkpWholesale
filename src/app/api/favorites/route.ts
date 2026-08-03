@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseSession } from '@/lib/odoo/session'
 import { createServerClient } from '@/lib/supabase'
-import { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain } from '@/lib/odoo/odoo-helpers'
+import { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } from '@/lib/odoo/odoo-helpers'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 
 export async function GET(req: NextRequest) {
@@ -34,11 +34,12 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const pricelistId = (await getPartnerPricelistId(session.partner_id)) ?? session.pricelist_id ?? undefined
+    const fiscalPositionId = await getPartnerFiscalPositionId(session.partner_id)
     // Hide the customer's hidden products/categories even if they were favorited earlier.
     const custHidden = await getCustomerHiddenDomain(session.partner_id, session.commercial_partner_id)
     const domain = [['id', 'in', templateIds], ...custHidden]
     const { products } = await fetchOdooProducts(
-      sessionId, domain, {}, pricelistId,
+      sessionId, domain, {}, pricelistId, undefined, undefined, false, fiscalPositionId,
     )
     return NextResponse.json({ favorites: products })
   } catch (err) {
