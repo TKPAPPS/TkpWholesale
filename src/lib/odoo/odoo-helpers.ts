@@ -6,10 +6,12 @@ import { unstable_cache, revalidateTag } from 'next/cache'
 import { DEFAULT_SITE_SETTINGS, sanitizeSiteSettings, type SiteSettings } from '@/lib/site-settings'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
-// The storefront sells from ONE warehouse's stock location (R4/Stock for The Kosher
-// Place Thailand). Odoo's global qty_available nets stock across all companies + internal
-// locations, which is wrong for us — every qty_available read is scoped to this location
-// subtree via an Odoo `location` context (see stockLocationContext). Configurable by code.
+// The storefront sells from ONE warehouse's stock location (Rama 4 / "R4/Stock" for The
+// Kosher Place Thailand). Odoo's global qty_available nets stock across all companies +
+// internal locations, which is wrong for us — every qty_available read is scoped to this
+// location subtree via an Odoo `location` context (see stockLocationContext). The warehouse
+// is read from the website record (website.warehouse_id); this code is only a FALLBACK used
+// if the website has no warehouse configured.
 const SELLABLE_WAREHOUSE_CODE = process.env.ODOO_STOCK_WAREHOUSE_CODE ?? 'R4'
 
 // ─── Types for raw Odoo records ───────────────────────────────────────────────
@@ -316,19 +318,33 @@ export async function fetchWebsitePublishedSettings(_sessionId: string): Promise
   return new Map<number, boolean>(raw)
 }
 
-// Resolve the sellable warehouse code (R4) to its main stock location id (lot_stock_id,
-// i.e. "R4/Stock"). Odoo's qty_available search/compute honours a `location` context and
-// automatically includes that location's child paths, so this one id scopes all stock
-// reads to the sellable subtree. Cached a day (warehouses don't move). Returns null if it
-// can't be resolved; callers then fall back to the global qty_available (fail open) so a
-// misconfig never empties the catalog.
+// Resolve the sellable warehouse's main stock location id (lot_stock_id, e.g. "R4/Stock").
+// SOURCE OF TRUTH is the website's own `warehouse_id` (website 3 -> Rama 4), so if the
+// warehouse is ever changed in Odoo the portal follows automatically. Falls back to the
+// ODOO_STOCK_WAREHOUSE_CODE lookup only if the website has no warehouse set. Odoo's
+// qty_available honours a `location` context and includes that location's child paths, so
+// this one id scopes all stock reads to the sellable subtree. Cached a day. Returns null if
+// unresolved; callers then fall back to the global qty_available (fail open).
 const _fetchSellableLocationId = unstable_cache(
   async (): Promise<number | null> => {
     const sessionId = await getOdooSession()
-    const rows = await callKw(sessionId, 'stock.warehouse', 'search_read',
-      [[['code', '=', SELLABLE_WAREHOUSE_CODE]]], { fields: ['lot_stock_id'], limit: 1 },
+    // Primary: the warehouse configured on the website record.
+    const sites = await callKw(sessionId, 'website', 'read', [[WEBSITE_ID]],
+      { fields: ['warehouse_id'] },
+    ) as { warehouse_id: [number, string] | false }[]
+    let warehouseId = Array.isArray(sites[0]?.warehouse_id) ? sites[0].warehouse_id[0] : null
+    // Fallback: resolve by the configured warehouse code if the website has none.
+    if (!warehouseId) {
+      const byCode = await callKw(sessionId, 'stock.warehouse', 'search_read',
+        [[['code', '=', SELLABLE_WAREHOUSE_CODE]]], { fields: ['id'], limit: 1 },
+      ) as { id: number }[]
+      warehouseId = byCode[0]?.id ?? null
+    }
+    if (!warehouseId) return null
+    const wh = await callKw(sessionId, 'stock.warehouse', 'read', [[warehouseId]],
+      { fields: ['lot_stock_id'] },
     ) as { lot_stock_id: [number, string] | false }[]
-    const loc = rows[0]?.lot_stock_id
+    const loc = wh[0]?.lot_stock_id
     return Array.isArray(loc) ? loc[0] : null
   },
   ['odoo-sellable-location'],
