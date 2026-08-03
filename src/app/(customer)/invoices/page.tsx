@@ -7,7 +7,8 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
-import { FileText, Download, AlertCircle } from 'lucide-react'
+import { FileText, Download, AlertCircle, Eye } from 'lucide-react'
+import Link from 'next/link'
 import { useToastStore } from '@/store/toastStore'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 
@@ -161,14 +162,23 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-4 py-3 text-center text-gray-500">{inv.line_count}</td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => downloadPdf(inv)}
-                        disabled={downloading === inv.id}
-                        className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium disabled:opacity-50 transition-colors"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        {downloading === inv.id ? '…' : t(lang, 'invoices.downloadPdf')}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium transition-colors"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          {t(lang, 'invoices.view')}
+                        </Link>
+                        <button
+                          onClick={() => downloadPdf(inv)}
+                          disabled={downloading === inv.id}
+                          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {downloading === inv.id ? '…' : t(lang, 'invoices.downloadPdf')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -205,11 +215,18 @@ export default function InvoicesPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-3 pt-3 border-t border-gray-50">
+                <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-4">
+                  <Link
+                    href={`/invoices/${inv.id}`}
+                    className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    {t(lang, 'invoices.view')}
+                  </Link>
                   <button
                     onClick={() => downloadPdf(inv)}
                     disabled={downloading === inv.id}
-                    className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50"
                   >
                     <Download className="h-3.5 w-3.5" />
                     {downloading === inv.id ? '…' : t(lang, 'invoices.downloadPdf')}

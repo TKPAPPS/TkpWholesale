@@ -6,6 +6,11 @@ import { unstable_cache, revalidateTag } from 'next/cache'
 import { DEFAULT_SITE_SETTINGS, sanitizeSiteSettings, type SiteSettings } from '@/lib/site-settings'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
+// The storefront sells from ONE warehouse's stock location (R4/Stock for The Kosher
+// Place Thailand). Odoo's global qty_available nets stock across all companies + internal
+// locations, which is wrong for us — every qty_available read is scoped to this location
+// subtree via an Odoo `location` context (see stockLocationContext). Configurable by code.
+const SELLABLE_WAREHOUSE_CODE = process.env.ODOO_STOCK_WAREHOUSE_CODE ?? 'R4'
 
 // ─── Types for raw Odoo records ───────────────────────────────────────────────
 
@@ -291,6 +296,41 @@ export async function fetchWebsitePublishedSettings(_sessionId: string): Promise
   return new Map<number, boolean>(raw)
 }
 
+// Resolve the sellable warehouse code (R4) to its main stock location id (lot_stock_id,
+// i.e. "R4/Stock"). Odoo's qty_available search/compute honours a `location` context and
+// automatically includes that location's child paths, so this one id scopes all stock
+// reads to the sellable subtree. Cached a day (warehouses don't move). Returns null if it
+// can't be resolved; callers then fall back to the global qty_available (fail open) so a
+// misconfig never empties the catalog.
+const _fetchSellableLocationId = unstable_cache(
+  async (): Promise<number | null> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'stock.warehouse', 'search_read',
+      [[['code', '=', SELLABLE_WAREHOUSE_CODE]]], { fields: ['lot_stock_id'], limit: 1 },
+    ) as { lot_stock_id: [number, string] | false }[]
+    const loc = rows[0]?.lot_stock_id
+    return Array.isArray(loc) ? loc[0] : null
+  },
+  ['odoo-sellable-location'],
+  { revalidate: 86400, tags: ['odoo-sellable-location'] },
+)
+
+export async function getSellableLocationId(): Promise<number | null> {
+  try {
+    return await _fetchSellableLocationId()
+  } catch {
+    return null
+  }
+}
+
+// Odoo context that scopes qty_available to the sellable location subtree. Merge into any
+// base context (e.g. lang). Empty object when the location can't be resolved (fail open →
+// global qty_available, today's behaviour).
+export async function stockLocationContext(): Promise<{ location: number } | Record<string, never>> {
+  const locationId = await getSellableLocationId()
+  return locationId ? { location: locationId } : {}
+}
+
 // Cache the set of in-stock template ids. Filtering by `qty_available > 0` inline is
 // the single most expensive Odoo query in the product path (~600ms), because
 // qty_available is a NON-STORED computed field, so Odoo recomputes live stock for the
@@ -306,8 +346,10 @@ const _fetchInStockIds = unstable_cache(
     // perpetually orderable, so they count as "in stock". A storable product is in stock
     // only when qty_available > 0. (`type in [consu, storable]` was a pre-18 relic —
     // `storable` is no longer a valid type value here.)
+    const locCtx = await stockLocationContext()
     return await callKw(sessionId, 'product.template', 'search',
-      [['&', ['type', '=', 'consu'], '|', ['is_storable', '=', false], ['qty_available', '>', 0]]], {},
+      [['&', ['type', '=', 'consu'], '|', ['is_storable', '=', false], ['qty_available', '>', 0]]],
+      { context: locCtx },
     ) as number[]
   },
   ['odoo-instock-ids'],
@@ -346,9 +388,10 @@ export async function findUnorderableTemplateIdsLive(
   const ids = Array.from(new Set(templateIds.filter(Boolean)))
   if (ids.length === 0) return out
   try {
+    const locCtx = await stockLocationContext()
     const [rows, settingsMap] = await Promise.all([
       callKw(sessionId, 'product.template', 'read', [ids], {
-        fields: ['id', 'type', 'is_storable', 'qty_available'],
+        fields: ['id', 'type', 'is_storable', 'qty_available'], context: locCtx,
       }) as Promise<{ id: number; type: string; is_storable: boolean; qty_available: number }[]>,
       fetchWebsitePublishedSettings(sessionId),
     ])
@@ -694,12 +737,16 @@ const _fetchProductsCached = unstable_cache(
     // that need EN as canonical alongside HE.
     const fetchBoth = lang === 'both'
     const primaryLang = lang === 'he' ? 'he_IL' : 'en_US'
+    // Scope the per-card qty_available to the sellable location (R4/Stock) so the low-stock
+    // badge and in_stock flag match the visible set (which is built from the same-scoped
+    // in-stock id list).
+    const locCtx = await stockLocationContext()
 
     // Run count + primary read (+ HE read only when 'both') all in parallel.
     const [count, primaryRaw, heRaw] = await Promise.all([
       callKw(sessionId, 'product.template', 'search_count', [baseDomain], {}) as Promise<number>,
       searchRead(sessionId, 'product.template', baseDomain, PRODUCT_FIELDS, {
-        ...opts, context: { lang: primaryLang }
+        ...opts, context: { lang: primaryLang, ...locCtx }
       }) as unknown as Promise<OdooProduct[]>,
       fetchBoth
         ? searchRead(sessionId, 'product.template', baseDomain, ['id', 'name', 'description_sale'], {

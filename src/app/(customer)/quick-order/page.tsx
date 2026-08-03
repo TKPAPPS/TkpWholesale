@@ -195,8 +195,9 @@ export default function QuickOrderPage() {
               return (
                 <button
                   key={p.template_id}
-                  onClick={() => addProduct(p)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-start border-b border-gray-50 last:border-0"
+                  onClick={() => { if (p.sellable) addProduct(p) }}
+                  disabled={!p.sellable}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-start border-b border-gray-50 last:border-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >
                   <div className="h-10 w-10 rounded-lg bg-gray-50 overflow-hidden shrink-0 relative">
                     {!imgErrors.has(p.template_id) ? (
@@ -208,9 +209,13 @@ export default function QuickOrderPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
-                    <p className="text-xs text-gray-400">{p.sku} {pkg ? `· ${formatCurrency(pkg.price_per_pack_incl_tax, p.currency)} / ${pkg.name}` : ''}</p>
+                    <p className="text-xs text-gray-400 truncate">{p.sku} {pkg ? `· ${formatCurrency(pkg.price_per_pack_incl_tax, p.currency)} / ${formatCurrency(pkg.price_per_unit_incl_tax, p.currency)} ${t(lang, 'products.perUnit')}` : ''}</p>
                   </div>
-                  <Plus className="h-4 w-4 text-brand-700 shrink-0" />
+                  {p.sellable ? (
+                    <Plus className="h-4 w-4 text-brand-700 shrink-0" />
+                  ) : (
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5 shrink-0">{t(lang, 'products.outOfStock')}</span>
+                  )}
                 </button>
               )
             })}

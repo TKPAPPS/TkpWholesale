@@ -380,12 +380,24 @@ export function Navbar() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
-                            <p className="text-xs text-gray-400">{p.sku}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-gray-400 truncate">{p.sku}</p>
+                              {!p.sellable && (
+                                <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5 shrink-0">
+                                  {t(lang, 'products.outOfStock')}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           {pkg && (
-                            <p className="text-sm font-semibold text-gray-900 shrink-0">
-                              {formatCurrency(pkg.price_per_pack_incl_tax, p.currency)}
-                            </p>
+                            <div className="shrink-0 text-end">
+                              <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                {formatCurrency(pkg.price_per_pack_incl_tax, p.currency)}
+                              </p>
+                              <p className="text-[11px] text-gray-400 whitespace-nowrap">
+                                {formatCurrency(pkg.price_per_unit_incl_tax, p.currency)} / {t(lang, 'products.perUnit')}
+                              </p>
+                            </div>
                           )}
                         </Link>
                       </li>

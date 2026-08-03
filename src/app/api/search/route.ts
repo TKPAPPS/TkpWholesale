@@ -29,17 +29,19 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, buildVisibilityDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
     // is restricted to published + in-stock + not-admin-hidden products — same rules
     // as the listing. Stock is resolved against the cached in-stock id set, not a
-    // slow `qty_available` SQL term.
-    const [websiteMap, hideOos, inStockIds, hiddenIds] = await Promise.all([
+    // slow `qty_available` SQL term. locCtx scopes the per-hit qty_available read below
+    // to the sellable location (R4/Stock), same as the listing.
+    const [websiteMap, hideOos, inStockIds, hiddenIds, locCtx] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
+      stockLocationContext(),
     ])
 
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
@@ -73,8 +75,8 @@ export async function GET(req: NextRequest) {
     // (a preview, not pricelist-adjusted).
     const [enTemplates, heTemplates] = await Promise.all([
       callKw(sessionId, 'product.template', 'read', [topIds],
-        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids'] },
-      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[] }[]>,
+        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids', 'qty_available'], context: locCtx },
+      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[]; qty_available: number }[]>,
       callKw(sessionId, 'product.template', 'read', [topIds],
         { fields: ['id', 'name'], context: { lang: 'he_IL' } },
       ) as Promise<{ id: number; name: string }[]>,
@@ -97,19 +99,28 @@ export async function GET(req: NextRequest) {
         .map(id => packMap.get(id))
         .filter((p): p is NonNullable<typeof p> => !!p && p.sales)
 
-      // price_per_pack_incl_tax here is list_price × qty — a preview price only,
-      // not pricelist-adjusted and not guaranteed to be tax-inclusive.
+      // price_per_pack/unit here is list_price × qty — a preview price only, not
+      // pricelist-adjusted and not guaranteed to be tax-inclusive (same as before).
+      const unitPreview = Math.round(t.list_price * 100) / 100
       const packagingOptions = salesPkgs.map((pkg, idx) => ({
         id: pkg.id,
         name: pkg.name,
         qty: pkg.qty,
         price_per_pack_incl_tax: Math.round(t.list_price * pkg.qty * 100) / 100,
+        price_per_unit_incl_tax: unitPreview,
         is_default: idx === 0,
       }))
 
       if (packagingOptions.length === 0) {
-        packagingOptions.push({ id: 0, name: 'Unit', qty: 1, price_per_pack_incl_tax: t.list_price, is_default: true })
+        packagingOptions.push({ id: 0, name: 'Unit', qty: 1, price_per_pack_incl_tax: t.list_price, price_per_unit_incl_tax: unitPreview, is_default: true })
       }
+
+      // Stock flags derived the same way as the listing: in_stock from the cached
+      // (location-scoped) in-stock set, sellable also true when the product is flagged
+      // allow_out_of_stock_order. This is what fixes OOS items rendering as in-stock and
+      // in-stock items rendering as OOS on the search-driven surfaces.
+      const in_stock = inStockIds === null ? t.qty_available > 0 : inStockIds.has(t.id)
+      const sellable = in_stock || (websiteMap.get(t.id) ?? false)
 
       return {
         id: t.id,
@@ -122,6 +133,9 @@ export async function GET(req: NextRequest) {
         image_url: `/api/images/product/${t.id}/512`,
         currency: 'THB',
         packaging_options: packagingOptions,
+        sellable,
+        in_stock,
+        qty_available: t.qty_available,
       }
     })
 

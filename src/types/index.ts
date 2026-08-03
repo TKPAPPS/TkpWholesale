@@ -78,7 +78,10 @@ export interface SearchHit {
   sku: string
   image_url: string
   currency: string
-  packaging_options: Pick<PackagingOption, 'id' | 'name' | 'qty' | 'price_per_pack_incl_tax' | 'is_default'>[]
+  packaging_options: Pick<PackagingOption, 'id' | 'name' | 'qty' | 'price_per_pack_incl_tax' | 'price_per_unit_incl_tax' | 'is_default'>[]
+  sellable: boolean
+  in_stock: boolean
+  qty_available: number
 }
 
 export interface Cart {

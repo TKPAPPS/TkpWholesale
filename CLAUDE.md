@@ -26,6 +26,7 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SESSION_SECRET` | Signs the customer session cookie (min 32 chars) |
 | `USE_MOCK_API` | Set to `false` for real Odoo; anything else uses mock data. **On Vercel (`VERCEL` env present), middleware 503s every request unless the value is exactly `false`** so a misconfig fails loudly instead of serving fake data. Local prod-build mock testing still works (no `VERCEL` var). |
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
+| `ODOO_STOCK_WAREHOUSE_CODE` | Warehouse code whose Stock location scopes all `qty_available` reads (default `R4` = Rama 4, The Kosher Place Thailand). The global `qty_available` nets stock across all ~20 companies + internal locations and is wrong; every stock read is scoped to this warehouse's `lot_stock_id` ("R4/Stock") and its child locations. Resolved to a location id at runtime (`getSellableLocationId`, cached 1 day). If it can't resolve, reads fall back to the global value (fail open, logged). |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting, scheduled orders). Server uses the service-role key. |
 | `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
 | `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
@@ -73,6 +74,20 @@ stock. `buildVisibilityDomain(settingsMap, hideOos, inStockIds, hiddenIds, extra
 the listing and the search route, so both must pass the in-stock set **and** the hidden-products
 set. A `null` in-stock set (lookup failed) means "do not hide on stock" so a transient failure
 shows products rather than emptying the catalog.
+
+**Stock is scoped to one warehouse location (R4/Stock).** Odoo's `qty_available` is
+global (nets all ~20 companies + every internal location), so it is the wrong number for
+the storefront. `getSellableLocationId()` resolves `ODOO_STOCK_WAREHOUSE_CODE` (default
+`R4`) to its `lot_stock_id` and `stockLocationContext()` returns `{ location: id }`, which
+is merged into the context of every `qty_available` read: `_fetchInStockIds` (the visible
+set + `sellable` flag), the per-card read in `_fetchProductsCached` (the low-stock badge),
+the search route's per-hit read, and `findUnorderableTemplateIdsLive` (checkout re-check).
+Odoo's qty_available honours a `location` context and includes child locations, so this one
+id covers "R4/Stock and all child paths". Resolution is cached 1 day; if it fails, reads
+fall back to global (fail open) so a misconfig never empties the catalog. **Search results
+(`SearchHit`) now carry `sellable`/`in_stock`/`qty_available` + a per-unit price** — the
+global search overlay and quick-order previously omitted these, so out-of-stock items
+rendered as in-stock (and in-stock items as OOS) with a ฿0 unit price on those surfaces.
 
 **Checkout stock recheck + out-of-stock separation.** A cart can sit for days, so both the
 checkout review (`/api/checkout/review`) and the final confirm (`/api/checkout/confirm`)
