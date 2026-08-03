@@ -29,21 +29,25 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, stockLocationContext } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, stockLocationContext, getPartnerFiscalPositionId, getFiscalTaxMap, getWebsiteCompanyId, computeDisplayUnitPrice } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
     // is restricted to published + in-stock + not-admin-hidden products — same rules
     // as the listing. Stock is resolved against the cached in-stock id set, not a
     // slow `qty_available` SQL term. locCtx scopes the per-hit qty_available read below
     // to the sellable location (R4/Stock), same as the listing.
-    const [websiteMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds, locCtx] = await Promise.all([
+    const [websiteMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds, locCtx, fiscalPositionId, websiteCompanyId] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
       getHiddenCategoryIds(),
       stockLocationContext(),
+      getPartnerFiscalPositionId(parsed.partner_id),
+      getWebsiteCompanyId(),
     ])
+    // Fiscal-position tax map so search prices match the grid (e.g. NO VAT -> ex-VAT price).
+    const fiscalMap = await getFiscalTaxMap(fiscalPositionId)
 
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
@@ -78,8 +82,8 @@ export async function GET(req: NextRequest) {
     // (a preview, not pricelist-adjusted).
     const [enTemplates, heTemplates] = await Promise.all([
       callKw(sessionId, 'product.template', 'read', [topIds],
-        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids', 'qty_available'], context: locCtx },
-      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[]; qty_available: number }[]>,
+        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids', 'qty_available', 'taxes_id'], context: locCtx },
+      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[]; qty_available: number; taxes_id: number[] }[]>,
       callKw(sessionId, 'product.template', 'read', [topIds],
         { fields: ['id', 'name'], context: { lang: 'he_IL' } },
       ) as Promise<{ id: number; name: string }[]>,
@@ -97,25 +101,35 @@ export async function GET(req: NextRequest) {
 
     const packMap = new Map(packagings.map(p => [p.id, p]))
 
+    // Taxes for the matched templates → fiscal-position-aware unit price (same helper as the
+    // grid), so a NO-VAT customer sees the ex-VAT price here too. Still list_price-based (not
+    // pricelist-adjusted) — a preview.
+    const allTaxIds = Array.from(new Set(enTemplates.flatMap(t => t.taxes_id)))
+    const taxRows = allTaxIds.length > 0
+      ? await callKw(sessionId, 'account.tax', 'read', [allTaxIds],
+          { fields: ['id', 'name', 'amount', 'price_include', 'company_id'] },
+        ) as { id: number; name: string; amount: number; price_include: boolean; company_id: [number, string] | false }[]
+      : []
+    const taxMap = new Map(taxRows.map(t => [t.id, t]))
+
     const results: SearchHit[] = enTemplates.map(t => {
       const salesPkgs = t.packaging_ids
         .map(id => packMap.get(id))
         .filter((p): p is NonNullable<typeof p> => !!p && p.sales)
 
-      // price_per_pack/unit here is list_price × qty — a preview price only, not
-      // pricelist-adjusted and not guaranteed to be tax-inclusive (same as before).
-      const unitPreview = Math.round(t.list_price * 100) / 100
+      const productTaxes = t.taxes_id.map(id => taxMap.get(id)).filter((x): x is NonNullable<typeof x> => !!x)
+      const { incl: unitPrice } = computeDisplayUnitPrice(t.list_price, productTaxes, fiscalMap, websiteCompanyId)
       const packagingOptions = salesPkgs.map((pkg, idx) => ({
         id: pkg.id,
         name: pkg.name,
         qty: pkg.qty,
-        price_per_pack_incl_tax: Math.round(t.list_price * pkg.qty * 100) / 100,
-        price_per_unit_incl_tax: unitPreview,
+        price_per_pack_incl_tax: Math.round(unitPrice * pkg.qty * 100) / 100,
+        price_per_unit_incl_tax: unitPrice,
         is_default: idx === 0,
       }))
 
       if (packagingOptions.length === 0) {
-        packagingOptions.push({ id: 0, name: 'Unit', qty: 1, price_per_pack_incl_tax: t.list_price, price_per_unit_incl_tax: unitPreview, is_default: true })
+        packagingOptions.push({ id: 0, name: 'Unit', qty: 1, price_per_pack_incl_tax: unitPrice, price_per_unit_incl_tax: unitPrice, is_default: true })
       }
 
       // Stock flags derived the same way as the listing: in_stock from the cached

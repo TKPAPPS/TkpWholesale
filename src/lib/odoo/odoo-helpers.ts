@@ -211,6 +211,48 @@ export async function getFiscalTaxMap(fiscalPositionId: number | null): Promise<
   try { return await _fetchFiscalTaxMap(fiscalPositionId) } catch { return { srcToDest: {}, destDetails: {} } }
 }
 
+type FiscalTaxMap = { srcToDest: Record<number, number | null>; destDetails: Record<number, { amount: number; price_include: boolean }> }
+
+// Given a tax-inclusive base price and the product's taxes, compute the ex-tax and the
+// customer-effective tax-inclusive display price. Shared by the product grid and search so
+// they can't drift. Steps: (1) keep only the website company's taxes (products carry a 7% VAT
+// tax per company across ~20 companies); (2) strip the product's own included VAT to the
+// ex-tax base; (3) re-add only the customer's EFFECTIVE tax after mapping through their fiscal
+// position (NO VAT removes it -> ex-VAT price shown, matching the cart).
+export function computeDisplayUnitPrice(
+  basePrice: number,
+  taxes: OdooTax[],
+  fiscalMap: FiscalTaxMap,
+  websiteCompanyId: number | null,
+): { excl: number; incl: number; taxNames: string[] } {
+  const seen = new Set<string>()
+  const uniqueTaxes = taxes
+    .filter(t => t.amount > 0)
+    .filter(t => !websiteCompanyId || !t.company_id || t.company_id[0] === websiteCompanyId)
+    .filter(t => { const sig = `${t.amount}:${t.price_include}`; if (seen.has(sig)) return false; seen.add(sig); return true })
+
+  const origInclAmounts = new Set(uniqueTaxes.filter(t => t.price_include).map(t => t.amount))
+  const origEffective = uniqueTaxes.filter(t => t.price_include || !origInclAmounts.has(t.amount))
+  const productInclRate = origEffective.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
+
+  const mapped = uniqueTaxes.flatMap((t): { amount: number; price_include: boolean; name: string }[] => {
+    if (t.id in fiscalMap.srcToDest) {
+      const dest = fiscalMap.srcToDest[t.id]
+      if (dest == null) return []                       // removed (e.g. NO VAT)
+      const d = fiscalMap.destDetails[dest]
+      return d ? [{ amount: d.amount, price_include: d.price_include, name: t.name }] : []
+    }
+    return [{ amount: t.amount, price_include: t.price_include, name: t.name }]
+  }).filter(t => t.amount > 0)
+  const custInclAmounts = new Set(mapped.filter(t => t.price_include).map(t => t.amount))
+  const custEffective = mapped.filter(t => t.price_include || !custInclAmounts.has(t.amount))
+  const custTaxRate = custEffective.reduce((s, t) => s + t.amount, 0)
+
+  const excl = productInclRate > 0 ? Math.round(basePrice / (1 + productInclRate / 100) * 100) / 100 : basePrice
+  const incl = Math.round(excl * (1 + custTaxRate / 100) * 100) / 100
+  return { excl, incl, taxNames: Array.from(new Set(custEffective.map(t => t.name))) }
+}
+
 interface OdooCartLine {
   id: number
   product_id: [number, string]
@@ -1022,55 +1064,11 @@ const _fetchProductsCached = unstable_cache(
       // HE-specific fields fall back to it; in 'both' mode we use the dedicated HE read.
       const he = fetchBoth ? heMap.get(raw.id) : raw
 
-    // Deduplicate taxes by (amount, price_include) — Odoo can assign the same
-    // fiscal-position tax multiple times via multi-company or fiscal mapping
-    const seenTaxSigs = new Set<string>()
-    const uniqueTaxes = raw.taxes_id
-      .map(tid => taxMap.get(tid))
-      .filter((t): t is OdooTax => !!t && t.amount > 0)
-      // Products are shared across companies and carry a 7% VAT PER company; keep only the
-      // website company's taxes (+ company-less shared taxes) so other companies' VAT — and
-      // fiscal-position mappings that only cover this company's taxes — resolve correctly.
-      .filter(t => !websiteCompanyId || !t.company_id || t.company_id[0] === websiteCompanyId)
-      .filter(t => {
-        const sig = `${t.amount}:${t.price_include}`
-        if (seenTaxSigs.has(sig)) return false
-        seenTaxSigs.add(sig)
-        return true
-      })
-
-    // Original product included-tax rate — used to back out the tax-inclusive base price
-    // (the pricelist/list price includes it). Customer-independent. Drop excl taxes that have
-    // a matching incl rate to avoid double-counting.
-    const origInclAmounts = new Set(uniqueTaxes.filter(t => t.price_include).map(t => t.amount))
-    const origEffective = uniqueTaxes.filter(t => t.price_include || !origInclAmounts.has(t.amount))
-    const productInclRate = origEffective.filter(t => t.price_include).reduce((s, t) => s + t.amount, 0)
-
-    // Map the product's taxes through the customer's fiscal position (NO VAT removes them;
-    // Wholesale VAT rewrites incl->excl at the same rate; no position = unchanged), then take
-    // the customer's effective tax rate. A removed tax means the customer pays the ex-VAT price.
-    const mappedTaxes = uniqueTaxes.flatMap((t): { amount: number; price_include: boolean; name: string }[] => {
-      if (t.id in fiscalMap.srcToDest) {
-        const dest = fiscalMap.srcToDest[t.id]
-        if (dest == null) return []                       // removed (e.g. NO VAT)
-        const d = fiscalMap.destDetails[dest]
-        return d ? [{ amount: d.amount, price_include: d.price_include, name: t.name }] : []
-      }
-      return [{ amount: t.amount, price_include: t.price_include, name: t.name }]
-    }).filter(t => t.amount > 0)
-    const custInclAmounts = new Set(mappedTaxes.filter(t => t.price_include).map(t => t.amount))
-    const custEffective = mappedTaxes.filter(t => t.price_include || !custInclAmounts.has(t.amount))
-    const custTaxRate = custEffective.reduce((s, t) => s + t.amount, 0)
-    const taxNames = Array.from(new Set(custEffective.map(t => t.name)))
-
-    // Use pricelist price when available; fall back to list_price.
+    // Use pricelist price when available; fall back to list_price. Tax/fiscal handling is
+    // shared with search via computeDisplayUnitPrice.
     const basePrice = plPriceMap.get(raw.id) ?? raw.list_price
-    // Strip the product's included VAT to get the ex-tax base, then re-add ONLY the customer's
-    // effective tax. NO-VAT customer => incl == excl (ex-VAT price shown, matching the cart).
-    const unitPriceExcl = productInclRate > 0
-      ? Math.round(basePrice / (1 + productInclRate / 100) * 100) / 100
-      : basePrice
-    const unitPriceIncl = Math.round(unitPriceExcl * (1 + custTaxRate / 100) * 100) / 100
+    const productTaxes = raw.taxes_id.map(tid => taxMap.get(tid)).filter((t): t is OdooTax => !!t)
+    const { excl: unitPriceExcl, incl: unitPriceIncl, taxNames } = computeDisplayUnitPrice(basePrice, productTaxes, fiscalMap, websiteCompanyId)
 
     const templatePackagings = packagings.filter(p => raw.packaging_ids.includes(p.id) && p.sales)
     const packagingOptions: PackagingOption[] = templatePackagings.map((pkg, idx) => ({

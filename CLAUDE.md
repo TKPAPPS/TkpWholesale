@@ -86,8 +86,11 @@ tax after mapping through their fiscal position (`getFiscalTaxMap`). So a NO-VAT
 the ex-VAT price on the card, matching what Odoo charges at checkout (verified: Gravlax ฿130
 list -> ฿121.50 for NO VAT). `fiscalPositionId` is resolved per-request (`getPartnerFiscalPositionId`)
 and threaded into `fetchOdooProducts` (part of the cache key), so it's applied on the listing,
-detail, featured, best-sellers, recently-ordered, favorites, and quick-order. NOTE: the
-lightweight `/api/search` preview still uses raw list_price and is NOT yet fiscal-aware.
+detail, featured, best-sellers, recently-ordered, favorites, and quick-order. The shared
+`computeDisplayUnitPrice(basePrice, taxes, fiscalMap, websiteCompanyId)` encapsulates the
+company-filter + strip-included-VAT + apply-fiscal-map steps; both the grid and `/api/search`
+call it so they can't drift. (Search is still list_price-based, not pricelist-adjusted — a
+preview — but its VAT/fiscal handling now matches the grid.)
 
 **Stock is scoped to one warehouse location (R4/Stock).** Odoo's `qty_available` is
 global (nets all ~20 companies + every internal location), so it is the wrong number for
