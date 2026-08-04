@@ -167,6 +167,9 @@ export default function ProductDetailPage() {
           {product.sellable && soldOut && (
             <p className="text-sm text-amber-600 font-medium">{t(lang, 'products.insufficientStock')}</p>
           )}
+          {product.sellable && !soldOut && maxPacks !== undefined && (
+            <p className="text-sm text-amber-600">{t(lang, 'products.maxAvailable').replace('{n}', String(maxPacks))}</p>
+          )}
         </div>
       </div>
     </div>

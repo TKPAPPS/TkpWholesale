@@ -140,6 +140,11 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             }
           </Button>
         </div>
+        {/* Proactive cap hint — without this the stepper just silently stops accepting
+            digits past the max, which reads as broken rather than "that's all we have". */}
+        {maxPacks !== undefined && maxPacks > 0 && maxPacks < lowStockThreshold && (
+          <p className="text-[11px] text-amber-600 -mt-1">{t(lang, 'products.maxAvailable').replace('{n}', String(maxPacks))}</p>
+        )}
       </div>
     </div>
   )

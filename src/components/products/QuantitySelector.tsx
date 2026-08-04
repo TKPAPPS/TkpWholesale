@@ -32,7 +32,11 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
         max={max}
         onChange={(e) => {
           const v = parseInt(e.target.value)
-          if (!isNaN(v) && v >= min && v <= max) onChange(v)
+          if (isNaN(v)) return
+          // Clamp into [min, max] rather than silently ignoring out-of-range input — typing a
+          // second digit that pushes the value past a low max (e.g. 9) used to be rejected
+          // with no feedback, so the field looked stuck/broken instead of settling at the cap.
+          onChange(Math.min(max, Math.max(min, v)))
         }}
         className={cn('text-center text-sm font-medium border-0 focus:outline-none bg-transparent', sm ? 'w-6' : 'w-12')}
       />
