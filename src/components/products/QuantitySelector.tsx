@@ -31,12 +31,15 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
         min={min}
         max={max}
         onChange={(e) => {
+          // Free typing, no upper-bound clamp: earlier this rejected (then clamped) any
+          // keystroke that pushed the value past `max`, which fought the user mid-type no
+          // matter how it was handled (silently ignored, or snapping back to the cap after
+          // every extra digit) — it read as a broken input either way. `max` still guides the
+          // +/- buttons below; the real enforcement is server-side on Add (with a toast if the
+          // requested quantity has to be reduced), which is where it belongs.
           const v = parseInt(e.target.value)
-          if (isNaN(v)) return
-          // Clamp into [min, max] rather than silently ignoring out-of-range input — typing a
-          // second digit that pushes the value past a low max (e.g. 9) used to be rejected
-          // with no feedback, so the field looked stuck/broken instead of settling at the cap.
-          onChange(Math.min(max, Math.max(min, v)))
+          if (isNaN(v) || v < min) return
+          onChange(v)
         }}
         className={cn('text-center text-sm font-medium border-0 focus:outline-none bg-transparent', sm ? 'w-6' : 'w-12')}
       />

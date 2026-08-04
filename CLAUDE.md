@@ -141,15 +141,34 @@ than rejecting — asking for 50 when 37 are available adds 37 and the response 
 informative toast ("Only 37 available — added 37" / "— quantity updated to 37") instead of an
 error. A 409 `INSUFFICIENT_STOCK` (`{message, available_units, available_packs}`) is returned
 only when literally nothing more can be added/kept (e.g. sibling lines for the same template
-already consume everything available). `cartStore.ts`'s `addToCartAndSync`/`updateLineQty`
+already consume everything available). `allow_out_of_stock_order` ("Continue Selling if Out of
+Stock") means fully UNLIMITED — no cap at all, regardless of real stock level. That's a
+deliberate merchant opt-out, not just "don't block ordering exactly at zero"; do not reintroduce
+a positive-stock cap for these products. `cartStore.ts`'s `addToCartAndSync`/`updateLineQty`
 resolve `{ok, message?, adjustedPacks?}` so callers can distinguish "as asked" from "reduced"
-from "failed outright". `computeMaxPacks()` (`src/lib/utils.ts`) is the client-side mirror used
-to cap the `QuantitySelector` (`max` prop) on the grid, product detail, and product-detail
-packaging switch — UX guidance only (keeps the common case from ever reaching a clamp); the
-server always re-validates and is authoritative. `CartItem`'s local qty input resyncs from the
-`line` object (not `line.packaging_qty`) on every cart refresh — a rejected/clamped update can
-leave the true server value numerically unchanged from before the edit, and a dependency on
-just the primitive would then never re-fire.
+from "failed outright". `computeMaxPacks()` (`src/lib/utils.ts`) informs the `QuantitySelector`
+`max` prop (used for the grid, product detail, packaging switch) and the "Only N available" hint
+text — but `max` no longer restricts TYPING in the input (only the +/- buttons respect it):
+typing is always accepted and passed straight to `onChange`, so the field never fights the user
+mid-keystroke. The server is authoritative and always re-validates/clamps on Add.
+
+**Cart store: mutation responses always win over a concurrent background refresh.** Confirmed
+bug: editing a line to a quantity that got server-clamped (e.g. 400 -> 3, only 3 in stock) wrote
+correctly to Odoo, but the cart page kept showing the customer's original invalid input. Root
+cause: `cart/page.tsx` used to keep its own separate, unsequenced `fetch('/api/cart')` + `setCart`
+on mount, entirely bypassing the store's `seq`/`appliedSeq` staleness guard — a background
+refresh could land at any time and silently clobber a just-applied mutation with no ordering
+check at all. Fixed two ways: (1) `cart/page.tsx` now calls the store's own `fetchCart()`
+instead of a parallel local implementation (which now also drives `isLoading`/`odooUnavailable`
+directly, so the page no longer needs to manage them itself); (2) the store's mutation methods
+(`addToCartAndSync`/`updateLineQty`/`removeLine`) apply their own response via `applyMutation()`
+(always wins, still bumps `appliedSeq` forward so it can't itself be undone by something older)
+rather than the strict `reconcile()` gate used only by the plain background `fetchCart()` — a
+direct mutation is the confirmed result of the action the user just took and must never be
+silently dropped just because an unrelated background refresh happened to resolve first.
+`CartItem`'s local qty input resyncs from the `line` object (not `line.packaging_qty`) on every
+cart refresh — a clamped/unchanged update can leave the true server value numerically the same
+as before the edit, and a dependency on just the primitive would then never re-fire.
 Checkout gets the same safety net for carts that sat and stock dropped since: confirm sums
 per-template committed units among lines whose template IS orderable (an unorderable
 template's lines are removed entirely, not clamped) and, on acknowledgment, clamps each

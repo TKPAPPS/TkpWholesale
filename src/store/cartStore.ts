@@ -51,10 +51,25 @@ let seqCounter = 0
 let appliedSeq = 0
 
 export const useCartStore = create<CartState>((set, get) => {
-  // Apply a server cart snapshot iff it is not stale relative to what we've shown.
+  // Apply a server cart snapshot iff it is not stale relative to what we've shown. Used for
+  // the plain background refresh (fetchCart), where a slower earlier response should not
+  // overwrite a newer one.
   const reconcile = (cart: Cart, seq: number) => {
     if (seq < appliedSeq) return
     appliedSeq = seq
+    set({ cart })
+  }
+  // A direct mutation's OWN response (add/update/remove line) must never be silently
+  // dropped just because an unrelated background fetchCart happened to be dispatched
+  // later and resolve first — that fast, plain GET is not more authoritative than the
+  // confirmed result of the edit the user just made (e.g. a clamped quantity). Still bump
+  // appliedSeq (never backward) so a genuinely older response ordered after this can't
+  // undo it either. Confirmed bug this fixes: an edit that got server-clamped (e.g. 400 ->
+  // 3, because only 3 were in stock) wrote correctly to Odoo, but a same-second background
+  // refresh's faster, unrelated response could win the sequencing race and the cart page
+  // kept showing the customer's original (invalid) typed value instead of the true one.
+  const applyMutation = (cart: Cart, seq: number) => {
+    appliedSeq = Math.max(appliedSeq, seq)
     set({ cart })
   }
 
@@ -66,15 +81,23 @@ export const useCartStore = create<CartState>((set, get) => {
     setLoading: (isLoading) => set({ isLoading }),
     setUnavailable: (odooUnavailable) => set({ odooUnavailable }),
     lineCount: () => get().cart?.lines.length ?? 0,
+    // Also drives the cart page's loading/error UI directly (isLoading/odooUnavailable) —
+    // it no longer keeps its own separate, unsequenced fetch that could clobber a fresher
+    // mutation with no ordering check at all.
     fetchCart: async () => {
+      set({ isLoading: true })
       const seq = ++seqCounter
       try {
         const res = await fetch('/api/cart')
+        if (res.status === 503) { set({ odooUnavailable: true }); return }
         if (!res.ok) return
         const data = await res.json()
+        set({ odooUnavailable: false })
         reconcile(data, seq)
       } catch {
-        // silently ignore — badge stays at 0
+        // silently ignore — non-cart-page callers (layout mount, badge) shouldn't surface this
+      } finally {
+        set({ isLoading: false })
       }
     },
     addLineOptimistic: (product, pkg, qty) => {
@@ -150,7 +173,7 @@ export const useCartStore = create<CartState>((set, get) => {
           await get().fetchCart()
           return { ok: false, message: data?.message }
         }
-        reconcile(data, seq)
+        applyMutation(data, seq)
         return { ok: true, adjustedPacks: data?.adjusted_packs }
       } catch {
         await get().fetchCart()
@@ -190,7 +213,7 @@ export const useCartStore = create<CartState>((set, get) => {
           await get().fetchCart()
           return { ok: false, message: data?.message }
         }
-        reconcile(data, seq)
+        applyMutation(data, seq)
         return { ok: true, adjustedPacks: data?.adjusted_packs }
       } catch {
         await get().fetchCart()
@@ -203,7 +226,7 @@ export const useCartStore = create<CartState>((set, get) => {
       try {
         const res = await fetch(`/api/cart/lines/${lineId}`, { method: 'DELETE' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        reconcile(await res.json(), seq)
+        applyMutation(await res.json(), seq)
         return true
       } catch {
         await get().fetchCart()

@@ -15,20 +15,12 @@ import { ShoppingCart, Trash2 } from 'lucide-react'
 
 export default function CartPage() {
   const { lang } = useLangStore()
-  const { cart, isLoading, odooUnavailable, setCart, setLoading, setUnavailable } = useCartStore()
+  // Use the store's own sequenced fetchCart (not a separate local fetch) — a parallel,
+  // unsequenced fetch here could win a race against a just-completed edit's response
+  // (e.g. a server-clamped quantity) and silently overwrite it with a stale snapshot.
+  const { cart, isLoading, odooUnavailable, setCart, fetchCart } = useCartStore()
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
-
-  const fetchCart = async () => {
-    setLoading(true)
-    setUnavailable(false)
-    try {
-      const res = await fetch('/api/cart')
-      if (res.status === 503) { setUnavailable(true); return }
-      setCart(await res.json())
-    } catch { setUnavailable(true) }
-    finally { setLoading(false) }
-  }
 
   useEffect(() => { fetchCart() }, [])
 
