@@ -66,23 +66,31 @@ export async function POST(req: NextRequest) {
     ) as { id: number; product_packaging_id: [number, string] | false; product_packaging_qty: number; product_uom_qty: number }[]
 
     // Quantity cap: qty_available is null when unlimited (allow_out_of_stock_order, or a
-    // non-storable/untracked consumable — see getAvailableUnitsForOrdering). Otherwise reject
-    // if the units already committed to this template in the cart, plus this add, exceed it.
+    // non-storable/untracked consumable — see getAvailableUnitsForOrdering). Otherwise CLAMP
+    // the add down to a whole number of packs that fits within what's available (accounting
+    // for units already committed to this template elsewhere in the cart); only reject
+    // outright if literally nothing more can be added.
     const available = availableMap.get(product_id) ?? null
     const alreadyCommitted = templateLines.reduce((s, l) => s + l.product_uom_qty, 0)
-    const addedUnits = packaging_qty * pkgInfo.qty
-    if (available !== null && alreadyCommitted + addedUnits > available) {
+    let effectivePackagingQty = packaging_qty
+    let adjustedPacks: number | undefined
+    if (available !== null) {
       const remainingUnits = Math.max(0, available - alreadyCommitted)
-      const availablePacks = Math.floor(remainingUnits / pkgInfo.qty)
-      return NextResponse.json({
-        error: 'INSUFFICIENT_STOCK',
-        message: availablePacks > 0
-          ? `Only ${availablePacks} more available.`
-          : 'No more available to add.',
-        available_units: remainingUnits,
-        available_packs: availablePacks,
-      }, { status: 409 })
+      const maxAddablePacks = Math.floor(remainingUnits / pkgInfo.qty)
+      if (maxAddablePacks <= 0) {
+        return NextResponse.json({
+          error: 'INSUFFICIENT_STOCK',
+          message: 'No more available to add.',
+          available_units: remainingUnits,
+          available_packs: 0,
+        }, { status: 409 })
+      }
+      if (maxAddablePacks < packaging_qty) {
+        effectivePackagingQty = maxAddablePacks
+        adjustedPacks = maxAddablePacks
+      }
     }
+    const addedUnits = effectivePackagingQty * pkgInfo.qty
 
     // Check for existing line with the SAME product AND the same packaging.
     // When packaging_id is falsy (the "Unit" fallback, id 0), match only lines
@@ -101,14 +109,14 @@ export async function POST(req: NextRequest) {
       const writeVals: Record<string, unknown> = {
         product_uom_qty: newUnitQty,
       }
-      if (packaging_id) writeVals.product_packaging_qty = existingLine.product_packaging_qty + packaging_qty
+      if (packaging_id) writeVals.product_packaging_qty = existingLine.product_packaging_qty + effectivePackagingQty
       await callKw(sessionId, 'sale.order.line', 'write', [[existingLine.id], writeVals], {})
     } else {
       // No price_unit: Odoo computes it from the order pricelist on create.
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
         product_id: pkgInfo.productVariantId,
-        product_packaging_qty: packaging_qty,
+        product_packaging_qty: effectivePackagingQty,
         product_uom_qty: addedUnits,
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
@@ -116,9 +124,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Return the updated cart so the client reconciles in one round-trip
-    // (no separate GET /api/cart needed).
+    // (no separate GET /api/cart needed). adjusted_packs is present only when the
+    // requested quantity was clamped down — the client surfaces it as an informative toast.
     const cart = await readCart(sessionId, cartId)
-    return NextResponse.json(cart)
+    return NextResponse.json({ ...cart, adjusted_packs: adjustedPacks })
   } catch (err) {
     invalidateOdooSession()
     console.error('cart lines POST error:', err)

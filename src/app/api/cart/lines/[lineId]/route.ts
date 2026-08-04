@@ -74,8 +74,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
 
     // Quantity cap: sum the OTHER lines for this same template in the cart (stock is
     // tracked per template, so a customer could otherwise bypass the cap by splitting
-    // across packagings), add this line's new requested total, compare to what's available.
-    const requestedUnits = packaging_qty * resolved.unitsPerPack
+    // across packagings), then CLAMP this line's new quantity down to a whole number of
+    // packs that fits within what's left. Only reject outright if the other lines alone
+    // already consume everything, so this line has no room to hold any positive quantity.
+    let effectivePackagingQty = packaging_qty
+    let adjustedPacks: number | undefined
     if (resolved.templateId) {
       const [availableMap, siblingLines] = await Promise.all([
         getAvailableUnitsForOrdering(sessionId, [resolved.templateId]),
@@ -86,28 +89,37 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
       ])
       const available = availableMap.get(resolved.templateId) ?? null
       const otherCommitted = siblingLines.reduce((s, l) => s + l.product_uom_qty, 0)
-      if (available !== null && otherCommitted + requestedUnits > available) {
+      if (available !== null) {
         const remainingUnits = Math.max(0, available - otherCommitted)
-        const availablePacks = Math.floor(remainingUnits / resolved.unitsPerPack)
-        return NextResponse.json({
-          error: 'INSUFFICIENT_STOCK',
-          message: availablePacks > 0 ? `Only ${availablePacks} available.` : 'No more available.',
-          available_units: remainingUnits,
-          available_packs: availablePacks,
-        }, { status: 409 })
+        const maxPacks = Math.floor(remainingUnits / resolved.unitsPerPack)
+        if (maxPacks <= 0) {
+          return NextResponse.json({
+            error: 'INSUFFICIENT_STOCK',
+            message: 'No more available.',
+            available_units: remainingUnits,
+            available_packs: 0,
+          }, { status: 409 })
+        }
+        if (maxPacks < packaging_qty) {
+          effectivePackagingQty = maxPacks
+          adjustedPacks = maxPacks
+        }
       }
     }
+    const requestedUnits = effectivePackagingQty * resolved.unitsPerPack
 
     // No price_unit: Odoo recomputes it from the order's pricelist when product_uom_qty changes.
     const writeVals: Record<string, unknown> = {
-      product_packaging_qty: packaging_qty,
+      product_packaging_qty: effectivePackagingQty,
       product_uom_qty: requestedUnits,
     }
     await callKw(sessionId, 'sale.order.line', 'write',
       [[resolved.lineId], writeVals], {})
 
+    // adjusted_packs is present only when the requested quantity was clamped down — the
+    // client surfaces it as an informative toast.
     const cart = await readCart(sessionId, resolved.orderId)
-    return NextResponse.json(cart)
+    return NextResponse.json({ ...cart, adjusted_packs: adjustedPacks })
   } catch (err) {
     invalidateOdooSession()
     console.error('cart line PATCH error:', err)

@@ -51,11 +51,17 @@ export default function ProductDetailPage() {
   const addToCart = () => {
     if (!product || !selectedPkg) return
     // Optimistic update + background sync + sequenced reconcile (shared store action).
+    // The checkmark is immediate visual feedback; the toast text waits for the real
+    // outcome (it may name a reduced quantity if the server had to clamp the add).
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
-    showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
     addToCartAndSync(product, selectedPkg, qty).then((result) => {
-      if (!result.ok) showToast(result.message ?? 'Could not add to cart. Please try again.', 'error')
+      if (!result.ok) { showToast(result.message ?? 'Could not add to cart. Please try again.', 'error'); return }
+      if (result.adjustedPacks !== undefined) {
+        showToast(t(lang, 'products.qtyAdjustedAdd').replace(/{n}/g, String(result.adjustedPacks)))
+      } else {
+        showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
+      }
     })
   }
 

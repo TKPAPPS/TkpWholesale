@@ -39,12 +39,18 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const addToCart = () => {
     if (!defaultPkg) return
     // Optimistic update + background sync + sequenced reconcile, shared with the
-    // product detail page via the cart store.
+    // product detail page via the cart store. The checkmark is immediate visual
+    // feedback; the toast text waits for the real outcome (it may name a reduced
+    // quantity if the server had to clamp the add to what's in stock).
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
-    showToast(`${name} added to cart`)
     addToCartAndSync(product, defaultPkg, qty).then((result) => {
-      if (!result.ok) showToast(result.message ?? 'Could not add to cart. Please try again.', 'error')
+      if (!result.ok) { showToast(result.message ?? 'Could not add to cart. Please try again.', 'error'); return }
+      if (result.adjustedPacks !== undefined) {
+        showToast(t(lang, 'products.qtyAdjustedAdd').replace(/{n}/g, String(result.adjustedPacks)))
+      } else {
+        showToast(`${name} added to cart`)
+      }
     })
   }
 

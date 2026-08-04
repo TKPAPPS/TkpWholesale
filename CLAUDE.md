@@ -135,10 +135,21 @@ rule as `_fetchInStockIds`; fails open on a lookup error). `POST /api/cart/lines
 through POST), so enforcing there covers everywhere: both sum the units already committed to
 that TEMPLATE across ALL the cart's lines (not just the matching packaging/variant — otherwise
 splitting an order across "Unit" and "Case of 12" lines would bypass the cap), add the new
-request, and reject with 409 `INSUFFICIENT_STOCK` (`{message, available_units,
-available_packs}`) if it exceeds what's available. `computeMaxPacks()` (`src/lib/utils.ts`)
-is the client-side mirror used to cap the `QuantitySelector` (`max` prop) on the grid, product
-detail, and product-detail packaging switch — UX guidance only, the server always re-validates.
+request, then CLAMPS it down to a whole number of packs that fits within what's left rather
+than rejecting — asking for 50 when 37 are available adds 37 and the response carries
+`adjusted_packs: 37` (the cart JSON is spread with this one extra field) so the client shows an
+informative toast ("Only 37 available — added 37" / "— quantity updated to 37") instead of an
+error. A 409 `INSUFFICIENT_STOCK` (`{message, available_units, available_packs}`) is returned
+only when literally nothing more can be added/kept (e.g. sibling lines for the same template
+already consume everything available). `cartStore.ts`'s `addToCartAndSync`/`updateLineQty`
+resolve `{ok, message?, adjustedPacks?}` so callers can distinguish "as asked" from "reduced"
+from "failed outright". `computeMaxPacks()` (`src/lib/utils.ts`) is the client-side mirror used
+to cap the `QuantitySelector` (`max` prop) on the grid, product detail, and product-detail
+packaging switch — UX guidance only (keeps the common case from ever reaching a clamp); the
+server always re-validates and is authoritative. `CartItem`'s local qty input resyncs from the
+`line` object (not `line.packaging_qty`) on every cart refresh — a rejected/clamped update can
+leave the true server value numerically unchanged from before the edit, and a dependency on
+just the primitive would then never re-fire.
 Checkout gets the same safety net for carts that sat and stock dropped since: confirm sums
 per-template committed units among lines whose template IS orderable (an unorderable
 template's lines are removed entirely, not clamped) and, on acknowledgment, clamps each

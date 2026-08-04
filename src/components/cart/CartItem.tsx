@@ -43,7 +43,10 @@ export function CartItem({ line, currency }: CartItemProps) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         updateLineQty(line.line_id, newQty).then((result) => {
-          if (!result.ok) showToast(result.message ?? 'Could not update quantity. Please try again.', 'error')
+          if (!result.ok) { showToast(result.message ?? 'Could not update quantity. Please try again.', 'error'); return }
+          if (result.adjustedPacks !== undefined) {
+            showToast(t(lang, 'cart.qtyAdjusted').replace(/{n}/g, String(result.adjustedPacks)))
+          }
         })
       }, 500)
     },

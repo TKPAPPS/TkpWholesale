@@ -16,15 +16,18 @@ interface CartState {
   // caller can roll back if the write fails.
   addLineOptimistic: (product: Product, pkg: PackagingOption, qty: number) => Cart | null
   // Optimistic add + background POST + sequenced reconcile. Resolves { ok: true } on
-  // success; on failure (after resyncing), { ok: false, message } carries the server's
-  // reason (e.g. INSUFFICIENT_STOCK's "Only N available") when there is one. Shared by
-  // the product grid and the product detail page so both stay on one cart-sync protocol.
-  addToCartAndSync: (product: Product, pkg: PackagingOption, qty: number) => Promise<{ ok: boolean; message?: string }>
+  // success — with `adjustedPacks` set if the server clamped the requested quantity down
+  // to what's available (e.g. asked for 50, only 37 in stock — added 37). On failure
+  // (after resyncing), { ok: false, message } carries the server's reason (there's a
+  // genuine reject only when literally nothing more can be added). Shared by the product
+  // grid and the product detail page so both stay on one cart-sync protocol.
+  addToCartAndSync: (product: Product, pkg: PackagingOption, qty: number) => Promise<{ ok: boolean; message?: string; adjustedPacks?: number }>
   // Re-add many lines (reorder). Resolves with how many failed.
   reorderLines: (lines: { product_id: number; packaging_id: number | null; packaging_qty: number }[]) => Promise<{ added: number; failed: number }>
   // Update / remove a cart line with sequenced reconcile. No-op on optimistic
-  // (negative) line ids, which have no server row yet.
-  updateLineQty: (lineId: number, packagingQty: number) => Promise<{ ok: boolean; message?: string }>
+  // (negative) line ids, which have no server row yet. See addToCartAndSync for
+  // the adjustedPacks / message contract.
+  updateLineQty: (lineId: number, packagingQty: number) => Promise<{ ok: boolean; message?: string; adjustedPacks?: number }>
   removeLine: (lineId: number) => Promise<boolean>
 }
 
@@ -141,14 +144,14 @@ export const useCartStore = create<CartState>((set, get) => {
           // product_id = template_id (the API validates packaging against this template)
           body: JSON.stringify({ product_id: product.template_id, packaging_id: pkg.id, packaging_qty: qty }),
         })
+        const data = await res.json().catch(() => null)
         if (!res.ok) {
-          const data = await res.json().catch(() => null)
           // Resync so the optimistic line is undone (sequenced fetch).
           await get().fetchCart()
           return { ok: false, message: data?.message }
         }
-        reconcile(await res.json(), seq)
-        return { ok: true }
+        reconcile(data, seq)
+        return { ok: true, adjustedPacks: data?.adjusted_packs }
       } catch {
         await get().fetchCart()
         return { ok: false }
@@ -182,13 +185,13 @@ export const useCartStore = create<CartState>((set, get) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ packaging_qty: packagingQty }),
         })
+        const data = await res.json().catch(() => null)
         if (!res.ok) {
-          const data = await res.json().catch(() => null)
           await get().fetchCart()
           return { ok: false, message: data?.message }
         }
-        reconcile(await res.json(), seq)
-        return { ok: true }
+        reconcile(data, seq)
+        return { ok: true, adjustedPacks: data?.adjusted_packs }
       } catch {
         await get().fetchCart()
         return { ok: false }
