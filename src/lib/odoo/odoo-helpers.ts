@@ -558,16 +558,13 @@ export async function findUnorderableTemplateIdsLive(
 }
 
 // For each given template id, the R4-scoped available UNITS a customer may order, or `null`
-// if unlimited: the product is a non-storable/untracked consumable (existing Odoo-18 rule —
-// always orderable, qty_available is meaningless there), OR it has allow_out_of_stock_order
-// set AND its real stock is genuinely at/below zero. A product with POSITIVE real stock is
-// ALWAYS capped at that stock, even when allow_out_of_stock_order is set — that flag means
-// "don't block ordering once stock hits zero," not "never limit this product" (confirmed:
-// a 10-in-stock product flagged allow_out_of_stock_order was letting 400+ units be ordered).
-// Batched into one Odoo round-trip regardless of how many ids are passed — used for the
-// single-product cart add/update check and the multi-line checkout re-check alike. Fails
-// open (unlimited) on a lookup error, consistent with findUnorderableTemplateIdsLive, so a
-// transient Odoo blip never blocks every add-to-cart.
+// if unlimited: allow_out_of_stock_order is set (the merchant has explicitly opted this
+// product out of any stock limit — order any quantity, regardless of real stock level), OR
+// the product is a non-storable/untracked consumable (existing Odoo-18 rule — always
+// orderable, qty_available is meaningless there). Batched into one Odoo round-trip regardless
+// of how many ids are passed — used for the single-product cart add/update check and the
+// multi-line checkout re-check alike. Fails open (unlimited) on a lookup error, consistent
+// with findUnorderableTemplateIdsLive, so a transient Odoo blip never blocks every add-to-cart.
 export async function getAvailableUnitsForOrdering(
   sessionId: string,
   templateIds: number[],
@@ -585,15 +582,10 @@ export async function getAvailableUnitsForOrdering(
     ])
     const byId = new Map(rows.map(r => [r.id, r]))
     for (const tid of ids) {
+      if (settingsMap.get(tid)) { out.set(tid, null); continue } // allow_out_of_stock_order — unlimited
       const r = byId.get(tid)
-      if (!r) { out.set(tid, null); continue } // couldn't read — fail open, unlimited
-      if (r.is_storable === false) { out.set(tid, null); continue } // untracked consumable, always unlimited
-      if (r.qty_available > 0) { out.set(tid, Math.floor(r.qty_available)); continue } // real positive stock — cap at it, EVEN if allow_out_of_stock_order is set. That flag means "don't block ordering once stock hits zero," not "never limit this product" — a product with 10 real units in stock must still cap at 10, not become unlimited just because it's also flagged to keep selling past zero.
-      // qty_available <= 0: genuinely out of stock. allow_out_of_stock_order permits ordering
-      // anyway (unlimited); otherwise nothing can be added (0). Such products are normally
-      // already excluded from the catalog/checkout by findUnorderableTemplateIdsLive, so
-      // reaching this branch without the flag set should be rare.
-      out.set(tid, settingsMap.get(tid) ? null : 0)
+      if (!r || r.is_storable === false) { out.set(tid, null); continue } // untracked -> unlimited
+      out.set(tid, Math.max(0, Math.floor(r.qty_available)))
     }
     return out
   } catch (err) {
