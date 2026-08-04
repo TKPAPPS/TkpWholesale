@@ -29,8 +29,13 @@ export function CartItem({ line, currency }: CartItemProps) {
   const subtitle = [line.sku, line.packaging_name].filter(Boolean).join(' · ')
 
   // A rejected update resyncs the store with the real (unchanged) server quantity — reflect
-  // that back into the local input so it doesn't keep showing the rejected value.
-  useEffect(() => { setQty(line.packaging_qty) }, [line.packaging_qty])
+  // that back into the local input so it doesn't keep showing the rejected value. Depend on
+  // `line` itself (not line.packaging_qty): every resync produces a fresh line object even
+  // when the value is numerically unchanged from before the failed edit (e.g. reject a 50
+  // when the true quantity was already 10 — packaging_qty stays 10, same as pre-edit — a
+  // dependency on the primitive value would see "no change" and never fire, leaving the
+  // input stuck showing the rejected 50).
+  useEffect(() => { setQty(line.packaging_qty) }, [line])
 
   const updateQty = useCallback(
     (newQty: number) => {
