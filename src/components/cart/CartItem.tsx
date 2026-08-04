@@ -6,8 +6,9 @@ import { t } from '@/lib/i18n/translations'
 import Image from 'next/image'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { Trash2, Package, AlertTriangle } from 'lucide-react'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useCartStore } from '@/store/cartStore'
+import { useToastStore } from '@/store/toastStore'
 
 interface CartItemProps {
   line: CartLine
@@ -18,6 +19,7 @@ export function CartItem({ line, currency }: CartItemProps) {
   const { lang } = useLangStore()
   const updateLineQty = useCartStore((s) => s.updateLineQty)
   const removeLine = useCartStore((s) => s.removeLine)
+  const showToast = useToastStore((s) => s.show)
   const [qty, setQty] = useState(line.packaging_qty)
   const [removing, setRemoving] = useState(false)
   const [imgError, setImgError] = useState(false)
@@ -26,15 +28,21 @@ export function CartItem({ line, currency }: CartItemProps) {
   const name = lang === 'he' ? line.product_name_he : line.product_name
   const subtitle = [line.sku, line.packaging_name].filter(Boolean).join(' · ')
 
+  // A rejected update resyncs the store with the real (unchanged) server quantity — reflect
+  // that back into the local input so it doesn't keep showing the rejected value.
+  useEffect(() => { setQty(line.packaging_qty) }, [line.packaging_qty])
+
   const updateQty = useCallback(
     (newQty: number) => {
       setQty(newQty)
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
-        updateLineQty(line.line_id, newQty)
+        updateLineQty(line.line_id, newQty).then((result) => {
+          if (!result.ok) showToast(result.message ?? 'Could not update quantity. Please try again.', 'error')
+        })
       }, 500)
     },
-    [line.line_id, updateLineQty],
+    [line.line_id, updateLineQty, showToast],
   )
 
   const remove = async () => {

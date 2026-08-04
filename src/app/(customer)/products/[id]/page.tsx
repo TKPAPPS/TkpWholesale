@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { Product, PackagingOption } from '@/types'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, computeMaxPacks } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -54,10 +54,21 @@ export default function ProductDetailPage() {
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     showToast(`${lang === 'he' ? product.name_he : product.name} added to cart`)
-    addToCartAndSync(product, selectedPkg, qty).then((ok) => {
-      if (!ok) showToast('Could not add to cart. Please try again.', 'error')
+    addToCartAndSync(product, selectedPkg, qty).then((result) => {
+      if (!result.ok) showToast(result.message ?? 'Could not add to cart. Please try again.', 'error')
     })
   }
+
+  // Defense-in-depth UX cap — the server always re-validates on add. undefined = unlimited.
+  // Recomputed per selected packaging, since switching packaging changes the units-per-pack
+  // and therefore how many packs fit within the available stock.
+  const maxPacks = product && selectedPkg ? computeMaxPacks(product.in_stock, product.qty_available, selectedPkg.qty) : undefined
+  const soldOut = maxPacks === 0
+
+  useEffect(() => {
+    if (maxPacks !== undefined && maxPacks > 0 && qty > maxPacks) setQty(maxPacks)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPkg?.id, maxPacks])
 
   if (loading) return <LoadingSpinner />
   if (notFound || !product) return <EmptyState title="Product not found" description="This product is not available." action={<Button onClick={() => router.back()} variant="secondary">Go back</Button>} />
@@ -137,8 +148,8 @@ export default function ProductDetailPage() {
 
           {/* Add to cart */}
           <div className="flex items-center gap-3">
-            <QuantitySelector value={qty} onChange={setQty} className="w-32" />
-            <Button onClick={addToCart} disabled={!product.sellable} size="lg" className="flex-1">
+            <QuantitySelector value={qty} onChange={setQty} className="w-32" max={maxPacks && maxPacks > 0 ? maxPacks : undefined} />
+            <Button onClick={addToCart} disabled={!product.sellable || soldOut} size="lg" className="flex-1">
               <ShoppingCart className="h-4 w-4 me-2" />
               {added ? 'Added!' : t(lang, 'products.addToCart')}
             </Button>
@@ -146,6 +157,9 @@ export default function ProductDetailPage() {
 
           {!product.sellable && (
             <p className="text-sm text-red-600 font-medium">{t(lang, 'products.outOfStock')}</p>
+          )}
+          {product.sellable && soldOut && (
+            <p className="text-sm text-amber-600 font-medium">{t(lang, 'products.insufficientStock')}</p>
           )}
         </div>
       </div>

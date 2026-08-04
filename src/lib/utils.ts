@@ -51,3 +51,12 @@ export function hasLangCookie(): boolean {
   if (typeof document === 'undefined') return false
   return /(?:^|;\s*)lang=(en|he)(?:;|$)/.test(document.cookie)
 }
+
+// Client-side mirror of the server's stock cap (defense-in-depth UX only — the server
+// always re-validates on add/update). Returns undefined when unlimited: not stock-backed
+// (allow_out_of_stock_order, i.e. sellable but not in_stock) or a non-storable/untracked
+// consumable (existing Odoo-18 "always in stock" rule — in_stock true but qty_available 0).
+export function computeMaxPacks(inStock: boolean, qtyAvailable: number, packQty: number): number | undefined {
+  if (!inStock || qtyAvailable <= 0 || packQty <= 0) return undefined
+  return Math.floor(qtyAvailable / packQty)
+}

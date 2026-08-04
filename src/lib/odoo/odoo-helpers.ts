@@ -557,6 +557,43 @@ export async function findUnorderableTemplateIdsLive(
   }
 }
 
+// For each given template id, the R4-scoped available UNITS a customer may order, or `null`
+// if unlimited: allow_out_of_stock_order is set, OR the product is a non-storable/untracked
+// consumable (existing Odoo-18 rule — always orderable, qty_available is meaningless there).
+// Batched into one Odoo round-trip regardless of how many ids are passed — used for the
+// single-product cart add/update check and the multi-line checkout re-check alike. Fails
+// open (unlimited) on a lookup error, consistent with findUnorderableTemplateIdsLive, so a
+// transient Odoo blip never blocks every add-to-cart.
+export async function getAvailableUnitsForOrdering(
+  sessionId: string,
+  templateIds: number[],
+): Promise<Map<number, number | null>> {
+  const out = new Map<number, number | null>()
+  const ids = Array.from(new Set(templateIds.filter(Boolean)))
+  if (ids.length === 0) return out
+  try {
+    const locCtx = await stockLocationContext()
+    const [rows, settingsMap] = await Promise.all([
+      callKw(sessionId, 'product.template', 'read', [ids], {
+        fields: ['id', 'type', 'is_storable', 'qty_available'], context: locCtx,
+      }) as Promise<{ id: number; type: string; is_storable: boolean; qty_available: number }[]>,
+      fetchWebsitePublishedSettings(sessionId),
+    ])
+    const byId = new Map(rows.map(r => [r.id, r]))
+    for (const tid of ids) {
+      if (settingsMap.get(tid)) { out.set(tid, null); continue } // allow_out_of_stock_order
+      const r = byId.get(tid)
+      if (!r || r.is_storable === false) { out.set(tid, null); continue } // untracked -> unlimited
+      out.set(tid, Math.max(0, Math.floor(r.qty_available)))
+    }
+    return out
+  } catch (err) {
+    console.warn('getAvailableUnitsForOrdering error (failing open -> unlimited):', err)
+    ids.forEach(id => out.set(id, null))
+    return out
+  }
+}
+
 // Cached per-uid "is this Odoo user still active?" check (revalidate 5 min). Lets the
 // portal revoke a customer's access shortly after an admin deactivates them in Odoo,
 // instead of waiting out the full session TTL. Fails OPEN (treats as active) on an

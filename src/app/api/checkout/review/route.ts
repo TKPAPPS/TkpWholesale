@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart, readCart, emptyCart, fetchDeliveryAddresses, findUnorderableTemplateIdsLive } = await import('@/lib/odoo/odoo-helpers')
+    const { findCart, readCart, emptyCart, fetchDeliveryAddresses, findUnorderableTemplateIdsLive, getAvailableUnitsForOrdering } = await import('@/lib/odoo/odoo-helpers')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
     const [cart, delivery_addresses] = await Promise.all([
@@ -34,14 +34,28 @@ export async function GET(req: NextRequest) {
     // Re-check stock now (the cart may have sat for days): flag any line whose product is no
     // longer orderable so the buyer sees the out-of-stock items split out on the checkout page.
     // Live per-item read (cart is small) so the split shown matches what confirm will enforce.
-    const unorderable = await findUnorderableTemplateIdsLive(sessionId, cart.lines.map(l => l.template_id))
-    const lines = cart.lines.map(l =>
-      unorderable.has(l.template_id) ? { ...l, warnings: [...l.warnings, 'OUT_OF_STOCK'] } : l,
-    )
+    const templateIds = cart.lines.map(l => l.template_id)
+    const [unorderable, availableMap] = await Promise.all([
+      findUnorderableTemplateIdsLive(sessionId, templateIds),
+      getAvailableUnitsForOrdering(sessionId, templateIds),
+    ])
+    // Quantity warning is a per-line preview (informational) — confirm does the authoritative
+    // sum-across-lines-per-template check and clamp. Good enough to surface to the buyer here.
+    let qtyExceeded = false
+    const lines = cart.lines.map(l => {
+      if (unorderable.has(l.template_id)) return { ...l, warnings: [...l.warnings, 'OUT_OF_STOCK'] }
+      const available = availableMap.get(l.template_id) ?? null
+      if (available !== null && l.unit_qty > available) {
+        qtyExceeded = true
+        return { ...l, warnings: [...l.warnings, 'QTY_EXCEEDS_STOCK'] }
+      }
+      return l
+    })
 
     const blocking_errors: string[] = []
     if (lines.length === 0) blocking_errors.push('EMPTY')
     if (unorderable.size > 0) blocking_errors.push('OUT_OF_STOCK_ITEMS')
+    if (qtyExceeded) blocking_errors.push('QTY_EXCEEDS_STOCK_ITEMS')
 
     return NextResponse.json({
       ...cart,

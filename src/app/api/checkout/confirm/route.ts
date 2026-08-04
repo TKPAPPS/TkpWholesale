@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { findCart, findUnorderableTemplateIdsLive } = await import('@/lib/odoo/odoo-helpers')
+    const { findCart, findUnorderableTemplateIdsLive, getAvailableUnitsForOrdering } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead, OdooError } = await import('@/lib/odoo/client')
 
     const cartId = await findCart(sessionId, parsed.partner_id)
@@ -172,24 +172,53 @@ export async function POST(req: NextRequest) {
     }
 
     // Live stock re-check at the moment of ordering (catches a stock drop within the
-    // review cache window). Out-of-stock lines are SEPARATED from the order, never sent
-    // to Odoo. Without an explicit acknowledgement we return the offending template ids so
-    // the checkout page can show the split and ask the buyer to confirm removing them;
-    // with remove_unavailable we unlink those lines here and place the order with the rest.
+    // review cache window). Out-of-stock lines are SEPARATED from the order, and lines
+    // ordering more than what's currently available are CLAMPED down to it — neither ever
+    // reaches Odoo as written. Without an explicit acknowledgement we return the offending
+    // template ids so the checkout page can show the split and ask the buyer to confirm;
+    // with remove_unavailable we unlink/clamp here and place the order with the rest.
     const lineRows = await searchRead(sessionId, 'sale.order.line',
-      [['order_id', '=', cartId]], ['id', 'product_template_id'],
-    ) as { id: number; product_template_id: [number, string] | false }[]
+      [['order_id', '=', cartId]], ['id', 'product_template_id', 'product_packaging_id', 'product_uom_qty'],
+    ) as { id: number; product_template_id: [number, string] | false; product_packaging_id: [number, string] | false; product_uom_qty: number }[]
     const templateIdOf = (r: typeof lineRows[number]) => (Array.isArray(r.product_template_id) ? r.product_template_id[0] : 0)
     const lineTemplateIds = lineRows.map(templateIdOf).filter(Boolean)
     const unorderable = await findUnorderableTemplateIdsLive(sessionId, lineTemplateIds)
+
+    // Quantity cap: only for lines whose template IS orderable (an unorderable template's
+    // lines are removed entirely below, regardless of quantity). Sum committed units PER
+    // TEMPLATE (a customer can split one product across multiple packaging lines) against
+    // what's actually available right now.
+    const orderableLines = lineRows.filter(r => !unorderable.has(templateIdOf(r)))
+    const orderableTemplateIds = Array.from(new Set(orderableLines.map(templateIdOf).filter(Boolean)))
+    const availableMap = await getAvailableUnitsForOrdering(sessionId, orderableTemplateIds)
+    const byTemplate = new Map<number, typeof orderableLines>()
+    for (const r of orderableLines) {
+      const tid = templateIdOf(r)
+      if (!tid) continue
+      const list = byTemplate.get(tid)
+      if (list) list.push(r)
+      else byTemplate.set(tid, [r])
+    }
+    const overQtyTemplateIds = new Set<number>()
+    Array.from(byTemplate.entries()).forEach(([tid, lines]) => {
+      const available = availableMap.get(tid) ?? null
+      if (available === null) return
+      const committed = lines.reduce((s, l) => s + l.product_uom_qty, 0)
+      if (committed > available) overQtyTemplateIds.add(tid)
+    })
+
     let removedCount = 0
-    if (unorderable.size > 0) {
+    let adjustedCount = 0
+    if (unorderable.size > 0 || overQtyTemplateIds.size > 0) {
       if (!remove_unavailable) {
         return NextResponse.json(
           {
-            error: 'ITEMS_OUT_OF_STOCK',
-            message: 'Some items are no longer in stock.',
+            error: 'CART_NEEDS_ADJUSTMENT',
+            message: unorderable.size > 0
+              ? 'Some items are no longer in stock, or their quantity exceeds what is available.'
+              : 'Some quantities exceed what is currently available.',
             template_ids: Array.from(unorderable),
+            qty_exceeded_template_ids: Array.from(overQtyTemplateIds),
           },
           { status: 409 },
         )
@@ -208,6 +237,51 @@ export async function POST(req: NextRequest) {
           { error: 'ALL_ITEMS_OUT_OF_STOCK', message: 'Every item in your cart is out of stock.' },
           { status: 409 },
         )
+      }
+
+      if (overQtyTemplateIds.size > 0) {
+        // Clamp each over-quantity line to a whole number of packs that fits within what's
+        // available, allocated across the template's lines in order. Needs units-per-pack
+        // per line (1 for the "Unit" fallback packaging).
+        const linesToClamp = orderableLines.filter(r => overQtyTemplateIds.has(templateIdOf(r)))
+        const packagingIds = Array.from(new Set(
+          linesToClamp.map(r => (r.product_packaging_id ? r.product_packaging_id[0] : null)).filter((id): id is number => id !== null),
+        ))
+        const packagingRows = packagingIds.length > 0
+          ? await callKw(sessionId, 'product.packaging', 'read', [packagingIds], { fields: ['id', 'qty'] }) as { id: number; qty: number }[]
+          : []
+        const packQtyMap = new Map(packagingRows.map(p => [p.id, p.qty]))
+        const unitsPerPackOf = (r: typeof linesToClamp[number]) => (r.product_packaging_id ? (packQtyMap.get(r.product_packaging_id[0]) ?? 1) : 1)
+
+        for (const tid of Array.from(overQtyTemplateIds)) {
+          const lines = byTemplate.get(tid) ?? []
+          let remaining = availableMap.get(tid) ?? 0
+          for (const line of lines) {
+            const perPack = unitsPerPackOf(line)
+            const packs = Math.floor(remaining / perPack)
+            const newUnits = packs * perPack
+            remaining -= newUnits
+            if (newUnits === line.product_uom_qty) continue
+            adjustedCount++
+            if (newUnits <= 0) {
+              await callKw(sessionId, 'sale.order.line', 'unlink', [[line.id]], {})
+            } else {
+              const writeVals: Record<string, unknown> = { product_uom_qty: newUnits }
+              if (line.product_packaging_id) writeVals.product_packaging_qty = packs
+              await callKw(sessionId, 'sale.order.line', 'write', [[line.id], writeVals], {})
+            }
+          }
+        }
+        // Clamping can zero out a line entirely (available dropped to 0 since review); guard
+        // against confirming an order left with no product lines at all.
+        const remainingProductLines = await callKw(sessionId, 'sale.order.line', 'search_count',
+          [[['order_id', '=', cartId], ['product_template_id', '!=', false]]], {}) as number
+        if (remainingProductLines === 0) {
+          return NextResponse.json(
+            { error: 'ALL_ITEMS_OUT_OF_STOCK', message: 'Every item in your cart is out of stock.' },
+            { status: 409 },
+          )
+        }
       }
     }
 
@@ -284,6 +358,7 @@ export async function POST(req: NextRequest) {
         schedule_id: scheduleId,
         schedule_error: scheduleError || undefined,
         removed_count: removedCount || undefined,
+        adjusted_count: adjustedCount || undefined,
       })
     } catch (readErr) {
       console.error('checkout confirm read-back failed (order already confirmed):', readErr)
@@ -297,6 +372,7 @@ export async function POST(req: NextRequest) {
         schedule_id: scheduleId,
         schedule_error: scheduleError || undefined,
         removed_count: removedCount || undefined,
+        adjusted_count: adjustedCount || undefined,
       })
     }
   } catch (err) {

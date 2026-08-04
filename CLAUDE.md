@@ -115,12 +115,37 @@ set. Same orderability rule as `_fetchInStockIds` (type `consu` AND (not `is_sto
 `qty_available>0`), OR `allow_out_of_stock_order`); fails open (empty set) on a lookup error.
 The checkout page splits the cart into orderable vs out-of-stock and shows the OOS items in a
 separate amber section; the order total reflects only orderable lines. Confirm returns 409
-`ITEMS_OUT_OF_STOCK` (with `template_ids`) when OOS items are present and the client has not
+`CART_NEEDS_ADJUSTMENT` (with `template_ids` for OOS + `qty_exceeded_template_ids` for
+over-quantity lines, see below) when either issue is present and the client has not
 acknowledged; the client re-fetches review and the button becomes "Remove out-of-stock items
-and place order", which POSTs `remove_unavailable:true`. Confirm then `unlink`s the OOS
+and place order" / "Reduce quantities and place order" / "Adjust cart and place order"
+(whichever applies), which POSTs `remove_unavailable:true`. Confirm then `unlink`s the OOS
 `sale.order.line`s, places the order with the rest, and returns `removed_count` (surfaced as a
 banner on the confirmation page via `?removed=N`). If EVERY line is OOS it returns 409
 `ALL_ITEMS_OUT_OF_STOCK`.
+
+**Cart quantity is capped to available stock.** A customer could previously add e.g. 200 units
+of a product with only 5 in stock — no path (add, edit, reorder, quick-order) ever compared
+the requested quantity to `qty_available`. `getAvailableUnitsForOrdering(sessionId,
+templateIds)` (`odoo-helpers.ts`, batched, next to `findUnorderableTemplateIdsLive`) returns,
+per template id, the R4-scoped available UNITS to order, or `null` if unlimited
+(`allow_out_of_stock_order`, or a non-storable/untracked consumable — same "always in stock"
+rule as `_fetchInStockIds`; fails open on a lookup error). `POST /api/cart/lines` and `PATCH
+/api/cart/lines/[lineId]` are the sole write paths (reorder/quick-order/bulk-order all funnel
+through POST), so enforcing there covers everywhere: both sum the units already committed to
+that TEMPLATE across ALL the cart's lines (not just the matching packaging/variant — otherwise
+splitting an order across "Unit" and "Case of 12" lines would bypass the cap), add the new
+request, and reject with 409 `INSUFFICIENT_STOCK` (`{message, available_units,
+available_packs}`) if it exceeds what's available. `computeMaxPacks()` (`src/lib/utils.ts`)
+is the client-side mirror used to cap the `QuantitySelector` (`max` prop) on the grid, product
+detail, and product-detail packaging switch — UX guidance only, the server always re-validates.
+Checkout gets the same safety net for carts that sat and stock dropped since: confirm sums
+per-template committed units among lines whose template IS orderable (an unorderable
+template's lines are removed entirely, not clamped) and, on acknowledgment, clamps each
+over-quantity line down to a whole number of packs that fits (allocated across that template's
+lines in order; a line clamped to 0 packs is unlinked), returning `adjusted_count` (banner via
+`?adjusted=N`). `addToCartAndSync`/`updateLineQty` (`cartStore.ts`) resolve `{ok, message}`
+(not a bare boolean) so a rejection's reason reaches the toast instead of a generic error.
 
 **Storefront rules are admin-configurable** via `b2b_portal.site_settings` (one JSON config
 param): low-stock badge threshold, new-arrivals window, products/orders/invoices page sizes,

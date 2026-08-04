@@ -104,9 +104,9 @@ export default function CheckoutPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        // Stock changed since the page loaded: re-fetch so the out-of-stock items get
-        // split out, then let the buyer place the order with the remainder.
-        if (data.error === 'ITEMS_OUT_OF_STOCK') {
+        // Stock (or quantity) changed since the page loaded: re-fetch so the affected items
+        // get flagged, then let the buyer place the order with the adjustment.
+        if (data.error === 'CART_NEEDS_ADJUSTMENT') {
           await fetchReview()
           setConfirmError(t(lang, 'checkout.stockChangedReview'))
           return
@@ -123,6 +123,7 @@ export default function CheckoutPage() {
       if (data.schedule_id) params.set('scheduled', '1')
       if (data.schedule_error) params.set('schedule_error', '1')
       if (data.removed_count) params.set('removed', String(data.removed_count))
+      if (data.adjusted_count) params.set('adjusted', String(data.adjusted_count))
       router.push(`/order-confirmation/${data.order_id}?${params.toString()}`)
     } catch { setConfirmError('Unexpected error. Please try again.') }
     finally { setConfirming(false) }
@@ -132,10 +133,15 @@ export default function CheckoutPage() {
 
   // Split the cart into orderable vs out-of-stock (flagged by the review route). The order
   // total shown reflects only the orderable lines, since the OOS items won't be ordered.
+  // Quantity-exceeded lines stay in the orderable list (they still get ordered, just at a
+  // reduced quantity at confirm) but carry a warning so the buyer knows before they order.
   const isOos = (l: Cart['lines'][number]) => l.warnings.includes('OUT_OF_STOCK')
+  const isQtyExceeded = (l: Cart['lines'][number]) => l.warnings.includes('QTY_EXCEEDS_STOCK')
   const oosLines = review?.lines.filter(isOos) ?? []
   const orderableLines = review?.lines.filter((l) => !isOos(l)) ?? []
   const hasOos = oosLines.length > 0
+  const hasQtyExceeded = orderableLines.some(isQtyExceeded)
+  const needsAdjustment = hasOos || hasQtyExceeded
   const displayCart: ReviewData | null = review
     ? {
         ...review,
@@ -164,6 +170,11 @@ export default function CheckoutPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                     <p className="text-xs text-gray-400">{line.packaging_name} × {line.packaging_qty}</p>
+                    {isQtyExceeded(line) && (
+                      <p className="text-xs text-amber-700 flex items-center gap-1 mt-0.5">
+                        <AlertTriangle className="h-3 w-3 shrink-0" /> {t(lang, 'checkout.lineQtyExceedsStock')}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <span className="font-medium">{formatCurrency(line.price_total, review.currency)}</span>
@@ -341,9 +352,12 @@ export default function CheckoutPage() {
             </div>
           )}
           <p className="text-xs text-gray-400 text-center">{t(lang, 'checkout.confirmWarning')}</p>
-          <Button onClick={() => confirm(hasOos)} loading={confirming} disabled={!selectedAddress || orderableLines.length === 0} className="w-full" size="lg">
+          <Button onClick={() => confirm(needsAdjustment)} loading={confirming} disabled={!selectedAddress || orderableLines.length === 0} className="w-full" size="lg">
             <CheckCircle className="h-4 w-4 me-2" />
-            {hasOos ? t(lang, 'checkout.removeAndPlaceOrder') : t(lang, 'checkout.confirmOrder')}
+            {hasOos && hasQtyExceeded ? t(lang, 'checkout.adjustAndPlaceOrder')
+              : hasOos ? t(lang, 'checkout.removeAndPlaceOrder')
+              : hasQtyExceeded ? t(lang, 'checkout.reduceQtyAndPlaceOrder')
+              : t(lang, 'checkout.confirmOrder')}
           </Button>
           <div className="text-center">
             <Link href="/cart" className="text-sm text-brand-700 hover:underline">{t(lang, 'common.back')} to cart</Link>

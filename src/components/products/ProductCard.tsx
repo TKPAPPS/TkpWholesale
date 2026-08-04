@@ -1,7 +1,7 @@
 'use client'
 import { Product } from '@/types'
 import { useLangStore } from '@/store/langStore'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, computeMaxPacks } from '@/lib/utils'
 import { t } from '@/lib/i18n/translations'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -32,6 +32,9 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const defaultPkg = product.packaging_options.find((p) => p.is_default) ?? product.packaging_options[0]
   const price = defaultPkg?.price_per_pack_incl_tax ?? 0
   const unitPrice = defaultPkg?.price_per_unit_incl_tax ?? 0
+  // Defense-in-depth UX cap — the server always re-validates on add. undefined = unlimited.
+  const maxPacks = defaultPkg ? computeMaxPacks(product.in_stock, product.qty_available, defaultPkg.qty) : undefined
+  const soldOut = maxPacks === 0
 
   const addToCart = () => {
     if (!defaultPkg) return
@@ -40,8 +43,8 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     showToast(`${name} added to cart`)
-    addToCartAndSync(product, defaultPkg, qty).then((ok) => {
-      if (!ok) showToast('Could not add to cart. Please try again.', 'error')
+    addToCartAndSync(product, defaultPkg, qty).then((result) => {
+      if (!result.ok) showToast(result.message ?? 'Could not add to cart. Please try again.', 'error')
     })
   }
 
@@ -118,11 +121,11 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
         )}
 
         <div className="flex items-center gap-2 pt-1">
-          <QuantitySelector value={qty} onChange={setQty} size="sm" className="flex-1" />
+          <QuantitySelector value={qty} onChange={setQty} size="sm" className="flex-1" max={maxPacks && maxPacks > 0 ? maxPacks : undefined} />
           <Button
             size="sm"
             onClick={addToCart}
-            disabled={!product.sellable}
+            disabled={!product.sellable || soldOut}
             className="shrink-0 min-w-[40px]"
           >
             {added

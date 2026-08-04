@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { getOrCreateCart, validatePackaging, fetchWebsitePublishedSettings, readCart, getCustomerHiddenDomain } = await import('@/lib/odoo/odoo-helpers')
+    const { getOrCreateCart, validatePackaging, fetchWebsitePublishedSettings, readCart, getCustomerHiddenDomain, getAvailableUnitsForOrdering } = await import('@/lib/odoo/odoo-helpers')
     const { callKw, searchRead } = await import('@/lib/odoo/client')
 
     // Per-customer hidden products/categories: a hidden product must not be addable even via
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     // We deliberately do NOT compute price_unit here — the cart carries the partner's current
     // pricelist (Odoo sets it from the partner on create), so Odoo computes the exact line
     // price natively. That keeps card/cart/review/Odoo prices identical.
-    const [pkgInfo, cartId, publishedMap, allowedCount] = await Promise.all([
+    const [pkgInfo, cartId, publishedMap, allowedCount, availableMap] = await Promise.all([
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
       getOrCreateCart(sessionId, parsed.partner_id),
       fetchWebsitePublishedSettings(sessionId),
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       callKw(sessionId, 'product.template', 'search_count',
         [[['id', '=', product_id], ['sale_ok', '=', true], ...custHidden]], {},
       ) as Promise<number>,
+      getAvailableUnitsForOrdering(sessionId, [product_id]),
     ])
 
     // Reject orders for products not published on the portal, not for sale, or hidden.
@@ -55,37 +56,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
 
+    // Fetch every line for this TEMPLATE in the cart (not just the matching packaging) —
+    // stock is tracked per template, so a customer could otherwise bypass the cap by
+    // splitting an order across "Unit" and "Case of 12" lines for the same product.
+    const templateLines = await searchRead(
+      sessionId, 'sale.order.line',
+      [['order_id', '=', cartId], ['product_template_id', '=', product_id]],
+      ['id', 'product_packaging_id', 'product_packaging_qty', 'product_uom_qty'],
+    ) as { id: number; product_packaging_id: [number, string] | false; product_packaging_qty: number; product_uom_qty: number }[]
+
+    // Quantity cap: qty_available is null when unlimited (allow_out_of_stock_order, or a
+    // non-storable/untracked consumable — see getAvailableUnitsForOrdering). Otherwise reject
+    // if the units already committed to this template in the cart, plus this add, exceed it.
+    const available = availableMap.get(product_id) ?? null
+    const alreadyCommitted = templateLines.reduce((s, l) => s + l.product_uom_qty, 0)
+    const addedUnits = packaging_qty * pkgInfo.qty
+    if (available !== null && alreadyCommitted + addedUnits > available) {
+      const remainingUnits = Math.max(0, available - alreadyCommitted)
+      const availablePacks = Math.floor(remainingUnits / pkgInfo.qty)
+      return NextResponse.json({
+        error: 'INSUFFICIENT_STOCK',
+        message: availablePacks > 0
+          ? `Only ${availablePacks} more available.`
+          : 'No more available to add.',
+        available_units: remainingUnits,
+        available_packs: availablePacks,
+      }, { status: 409 })
+    }
+
     // Check for existing line with the SAME product AND the same packaging.
     // When packaging_id is falsy (the "Unit" fallback, id 0), match only lines
     // that also have NO packaging — otherwise a unit add merges into a real
     // "Case of 12" line and corrupts its quantities.
-    const existingLines = await searchRead(
-      sessionId, 'sale.order.line',
-      [['order_id', '=', cartId], ['product_id', '=', pkgInfo.productVariantId],
-       packaging_id ? ['product_packaging_id', '=', packaging_id] : ['product_packaging_id', '=', false]],
-      ['id', 'product_packaging_qty', 'product_uom_qty'],
-      { limit: 1 },
-    ) as { id: number; product_packaging_qty: number; product_uom_qty: number }[]
+    const existingLine = templateLines.find(l =>
+      packaging_id ? (l.product_packaging_id && l.product_packaging_id[0] === packaging_id) : !l.product_packaging_id,
+    )
 
-    if (existingLines.length > 0) {
+    if (existingLine) {
       // Merge on the unit quantity (product_uom_qty is always accurate), not on
       // product_packaging_qty, which Odoo reports as 0 for no-packaging lines and
       // would reset the quantity instead of adding to it.
-      const addedUnits = packaging_qty * pkgInfo.qty
-      const newUnitQty = existingLines[0].product_uom_qty + addedUnits
+      const newUnitQty = existingLine.product_uom_qty + addedUnits
       // No price_unit: Odoo recomputes it from the order pricelist when qty changes.
       const writeVals: Record<string, unknown> = {
         product_uom_qty: newUnitQty,
       }
-      if (packaging_id) writeVals.product_packaging_qty = existingLines[0].product_packaging_qty + packaging_qty
-      await callKw(sessionId, 'sale.order.line', 'write', [[existingLines[0].id], writeVals], {})
+      if (packaging_id) writeVals.product_packaging_qty = existingLine.product_packaging_qty + packaging_qty
+      await callKw(sessionId, 'sale.order.line', 'write', [[existingLine.id], writeVals], {})
     } else {
       // No price_unit: Odoo computes it from the order pricelist on create.
       const lineVals: Record<string, unknown> = {
         order_id: cartId,
         product_id: pkgInfo.productVariantId,
         product_packaging_qty: packaging_qty,
-        product_uom_qty: packaging_qty * pkgInfo.qty,
+        product_uom_qty: addedUnits,
       }
       if (packaging_id) lineVals.product_packaging_id = packaging_id
       await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})

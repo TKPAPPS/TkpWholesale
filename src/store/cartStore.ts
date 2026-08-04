@@ -15,15 +15,16 @@ interface CartState {
   // Odoo write happens in the background. Returns the previous cart so the
   // caller can roll back if the write fails.
   addLineOptimistic: (product: Product, pkg: PackagingOption, qty: number) => Cart | null
-  // Optimistic add + background POST + sequenced reconcile. Resolves true on
-  // success, false on failure (after resyncing). Shared by the product grid and
-  // the product detail page so both stay on one cart-sync protocol.
-  addToCartAndSync: (product: Product, pkg: PackagingOption, qty: number) => Promise<boolean>
+  // Optimistic add + background POST + sequenced reconcile. Resolves { ok: true } on
+  // success; on failure (after resyncing), { ok: false, message } carries the server's
+  // reason (e.g. INSUFFICIENT_STOCK's "Only N available") when there is one. Shared by
+  // the product grid and the product detail page so both stay on one cart-sync protocol.
+  addToCartAndSync: (product: Product, pkg: PackagingOption, qty: number) => Promise<{ ok: boolean; message?: string }>
   // Re-add many lines (reorder). Resolves with how many failed.
   reorderLines: (lines: { product_id: number; packaging_id: number | null; packaging_qty: number }[]) => Promise<{ added: number; failed: number }>
   // Update / remove a cart line with sequenced reconcile. No-op on optimistic
   // (negative) line ids, which have no server row yet.
-  updateLineQty: (lineId: number, packagingQty: number) => Promise<boolean>
+  updateLineQty: (lineId: number, packagingQty: number) => Promise<{ ok: boolean; message?: string }>
   removeLine: (lineId: number) => Promise<boolean>
 }
 
@@ -140,13 +141,17 @@ export const useCartStore = create<CartState>((set, get) => {
           // product_id = template_id (the API validates packaging against this template)
           body: JSON.stringify({ product_id: product.template_id, packaging_id: pkg.id, packaging_qty: qty }),
         })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => null)
+          // Resync so the optimistic line is undone (sequenced fetch).
+          await get().fetchCart()
+          return { ok: false, message: data?.message }
+        }
         reconcile(await res.json(), seq)
-        return true
+        return { ok: true }
       } catch {
-        // Resync so the optimistic line is undone (sequenced fetch).
         await get().fetchCart()
-        return false
+        return { ok: false }
       }
     },
     reorderLines: async (lines) => {
@@ -169,7 +174,7 @@ export const useCartStore = create<CartState>((set, get) => {
     updateLineQty: async (lineId, packagingQty) => {
       // Optimistic lines (negative id) have no server row yet — resync instead of
       // PATCHing a non-existent id (which 404s).
-      if (lineId <= 0) { await get().fetchCart(); return false }
+      if (lineId <= 0) { await get().fetchCart(); return { ok: false } }
       const seq = ++seqCounter
       try {
         const res = await fetch(`/api/cart/lines/${lineId}`, {
@@ -177,12 +182,16 @@ export const useCartStore = create<CartState>((set, get) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ packaging_qty: packagingQty }),
         })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => null)
+          await get().fetchCart()
+          return { ok: false, message: data?.message }
+        }
         reconcile(await res.json(), seq)
-        return true
+        return { ok: true }
       } catch {
         await get().fetchCart()
-        return false
+        return { ok: false }
       }
     },
     removeLine: async (lineId) => {

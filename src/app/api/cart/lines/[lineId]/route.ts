@@ -62,8 +62,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
 
   try {
     const sessionId = await getOdooSession()
-    const { callKw } = await import('@/lib/odoo/client')
-    const { readCart } = await import('@/lib/odoo/odoo-helpers')
+    const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { readCart, getAvailableUnitsForOrdering } = await import('@/lib/odoo/odoo-helpers')
 
     const lineId = Number(params.lineId)
     if (!Number.isInteger(lineId) || lineId <= 0) {
@@ -72,10 +72,36 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     const resolved = await resolveCartForLine(sessionId, lineId, parsed.partner_id)
     if (!resolved) return NextResponse.json({ error: 'LINE_NOT_FOUND' }, { status: 404 })
 
+    // Quantity cap: sum the OTHER lines for this same template in the cart (stock is
+    // tracked per template, so a customer could otherwise bypass the cap by splitting
+    // across packagings), add this line's new requested total, compare to what's available.
+    const requestedUnits = packaging_qty * resolved.unitsPerPack
+    if (resolved.templateId) {
+      const [availableMap, siblingLines] = await Promise.all([
+        getAvailableUnitsForOrdering(sessionId, [resolved.templateId]),
+        searchRead(sessionId, 'sale.order.line',
+          [['order_id', '=', resolved.orderId], ['product_template_id', '=', resolved.templateId], ['id', '!=', resolved.lineId]],
+          ['product_uom_qty'],
+        ) as Promise<{ product_uom_qty: number }[]>,
+      ])
+      const available = availableMap.get(resolved.templateId) ?? null
+      const otherCommitted = siblingLines.reduce((s, l) => s + l.product_uom_qty, 0)
+      if (available !== null && otherCommitted + requestedUnits > available) {
+        const remainingUnits = Math.max(0, available - otherCommitted)
+        const availablePacks = Math.floor(remainingUnits / resolved.unitsPerPack)
+        return NextResponse.json({
+          error: 'INSUFFICIENT_STOCK',
+          message: availablePacks > 0 ? `Only ${availablePacks} available.` : 'No more available.',
+          available_units: remainingUnits,
+          available_packs: availablePacks,
+        }, { status: 409 })
+      }
+    }
+
     // No price_unit: Odoo recomputes it from the order's pricelist when product_uom_qty changes.
     const writeVals: Record<string, unknown> = {
       product_packaging_qty: packaging_qty,
-      product_uom_qty: packaging_qty * resolved.unitsPerPack,
+      product_uom_qty: requestedUnits,
     }
     await callKw(sessionId, 'sale.order.line', 'write',
       [[resolved.lineId], writeVals], {})
