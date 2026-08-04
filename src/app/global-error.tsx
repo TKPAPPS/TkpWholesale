@@ -1,9 +1,30 @@
 'use client'
+import { useEffect } from 'react'
 
 // Root error boundary: catches render errors that escape every nested boundary
 // (including the root layout). Must render its own <html>/<body>. Kept
 // dependency-free (no stores, no i18n) so it can never crash itself.
-export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  // This boundary firing means the error was otherwise invisible server-side (this app has
+  // no Sentry) — report it so it shows up in `vercel logs --level error`. Reads the `lang`
+  // cookie directly (no store) to keep this dependency-free; failure to report must never
+  // affect the fallback UI, hence the empty catch/then.
+  useEffect(() => {
+    try {
+      const lang = document.cookie.match(/(?:^|;\s*)lang=([^;]*)/)?.[1]
+      fetch('/api/client-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boundary: 'global-error', message: error?.message, digest: error?.digest,
+          stack: error?.stack, url: window.location.href, lang,
+        }),
+      }).catch(() => {})
+    } catch {
+      // never let telemetry itself break the fallback page
+    }
+  }, [error])
+
   return (
     <html lang="en">
       <body style={{ fontFamily: 'system-ui, sans-serif', background: '#fafaf9' }}>

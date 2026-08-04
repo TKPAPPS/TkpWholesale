@@ -305,7 +305,13 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - **/products layout order:** breadcrumb → toolbar (search/sort/in-stock) → Featured strip →
   grid. The toolbar must stay ABOVE Featured; repeat buyers land here to find a SKU.
 - **Error boundaries:** `src/app/global-error.tsx` (dependency-free, own html/body) +
-  `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted).
+  `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted). Both boundaries POST
+  the crash (`message`, `digest`, `stack`, `url`, `lang`) to `/api/client-error`, which
+  `console.error`s it so it shows up under `vercel logs --level error` — this app has no
+  Sentry (removed earlier), so a client-side render crash that reaches either boundary was
+  previously invisible server-side and left zero trace to investigate after the fact. The
+  endpoint is public/unauthenticated on purpose (`global-error.tsx` must stay dependency-free
+  and can fire pre-login), rate-limited 20/10min per IP via the existing `checkRateLimit`.
 
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
