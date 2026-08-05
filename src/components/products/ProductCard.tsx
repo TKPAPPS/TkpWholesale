@@ -47,6 +47,9 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
     addToCartAndSync(product, defaultPkg, qty).then((result) => {
       if (!result.ok) { showToast(result.message ?? 'Could not add to cart. Please try again.', 'error'); return }
       if (result.adjustedPacks !== undefined) {
+        // Sync the stepper to what was actually added — leaving the requested (rejected)
+        // number in the field made the clamp look like it hadn't happened.
+        setQty(result.adjustedPacks)
         showToast(t(lang, 'products.qtyAdjustedAdd').replace(/{n}/g, String(result.adjustedPacks)))
       } else {
         showToast(`${name} added to cart`)
