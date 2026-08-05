@@ -76,10 +76,12 @@ stale `total` mid-window is accepted; order-time enforcement was already fully l
 (`getAvailableUnitsForOrdering` at cart-add, `findUnorderableTemplateIdsLive` at checkout).
 
 **Instant cache flush after Odoo-side edits:** admin-panel changes bust tags immediately,
-but edits made directly in the Odoo backend (unpublish, archive, `sale_ok` off, stock
-corrections) have no hook — hit `GET|POST /api/revalidate-products` with
-`Authorization: Bearer $CRON_SECRET` to flush all product-availability tags now instead of
-waiting out the TTLs. Suitable as an Odoo automation/webhook target later.
+but edits made directly in the Odoo backend (unpublish, archive, `sale_ok` off) have no
+hook, so they wait out the TTL. Hit `GET|POST /api/revalidate-products` to flush all
+product-availability tags now. Auth: `Authorization: Bearer $CRON_SECRET` OR
+`?secret=$CRON_SECRET` (the query-param form exists because Odoo's webhook action cannot
+set custom headers). **Automating this from Odoo is written up and ON HOLD pending a
+possible domain change: see `docs/odoo-cache-invalidation-automation.md`.**
 
 **Stock visibility is resolved against a cached id set, never an inline `qty_available`
 filter.** `qty_available` is a non-stored computed field, so a `['qty_available','>',0]`
@@ -446,6 +448,12 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   an explicit localized alphabetical option (Odoo orders by the active language's name).
 
 ## Known issues / follow-ups
+- **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
+  Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
+  webhook URL hardcodes the portal domain. Nothing is broken meanwhile: stock changes
+  already reflect in ~1 min via the freshness overlay, admin-panel edits bust caches
+  immediately, and only direct Odoo-backend edits (unpublish/archive/`sale_ok`) wait out
+  the ~5 min TTL. Revisit once the final domain is live.
 - PDF download: `ir.attachment` + `render_qweb_pdf` fallback. Confirmed working end-to-end on production SaaS (order + invoice PDFs verified 2026-07-21).
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
