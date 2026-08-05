@@ -1,29 +1,15 @@
 'use client'
 import { useEffect } from 'react'
+import { reportClientError } from '@/lib/report-client-error'
 
 // Root error boundary: catches render errors that escape every nested boundary
 // (including the root layout). Must render its own <html>/<body>. Kept
-// dependency-free (no stores, no i18n) so it can never crash itself.
+// dependency-free (no stores, no i18n) so it can never crash itself — the report
+// helper is the one allowed import because it has zero imports of its own.
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  // This boundary firing means the error was otherwise invisible server-side (this app has
-  // no Sentry) — report it so it shows up in `vercel logs --level error`. Reads the `lang`
-  // cookie directly (no store) to keep this dependency-free; failure to report must never
-  // affect the fallback UI, hence the empty catch/then.
-  useEffect(() => {
-    try {
-      const lang = document.cookie.match(/(?:^|;\s*)lang=([^;]*)/)?.[1]
-      fetch('/api/client-error', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          boundary: 'global-error', message: error?.message, digest: error?.digest,
-          stack: error?.stack, url: window.location.href, lang,
-        }),
-      }).catch(() => {})
-    } catch {
-      // never let telemetry itself break the fallback page
-    }
-  }, [error])
+  // A crash reaching this boundary is otherwise invisible server-side (this app has no
+  // Sentry) — report it so it shows up in `vercel logs --level error`.
+  useEffect(() => { reportClientError('global-error', error) }, [error])
 
   return (
     <html lang="en">

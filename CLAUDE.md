@@ -305,13 +305,23 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
 - **/products layout order:** breadcrumb → toolbar (search/sort/in-stock) → Featured strip →
   grid. The toolbar must stay ABOVE Featured; repeat buyers land here to find a SKU.
 - **Error boundaries:** `src/app/global-error.tsx` (dependency-free, own html/body) +
-  `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted). Both boundaries POST
-  the crash (`message`, `digest`, `stack`, `url`, `lang`) to `/api/client-error`, which
-  `console.error`s it so it shows up under `vercel logs --level error` — this app has no
-  Sentry (removed earlier), so a client-side render crash that reaches either boundary was
-  previously invisible server-side and left zero trace to investigate after the fact. The
-  endpoint is public/unauthenticated on purpose (`global-error.tsx` must stay dependency-free
-  and can fire pre-login), rate-limited 20/10min per IP via the existing `checkRateLimit`.
+  `src/app/(customer)/error.tsx` (branded retry, keeps Navbar mounted). Both call
+  `reportClientError(boundary, error)` from `src/lib/report-client-error.ts` — a ZERO-import
+  module (so global-error's can-never-crash rule holds) that POSTs `{boundary, message,
+  digest, stack, url}` to `/api/client-error` with `keepalive: true` (survives the reflexive
+  reload on a crash page) and a `WeakSet` per-error dedupe (StrictMode double-invoke, effect
+  re-fires). Effect deps must be `[error]` ONLY — depending on `lang` re-posted duplicates
+  when the store hydrated post-mount. `lang` is not in the client payload at all: the route
+  reads the request's own `lang` cookie. The route `console.error`s a structured record so
+  crashes show under `vercel logs --level error` — this app has no Sentry, so boundary
+  crashes were previously invisible server-side. The endpoint is public/unauthenticated on
+  purpose (can fire pre-login), guarded by an IN-MEMORY per-instance 20/10min limiter that
+  fails CLOSED (deliberately NOT the Supabase `checkRateLimit`, whose fail-open policy is
+  right for login but wrong for a public log-write endpoint) plus a 32KB content-length cap.
+  KNOWN LIMITS (accepted follow-ups): only React render crashes reach boundaries — event
+  handler errors and unhandled promise rejections are still unreported (would need
+  window `error`/`unhandledrejection` listeners); and reports live only as long as Vercel
+  log retention — for longer-term forensics add a durable sink (Supabase table / log drain).
 
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.

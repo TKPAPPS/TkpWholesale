@@ -4,6 +4,7 @@ import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
 import { Button } from '@/components/ui/Button'
 import { AlertTriangle } from 'lucide-react'
+import { reportClientError } from '@/lib/report-client-error'
 
 // Route-level error boundary for all customer pages: an uncaught render error
 // shows a branded retry state instead of Next's unstyled crash page. The
@@ -11,18 +12,11 @@ import { AlertTriangle } from 'lucide-react'
 export default function CustomerError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const { lang } = useLangStore()
 
-  // This boundary firing means the error was otherwise invisible server-side (this app has
-  // no Sentry) — report it so it shows up in `vercel logs --level error`.
-  useEffect(() => {
-    fetch('/api/client-error', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        boundary: 'customer-error', message: error?.message, digest: error?.digest,
-        stack: error?.stack, url: window.location.href, lang,
-      }),
-    }).catch(() => {})
-  }, [error, lang])
+  // A crash reaching this boundary is otherwise invisible server-side (this app has no
+  // Sentry) — report it so it shows up in `vercel logs --level error`. Deps are [error]
+  // only: `lang` is UI text here, and depending on it re-fired a duplicate report when
+  // the store hydrated post-mount or the user toggled language on the crash page.
+  useEffect(() => { reportClientError('customer-error', error) }, [error])
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
