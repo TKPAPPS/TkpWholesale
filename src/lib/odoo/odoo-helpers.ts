@@ -1184,7 +1184,7 @@ const _fetchProductsCached = unstable_cache(
 // cached implementation fetches its own admin session so the rotating token stays out
 // of the cache key.
 export async function fetchOdooProducts(
-  _sessionId: string,
+  sessionId: string,
   domain: unknown[],
   opts: { limit?: number; offset?: number; order?: string } = {},
   pricelistId?: number | null,
@@ -1193,7 +1193,7 @@ export async function fetchOdooProducts(
   inStockOnly = false,
   fiscalPositionId?: number | null,
 ): Promise<{ products: Product[]; total: number }> {
-  return _fetchProductsCached(
+  const { products, total } = await _fetchProductsCached(
     JSON.stringify(domain),
     JSON.stringify(opts),
     pricelistId ?? 0,
@@ -1202,6 +1202,39 @@ export async function fetchOdooProducts(
     inStockOnly,
     fiscalPositionId ?? 0,
   )
+  if (products.length === 0) return { products, total }
+
+  // FRESHNESS OVERLAY. The cached page above froze each product's availability for up to
+  // 5 min, but the underlying sets refresh faster (in-stock ids every 60s). Re-resolve
+  // visibility against the CURRENT sets so a product that just sold out, was unpublished,
+  // or was admin-hidden stops showing within ~1 min instead of ~5-10. Every input here is
+  // itself cached, so this adds no Odoo round-trip when warm. Order-time enforcement is
+  // separate and fully live (cart-add + checkout), so this is about honest display only.
+  try {
+    const [inStockIds, settingsMap, hideOos, hiddenIds] = await Promise.all([
+      getInStockIds(),
+      fetchWebsitePublishedSettings(sessionId),
+      getHideOutOfStock(sessionId),
+      getHiddenProductIds(),
+    ])
+    const refreshed = products
+      // Unpublished or admin-hidden since the page was cached: never shown, no matter what.
+      .filter((p) => settingsMap.has(p.template_id) && !hiddenIds.has(p.template_id))
+      .map((p) => {
+        // Stock unknown (lookup failed) -> keep the cached flags rather than flapping.
+        if (inStockIds === null) return p
+        const in_stock = inStockIds.has(p.template_id)
+        const sellable = in_stock || (settingsMap.get(p.template_id) ?? false)
+        return in_stock === p.in_stock && sellable === p.sellable ? p : { ...p, in_stock, sellable }
+      })
+      // Under hide-out-of-stock, a product that went fully unorderable must disappear
+      // entirely (same rule as buildVisibilityDomain). A partially-short page and a
+      // slightly-stale total are fine; both self-correct when the page cache revalidates.
+      .filter((p) => !hideOos || p.sellable)
+    return { products: refreshed, total }
+  } catch {
+    return { products, total }
+  }
 }
 
 // ─── Category helpers ─────────────────────────────────────────────────────────

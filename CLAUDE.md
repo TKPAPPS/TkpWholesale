@@ -64,6 +64,23 @@ All three (`bustProductCache`, `bustWebsiteSettingsCache`, `bustHideOosCache`) c
 `revalidateTag` to clear the shared Next.js Data Cache. `bustProductCache()` clears
 the `odoo-products` tag.
 
+**Availability is freshness-overlaid on every cached product read.** `fetchOdooProducts`
+(the uncached wrapper around `_fetchProductsCached`) re-resolves each returned product
+against the CURRENT cached sets — in-stock ids (60s), published settings, hidden products —
+and drops products that were unpublished/hidden since the page was cached, drops
+now-unorderable products when hide-OOS is on, and corrects `in_stock`/`sellable` flags.
+So a product that just sold out disappears from every listing-family surface (grid, detail,
+featured, best-sellers, favorites, recently-ordered, quick-order) within ~1 min instead of
+the page cache's 5. Costs no extra Odoo call when the sets are warm. A short page / slightly
+stale `total` mid-window is accepted; order-time enforcement was already fully live
+(`getAvailableUnitsForOrdering` at cart-add, `findUnorderableTemplateIdsLive` at checkout).
+
+**Instant cache flush after Odoo-side edits:** admin-panel changes bust tags immediately,
+but edits made directly in the Odoo backend (unpublish, archive, `sale_ok` off, stock
+corrections) have no hook — hit `GET|POST /api/revalidate-products` with
+`Authorization: Bearer $CRON_SECRET` to flush all product-availability tags now instead of
+waiting out the TTLs. Suitable as an Odoo automation/webhook target later.
+
 **Stock visibility is resolved against a cached id set, never an inline `qty_available`
 filter.** `qty_available` is a non-stored computed field, so a `['qty_available','>',0]`
 term forces Odoo to compute live stock for the whole catalog (~600ms per cold request).
