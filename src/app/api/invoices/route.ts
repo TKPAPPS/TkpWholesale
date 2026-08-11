@@ -39,13 +39,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
     const { getSiteSettings } = await import('@/lib/odoo/odoo-helpers')
     const PER_PAGE = (await getSiteSettings()).invoicesPerPage
 
+    // company_id is explicit as well as globally scoped in callKw: this portal is one
+    // company, and the same customer also gets invoiced by sibling companies (Jcafe
+    // Sukhumvit, TKP Samui...). Without it customers saw those invoices here.
     const baseDomain: unknown[] = [
       ['move_type', '=', 'out_invoice'],
       ['commercial_partner_id', '=', parsed.commercial_partner_id],
+      ['company_id', '=', COMPANY_ID],
       ['state', '=', 'posted'],
     ]
     if (filter === 'unpaid') baseDomain.push(['payment_state', 'not in', ['paid', 'in_payment']])
@@ -60,6 +64,7 @@ export async function GET(req: NextRequest) {
     const outstandingDomain: unknown[] = [
       ['move_type', '=', 'out_invoice'],
       ['commercial_partner_id', '=', parsed.commercial_partner_id],
+      ['company_id', '=', COMPANY_ID],
       ['state', '=', 'posted'],
     ]
 

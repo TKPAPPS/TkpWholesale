@@ -1,4 +1,4 @@
-import { callKw, searchRead } from './client'
+import { callKw, searchRead, COMPANY_ID } from './client'
 import { getOdooSession } from './admin-session'
 import { langContext } from './session'
 import type { Product, PackagingOption, Cart, CartLine } from '@/types'
@@ -431,7 +431,7 @@ const _fetchSellableLocationId = unstable_cache(
     // Fallback: resolve by the configured warehouse code if the website has none.
     if (!warehouseId) {
       const byCode = await callKw(sessionId, 'stock.warehouse', 'search_read',
-        [[['code', '=', SELLABLE_WAREHOUSE_CODE]]], { fields: ['id'], limit: 1 },
+        [[['code', '=', SELLABLE_WAREHOUSE_CODE], ['company_id', '=', COMPANY_ID]]], { fields: ['id'], limit: 1 },
       ) as { id: number }[]
       warehouseId = byCode[0]?.id ?? null
     }
@@ -920,7 +920,7 @@ const _fetchBestSellerIds = unstable_cache(
   async (): Promise<number[]> => {
     const sessionId = await getOdooSession()
     const groups = await callKw(sessionId, 'sale.order.line', 'read_group',
-      [[['order_id.state', 'in', ['sale', 'done']], ['product_id', '!=', false]]],
+      [[['order_id.state', 'in', ['sale', 'done']], ['product_id', '!=', false], ['company_id', '=', COMPANY_ID]]],
       { fields: ['product_id'], groupby: ['product_id'] },
     ) as { product_id: [number, string]; product_id_count: number }[]
     if (groups.length === 0) return []
@@ -1449,6 +1449,8 @@ export async function getOrCreateCart(
   const createVals: Record<string, unknown> = {
     partner_id: partnerId,
     website_id: WEBSITE_ID,
+    // Explicit, not left to the API user's default company.
+    company_id: COMPANY_ID,
   }
 
   const orderId = await callKw(sessionId, 'sale.order', 'create', [createVals], {}) as number
@@ -1556,14 +1558,18 @@ export async function assertOrderOwnership(
   commercialPartnerId: number,
 ): Promise<OdooOrder> {
   const [orders, owned] = await Promise.all([
-    callKw(sessionId, 'sale.order', 'read', [[orderId]], {
-      fields: ['id', 'partner_id', 'state', 'name',
+    // search_read, NOT read: under the global company scope Odoo raises AccessError on a
+    // sibling company's order, which would surface as a 503 instead of ORDER_NOT_FOUND.
+    searchRead(sessionId, 'sale.order', [['id', '=', orderId], ['company_id', '=', COMPANY_ID]],
+      ['id', 'partner_id', 'state', 'name',
         'partner_shipping_id', 'note', 'client_order_ref', 'commitment_date',
         'amount_untaxed', 'amount_tax', 'amount_total',
         'currency_id', 'date_order', 'order_line'],
-    }) as unknown as Promise<OdooOrder[]>,
+    ) as unknown as Promise<OdooOrder[]>,
+    // company_id here is load-bearing: this single search_count is THE ownership primitive
+    // for both the order detail page and the order PDF download, so scoping it closes both.
     callKw(sessionId, 'sale.order', 'search_count',
-      [[['id', '=', orderId], ['partner_id', 'child_of', commercialPartnerId]]], {},
+      [[['id', '=', orderId], ['partner_id', 'child_of', commercialPartnerId], ['company_id', '=', COMPANY_ID]]], {},
     ) as Promise<number>,
   ])
 

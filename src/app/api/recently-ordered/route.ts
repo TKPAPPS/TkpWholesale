@@ -18,13 +18,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { searchRead } = await import('@/lib/odoo/client')
+    const { searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
     const { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } = await import('@/lib/odoo/odoo-helpers')
 
     // Find recently ordered product template IDs from confirmed orders. Scan more lines so we
     // can surface a fuller reorder history (the customer may reorder many of the same items).
     const lines = await searchRead(sessionId, 'sale.order.line',
       [['order_id.partner_id', 'child_of', parsed.commercial_partner_id],
+       ['company_id', '=', COMPANY_ID],
        ['order_id.state', 'in', ['sale', 'done']]],
       ['product_template_id'],
       { limit: 200, order: 'id desc' },

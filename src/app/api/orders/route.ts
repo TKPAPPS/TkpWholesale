@@ -29,11 +29,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const sessionId = await getOdooSession()
-    const { searchRead } = await import('@/lib/odoo/client')
+    const { searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
 
     const domain: unknown[] = [
       // child_of finds the partner + all child contacts in the company hierarchy
       ['partner_id', 'child_of', parsed.commercial_partner_id],
+      // ...but only this company's orders: the same customer also buys from sibling
+      // companies, and those orders are not this portal's business.
+      ['company_id', '=', COMPANY_ID],
       ['state', 'in', ['sale', 'done']],
     ]
     if (search) domain.push(['name', 'ilike', search])

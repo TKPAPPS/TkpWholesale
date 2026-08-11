@@ -447,6 +447,43 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   which is language-independent, so switching EN/HE doesn't reshuffle the grid. `sort=name` is
   an explicit localized alphabetical option (Odoo orders by the active language's name).
 
+## Company scoping (multi-company safety)
+
+**This portal serves exactly ONE company: `company_id` 1, The Kosher Place (Thailand) Co. Ltd**
+(the company of website 3). The Odoo database contains ~20 sibling companies (Jcafe Sukhumvit,
+TKP Samui, Chabad entities, Phuket...) that SHARE partners and products. Any query that does not
+scope by company silently spans all of them. This caused a real leak: customers saw sibling
+companies' invoices on the portal (measured before the fix: 1,174 foreign invoices across 13 of
+29 customers; one test account had 8 of its 9 invoices from Jcafe/Samui).
+
+Two layers, deliberately belt-and-braces:
+
+1. **Global.** `callKw` in `src/lib/odoo/client.ts` merges `allowed_company_ids: [COMPANY_ID]`
+   into the context of EVERY Odoo call, so Odoo's own multi-company record rules exclude sibling
+   records everywhere at once. This is also the ONLY thing that fixes company-dependent PROPERTY
+   fields (`res.partner.property_product_pricelist`, `property_account_position_id`), which
+   resolve against `env.company` and cannot be constrained by a domain. The merge puts the key
+   first so per-call context (`lang`, `location`) is preserved.
+2. **Explicit `['company_id','=',COMPANY_ID]` domain terms** on every company-dependent
+   transactional query: invoice list/detail/PDF gates, order list, `assertOrderOwnership` (which
+   gates BOTH order detail and order PDF), best-sellers ranking, recently-ordered, admin dashboard
+   counters, the cron idempotency probe, and the `stock.warehouse` code fallback. Both
+   `sale.order` creates (cart + scheduled-orders cron) set `company_id` explicitly rather than
+   inheriting the API user's default company.
+
+`COMPANY_ID` comes from `ODOO_COMPANY_ID` (default 1). **Do NOT add `company_id` domain terms to
+SHARED models** — `product.template`, `product.product`, `product.packaging`, `product.category`,
+`product.public.category`, `product.pricelist(.item)`, `res.partner`, `ir.config_parameter`.
+Their `company_id` is usually `false`; filtering on it returns nothing and would empty the
+catalog. The global context handles them correctly (false-company records stay visible).
+
+Verified on production before shipping: pricelists and fiscal positions unchanged for all 29
+customers (pricing and VAT untouched); portal `res.users` all still visible (login unaffected);
+the admin API user has company 1 in `company_ids` (no AccessError). Known accepted consequence:
+7 products owned by sibling companies (3 Phuket, 4 Jcafe desserts, SKUs RCP-0428..0431,
+DRY-1952/1953, JDC-1533) leave the catalog. To restore any of them, set their company to
+The Kosher Place Thailand or blank in Odoo.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the

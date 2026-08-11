@@ -32,19 +32,24 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
     const { getCompanyDetails, getWebsiteCompanyId } = await import('@/lib/odoo/odoo-helpers')
 
     // Fetch invoice + verify ownership via commercial_partner_id. The extra fields here
     // (partner_id, company_id, origin/refs, payment term, amount_paid) are all plain columns
     // on account.move, so they cost nothing beyond the read we already do.
-    const moves = await callKw(sessionId, 'account.move', 'read', [[id]], {
-      fields: ['id', 'name', 'invoice_date', 'invoice_date_due', 'amount_total',
+    // search_read, NOT read: under the global company scope Odoo raises AccessError when
+    // reading another company's record, which would surface as a 503 "could not reach Odoo"
+    // for a stale link. search_read is filtered by the same record rules but returns [],
+    // so an out-of-scope invoice yields a clean 404.
+    const moves = await searchRead(sessionId, 'account.move',
+      [['id', '=', id], ['company_id', '=', COMPANY_ID]],
+      ['id', 'name', 'invoice_date', 'invoice_date_due', 'amount_total',
         'amount_residual', 'amount_untaxed', 'amount_tax', 'payment_state',
         'currency_id', 'commercial_partner_id', 'state', 'move_type', 'narration',
         'partner_id', 'company_id', 'invoice_origin', 'ref', 'payment_reference',
         'invoice_payment_term_id'],
-    }) as {
+    ) as unknown as {
       id: number; name: string; invoice_date: string; invoice_date_due: string | false;
       amount_total: number; amount_residual: number; amount_untaxed: number; amount_tax: number;
       payment_state: string; currency_id: [number, string]; state: string; move_type: string;
@@ -59,9 +64,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 
-    // Ownership check
+    // Ownership check + company scope. The company check matters independently: the same
+    // customer is invoiced by sibling companies too, and without it they could open (and
+    // via the PDF route, download) another company's invoice by id.
     const ownerId = move.commercial_partner_id ? move.commercial_partner_id[0] : null
-    if (ownerId !== parsed.commercial_partner_id) {
+    const moveCompanyId = move.company_id ? move.company_id[0] : null
+    if (ownerId !== parsed.commercial_partner_id || moveCompanyId !== COMPANY_ID) {
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 

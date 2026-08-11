@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { callKw } from '@/lib/odoo/client'
+import { callKw, COMPANY_ID } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
 
@@ -15,11 +15,11 @@ export async function GET(req: NextRequest) {
 
     const [ordersToday, openCarts] = await Promise.all([
       callKw(sessionId, 'sale.order', 'search_count',
-        [[['date_order', '>=', `${today} 00:00:00`], ['state', 'in', ['sale', 'done']]]],
+        [[['date_order', '>=', `${today} 00:00:00`], ['state', 'in', ['sale', 'done']], ['company_id', '=', COMPANY_ID]]],
         {},
       ) as Promise<number>,
       callKw(sessionId, 'sale.order', 'search_count',
-        [[['state', '=', 'draft']]],
+        [[['state', '=', 'draft'], ['company_id', '=', COMPANY_ID]]],
         {},
       ) as Promise<number>,
     ])

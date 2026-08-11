@@ -1,6 +1,13 @@
 const ODOO_URL = (process.env.ODOO_URL ?? '').replace(/\/$/, '')
 const ODOO_DB = process.env.ODOO_DB!
 
+// The ONE company this portal serves: The Kosher Place (Thailand) Co. Ltd, which is the
+// company of website 3. The Odoo database holds ~20 sibling companies (Jcafe Sukhumvit,
+// TKP Samui, Chabad entities...) that share partners and products, so without an explicit
+// scope every query silently spans all of them — that is how customers ended up seeing
+// other companies' invoices. See COMPANY SCOPING in CLAUDE.md.
+export const COMPANY_ID = Number(process.env.ODOO_COMPANY_ID ?? 1)
+
 // Every Odoo call gets a hard timeout. Without it a hung/blackholed connection
 // stalls the request for the full platform function timeout, and — because the
 // admin auth promise is shared (admin-session.ts _inflight) — one stuck auth can
@@ -150,11 +157,21 @@ export async function callKw(
   args: unknown[],
   kwargs: Record<string, unknown> = {},
 ): Promise<unknown> {
+  // GLOBAL COMPANY SCOPE. Every call runs with allowed_company_ids = [COMPANY_ID], so Odoo's
+  // own multi-company record rules exclude sibling companies' records everywhere at once.
+  // This is the only mechanism that also fixes company-dependent PROPERTY fields
+  // (res.partner.property_product_pricelist / property_account_position_id), which resolve
+  // against env.company and cannot be constrained by a domain. Records with company_id = false
+  // (products, packagings, categories, most partners) stay visible, so the catalog is intact.
+  // Merged first so a caller's own context keys (lang, location, ...) are preserved.
+  const context = { allowed_company_ids: [COMPANY_ID], ...((kwargs.context as Record<string, unknown>) ?? {}) }
+  const scopedKwargs = { ...kwargs, context }
+
   const adminMatch = sessionId.match(/^(\d+):(.+)$/)
   if (adminMatch) {
-    return callKwExternal(Number(adminMatch[1]), adminMatch[2], model, method, args, kwargs)
+    return callKwExternal(Number(adminMatch[1]), adminMatch[2], model, method, args, scopedKwargs)
   }
-  return odooRpc('/web/dataset/call_kw', { model, method, args, kwargs }, sessionId)
+  return odooRpc('/web/dataset/call_kw', { model, method, args, kwargs: scopedKwargs }, sessionId)
 }
 
 // search_read shorthand

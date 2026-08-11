@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE' }, { status: 503 })
   }
 
-  const { callKw, searchRead } = await import('@/lib/odoo/client')
+  const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
   const { fetchDeliveryAddresses } = await import('@/lib/odoo/odoo-helpers')
 
   for (const s of due) {
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
       // the row, the order already exists under this deterministic ref — don't
       // place it again, just advance.
       const existing = await callKw(sessionId, 'sale.order', 'search_count',
-        [[['client_order_ref', 'like', idKey]]], {}) as number
+        [[['client_order_ref', 'like', idKey], ['company_id', '=', COMPANY_ID]]], {}) as number
       if (existing > 0) {
         await advanceSchedule(supabase, s, runDate)
         summary.skipped++
@@ -99,6 +99,9 @@ export async function GET(req: NextRequest) {
       const clientRef = s.po_ref ? `${idKey} (${s.po_ref})` : idKey
       const orderId = await callKw(sessionId, 'sale.order', 'create', [{
         partner_id: s.partner_id,
+        // Explicit: this create has no website_id either (deliberate, so findCart won't
+        // adopt it as a cart), so nothing else would tie it to the right company.
+        company_id: COMPANY_ID,
         partner_shipping_id: shippingId,
         client_order_ref: clientRef,
         origin: `Portal scheduled order ${s.id.slice(0, 8)}`,

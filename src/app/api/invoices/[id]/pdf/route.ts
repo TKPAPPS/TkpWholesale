@@ -23,19 +23,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessionId = await getOdooSession()
-    const { callKw, searchRead } = await import('@/lib/odoo/client')
+    const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
 
-    // Verify ownership
-    const moves = await callKw(sessionId, 'account.move', 'read', [[id]], {
-      fields: ['id', 'commercial_partner_id', 'state', 'move_type'],
-    }) as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string }[]
+    // Verify ownership AND company. Without the company check this endpoint would serve the
+    // rendered PDF of a sibling company's invoice (on their letterhead) to any customer who
+    // is also billed by that company — a worse exposure than the list, since it is the
+    // document itself. Both PDF strategies below key off this already-approved id.
+    // search_read, NOT read: reading a sibling company's move raises AccessError under the
+    // global company scope, which would become a misleading 503. This yields [] -> clean 404.
+    const moves = await searchRead(sessionId, 'account.move',
+      [['id', '=', id], ['company_id', '=', COMPANY_ID]],
+      ['id', 'commercial_partner_id', 'state', 'move_type', 'company_id'],
+    ) as unknown as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string; company_id: [number, string] | false }[]
 
     const move = moves[0]
     if (!move || move.move_type !== 'out_invoice' || move.state !== 'posted') {
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
     const ownerId = move.commercial_partner_id ? move.commercial_partner_id[0] : null
-    if (ownerId !== parsed.commercial_partner_id) {
+    const moveCompanyId = move.company_id ? move.company_id[0] : null
+    if (ownerId !== parsed.commercial_partner_id || moveCompanyId !== COMPANY_ID) {
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 
