@@ -141,8 +141,12 @@ function buildPlPriceMap(
 const _fetchPartnerPricelistId = unstable_cache(
   async (partnerId: number): Promise<number | null> => {
     const sessionId = await getOdooSession()
+    // Own-identity read: NOT company-scoped. 336 of 583 active users have a partner owned
+    // by a sibling company, and a scoped read() raises AccessError -> 503 on every priced
+    // page. The API user's default company is company 1, so this company-dependent property
+    // still resolves against company 1.
     const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]],
-      { fields: ['property_product_pricelist'] },
+      { fields: ['property_product_pricelist'] }, { scopeToCompany: false },
     ) as { property_product_pricelist: [number, string] | false }[]
     const pl = rows[0]?.property_product_pricelist
     return pl ? pl[0] : null
@@ -165,8 +169,10 @@ export async function getPartnerPricelistId(partnerId: number): Promise<number |
 const _fetchPartnerFiscalPositionId = unstable_cache(
   async (partnerId: number): Promise<number | null> => {
     const sessionId = await getOdooSession()
+    // Own-identity read: NOT company-scoped (see the pricelist helper above). A scoped read
+    // would 503 for sibling-owned partners, and the no-VAT positions live here.
     const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]],
-      { fields: ['property_account_position_id'] },
+      { fields: ['property_account_position_id'] }, { scopeToCompany: false },
     ) as { property_account_position_id: [number, string] | false }[]
     const fp = rows[0]?.property_account_position_id
     return Array.isArray(fp) ? fp[0] : null
@@ -796,8 +802,9 @@ const _fetchCustomerHiddenIds = unstable_cache(
     const sessionId = await getOdooSession()
     const ids = Array.from(new Set([partnerId, commercialPartnerId].filter(Boolean)))
     if (ids.length === 0) return { categoryIds: [], productIds: [] }
+    // Own-identity read: NOT company-scoped (see the pricelist helper above).
     const rows = await callKw(sessionId, 'res.partner', 'read', [ids],
-      { fields: ['hidden_category_ids', 'hidden_product_ids'] },
+      { fields: ['hidden_category_ids', 'hidden_product_ids'] }, { scopeToCompany: false },
     ) as { hidden_category_ids: number[]; hidden_product_ids: number[] }[]
     const categoryIds = Array.from(new Set(rows.flatMap(r => r.hidden_category_ids || [])))
     const productIds = Array.from(new Set(rows.flatMap(r => r.hidden_product_ids || [])))
@@ -1590,6 +1597,9 @@ export async function fetchDeliveryAddresses(sessionId: string, commercialPartne
       ['active', '=', true],
     ],
     ['id', 'name', 'street', 'street2', 'city', 'zip', 'country_id'],
+    // Own addresses: NOT company-scoped. search_read SILENTLY FILTERS out-of-scope rows, so
+    // a sibling-owned delivery address would just vanish from the picker with no error.
+    { scopeToCompany: false },
   ) as unknown as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false }[]
 
   return addresses.map(a => ({

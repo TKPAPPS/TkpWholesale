@@ -99,9 +99,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const variantIds = Array.from(new Set(lines.map((l) => (l.product_id ? l.product_id[0] : 0)).filter(Boolean)))
     const [billToRows, company, variants] = await Promise.all([
       billToId
+        // The invoice is already hard-scoped to company 1 above; the CUSTOMER it bills can
+        // still be a sibling-owned partner, so this identity read must not be scoped or the
+        // whole invoice page 503s.
         ? callKw(sessionId, 'res.partner', 'read', [[billToId]], {
             fields: ['id', 'name', 'street', 'street2', 'city', 'zip', 'state_id', 'country_id', 'vat'],
-          }) as Promise<{
+          }, { scopeToCompany: false }) as Promise<{
             id: number; name: string; street: string | false; street2: string | false
             city: string | false; zip: string | false; state_id: [number, string] | false
             country_id: [number, string] | false; vat: string | false

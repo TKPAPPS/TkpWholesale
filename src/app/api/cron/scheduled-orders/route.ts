@@ -194,9 +194,11 @@ async function advanceSchedule(
 async function partnerEmail(
   sessionId: string,
   partnerId: number,
-  callKw: (s: string, m: string, meth: string, a: unknown[], k?: Record<string, unknown>) => Promise<unknown>,
+  callKw: (s: string, m: string, meth: string, a: unknown[], k?: Record<string, unknown>, o?: { scopeToCompany?: boolean }) => Promise<unknown>,
 ): Promise<string | null> {
-  const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]], { fields: ['email'] }) as { email: string | false }[]
+  // Own-identity read: NOT company-scoped, since this partner may be sibling-owned and a
+  // scoped read() would raise AccessError and kill the whole scheduled-order run.
+  const rows = await callKw(sessionId, 'res.partner', 'read', [[partnerId]], { fields: ['email'] }, { scopeToCompany: false }) as { email: string | false }[]
   const email = rows[0]?.email
   return email && typeof email === 'string' ? email : null
 }

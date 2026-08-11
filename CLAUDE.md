@@ -469,6 +469,15 @@ clears the `BottomNav` it used to cover.
   an explicit localized alphabetical option (Odoo orders by the active language's name).
 
 ## Company scoping (multi-company safety)
+> **Reads of a customer's OWN res.partner row must pass `{ scopeToCompany: false }`.**
+> 336 of 583 active users have a partner record OWNED by a sibling company. Under the
+> company scope, `read()` on such a record raises AccessError (a 503 on pricing, VAT, the
+> address picker and the invoice bill-to block) and `search_read()` silently returns nothing
+> (a delivery address that just vanishes from the picker). Dropping the scope is safe there:
+> the record is the caller's own, and the API user's default company IS company 1, so
+> company-dependent properties still resolve against company 1. Never use the opt-out for
+> business documents (sale.order, account.move, stock) - that is the leak this all closed.
+
 > **NEVER apply `allowed_company_ids` to a CUSTOMER web session.** Odoo raises
 > `AccessError("Access to unauthorized or invalid company")` whenever the context names a
 > company the acting user does not belong to, and **503 of 555 active portal users sit on

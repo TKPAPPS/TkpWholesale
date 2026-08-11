@@ -87,7 +87,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (shippingId) {
       const addrs = await callKw(sessionId, 'res.partner', 'read', [[shippingId]], {
         fields: ['id', 'name', 'street', 'street2', 'city', 'zip', 'country_id'],
-      }) as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false }[]
+      }, { scopeToCompany: false }) as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false }[]
       const a = addrs[0]
       if (a) {
         shippingAddress = {

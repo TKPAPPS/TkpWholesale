@@ -161,14 +161,29 @@ export async function adminAuthenticate(login: string, apikey: string): Promise<
 // sessionId can be:
 //   - a real Odoo web session ID (hex string) - used for customer session calls
 //   - "uid:apikey" format - used for admin API key calls (routes to /jsonrpc automatically)
+//
+// `opts.scopeToCompany: false` opts a call OUT of the global company scope. Use it ONLY for
+// reads of a customer's own IDENTITY record (res.partner: pricelist, fiscal position, hidden
+// products, addresses). Those partners are frequently owned by a sibling company (336 of 583
+// active users), and Odoo raises AccessError on `read()` of a record outside the scope, which
+// surfaces as a 503 on pricing, VAT, the address picker and the invoice bill-to block.
+// Dropping the scope is safe there for two reasons: the record IS the caller's own, and the
+// API user's default company is company 1, so company-dependent properties still resolve
+// against company 1 (verified in production). NEVER use it for business documents
+// (sale.order, account.move, stock) - that is exactly the cross-company leak we closed.
 export async function callKw(
   sessionId: string,
   model: string,
   method: string,
   args: unknown[],
   kwargs: Record<string, unknown> = {},
+  opts: { scopeToCompany?: boolean } = {},
 ): Promise<unknown> {
   const adminMatch = sessionId.match(/^(\d+):(.+)$/)
+
+  if (adminMatch && opts.scopeToCompany === false) {
+    return callKwExternal(Number(adminMatch[1]), adminMatch[2], model, method, args, kwargs)
+  }
 
   if (adminMatch) {
     // GLOBAL COMPANY SCOPE, admin path only. Every customer-visible query in the app (catalog,
@@ -198,7 +213,7 @@ export async function searchRead(
   model: string,
   domain: unknown[],
   fields: string[],
-  opts: { limit?: number; offset?: number; order?: string; context?: Record<string, unknown> } = {},
+  opts: { limit?: number; offset?: number; order?: string; context?: Record<string, unknown>; scopeToCompany?: boolean } = {},
 ): Promise<Record<string, unknown>[]> {
   return callKw(sessionId, model, 'search_read', [domain], {
     fields,
@@ -206,7 +221,7 @@ export async function searchRead(
     offset: opts.offset ?? 0,
     order: opts.order ?? '',
     context: opts.context ?? {},
-  }) as Promise<Record<string, unknown>[]>
+  }, { scopeToCompany: opts.scopeToCompany }) as Promise<Record<string, unknown>[]>
 }
 
 // Verify the user is an active Odoo user (portal or internal)
