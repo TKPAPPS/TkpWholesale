@@ -70,8 +70,9 @@ export default function DashboardPage() {
       {/* Welcome header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
+          {/* Greeting only. The pricelist NAME is deliberately not shown to customers;
+              pricing still follows their pricelist via pricelist_id. */}
           <h1 className="text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{user?.pricelist_name && <span className="text-amber-600 font-medium">{user.pricelist_name}</span>}</p>
         </div>
         <div className="flex gap-3">
           <Link href="/products">

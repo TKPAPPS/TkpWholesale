@@ -272,10 +272,9 @@ export function Navbar() {
               {user && (
                 <div className="hidden md:flex items-center gap-2 ms-2 ps-3 border-s border-gray-100">
                   <div className="flex flex-col items-end leading-none">
+                    {/* Customer name only. The pricelist NAME is deliberately not shown to
+                        customers; pricing still follows their pricelist via pricelist_id. */}
                     <span className="text-xs font-medium text-gray-700 max-w-[120px] truncate">{user.name}</span>
-                    {user.pricelist_name && (
-                      <span className="text-[10px] text-gold mt-0.5 truncate max-w-[120px]">{user.pricelist_name}</span>
-                    )}
                   </div>
                   <button
                     onClick={handleLogout}
