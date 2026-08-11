@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { QuantitySelector } from '@/components/products/QuantitySelector'
 import { FavoriteButton } from '@/components/products/FavoriteButton'
 import { useCartStore } from '@/store/cartStore'
+import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { useToastStore } from '@/store/toastStore'
 import { Package, ChevronLeft, ShoppingCart } from 'lucide-react'
 import Image from 'next/image'
@@ -28,6 +29,7 @@ export default function ProductDetailPage() {
   const [favorited, setFavorited] = useState(false)
   const addToCartAndSync = useCartStore((s) => s.addToCartAndSync)
   const showToast = useToastStore((s) => s.show)
+  const lowStockThreshold = useSiteSettingsStore((s) => s.settings.lowStockThreshold)
   const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function ProductDetailPage() {
     addToCartAndSync(product, selectedPkg, qty).then((result) => {
       if (!result.ok) { showToast(result.message ?? 'Could not add to cart. Please try again.', 'error'); return }
       if (result.adjustedPacks !== undefined) {
-        // Sync the stepper to what was actually added — leaving the requested (rejected)
+        // Sync the stepper to what was actually added - leaving the requested (rejected)
         // number in the field made the clamp look like it hadn't happened.
         setQty(result.adjustedPacks)
         showToast(t(lang, 'products.qtyAdjustedAdd').replace(/{n}/g, String(result.adjustedPacks)))
@@ -68,7 +70,7 @@ export default function ProductDetailPage() {
     })
   }
 
-  // Defense-in-depth UX cap — the server always re-validates on add. undefined = unlimited.
+  // Defense-in-depth UX cap - the server always re-validates on add. undefined = unlimited.
   // Recomputed per selected packaging, since switching packaging changes the units-per-pack
   // and therefore how many packs fit within the available stock.
   const maxPacks = product && selectedPkg ? computeMaxPacks(product.in_stock, product.qty_available, selectedPkg.qty) : undefined
@@ -88,7 +90,7 @@ export default function ProductDetailPage() {
   return (
     <div>
       <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline mb-6">
-        <ChevronLeft className="h-4 w-4" /> {t(lang, 'common.back')}
+        <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'common.back')}
       </button>
 
       <div className="grid md:grid-cols-2 gap-8">
@@ -170,7 +172,10 @@ export default function ProductDetailPage() {
           {product.sellable && soldOut && (
             <p className="text-sm text-amber-600 font-medium">{t(lang, 'products.insufficientStock')}</p>
           )}
-          {product.sellable && !soldOut && maxPacks !== undefined && (
+          {/* Same low-stock gate as the product card. Without it this fired on every product
+              with a finite quantity, so a well-stocked item announced "Only 3000 available" -
+              a scarcity warning where there is no scarcity. */}
+          {product.sellable && !soldOut && maxPacks !== undefined && product.qty_available < lowStockThreshold && (
             <p className="text-sm text-amber-600">{t(lang, 'products.maxAvailable').replace('{n}', String(maxPacks))}</p>
           )}
         </div>

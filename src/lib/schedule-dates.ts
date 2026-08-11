@@ -1,6 +1,6 @@
 // Bangkok-safe date helpers. The business runs in Asia/Bangkok (UTC+7, no DST),
 // so "today", delivery-date bounds, and recurrence math must all be computed in
-// that zone — never via new Date().toISOString() (UTC) or new Date('YYYY-MM-DD')
+// that zone - never via new Date().toISOString() (UTC) or new Date('YYYY-MM-DD')
 // (parsed as browser-local). All functions operate on 'YYYY-MM-DD' strings and
 // are pure, so they behave identically on the server and in the browser.
 
@@ -41,7 +41,7 @@ export interface RecurrenceSpec {
   frequency: 'daily' | 'weekly'
   interval_weeks: number // weekly only; 1 = every week, N = every N weeks
   excluded_weekdays: number[] // daily only; 0..6
-  anchor_date: string // 'YYYY-MM-DD' — the checkout date the schedule was created on
+  anchor_date: string // 'YYYY-MM-DD' - the checkout date the schedule was created on
   end_date?: string | null // inclusive; null/undefined = no end
 }
 
@@ -52,7 +52,7 @@ export function nextRunDate(spec: RecurrenceSpec, after: string): string | null 
 
   if (spec.frequency === 'daily') {
     const excluded = new Set(spec.excluded_weekdays)
-    if (excluded.size >= 7) return null // all days excluded — no valid run
+    if (excluded.size >= 7) return null // all days excluded - no valid run
     d = addDays(after, 1)
     let guard = 0
     while (excluded.has(weekdayOf(d))) {
@@ -68,7 +68,7 @@ export function nextRunDate(spec: RecurrenceSpec, after: string): string | null 
     let guard = 0
     while (!isAfter(d, after)) {
       d = addDays(d, step)
-      if (++guard > 520) return null // ~10 years of weekly steps — safety cap
+      if (++guard > 520) return null // ~10 years of weekly steps - safety cap
     }
   }
 

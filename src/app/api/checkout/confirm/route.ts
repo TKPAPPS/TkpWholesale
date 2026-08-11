@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Optional requested delivery date YYYY-MM-DD (maps to sale.order.commitment_date). Must be
-  // a valid date and not in the past — compared against the Bangkok calendar day, and stored
+  // a valid date and not in the past - compared against the Bangkok calendar day, and stored
   // at 09:00 Bangkok (= 02:00 UTC) so staff see the intended morning slot.
   let commitmentDate: string | null = null
   if (delivery_date !== undefined && delivery_date !== null && delivery_date !== '') {
@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
 
     // Live stock re-check at the moment of ordering (catches a stock drop within the
     // review cache window). Out-of-stock lines are SEPARATED from the order, and lines
-    // ordering more than what's currently available are CLAMPED down to it — neither ever
+    // ordering more than what's currently available are CLAMPED down to it - neither ever
     // reaches Odoo as written. Without an explicit acknowledgement we return the offending
     // template ids so the checkout page can show the split and ask the buyer to confirm;
     // with remove_unavailable we unlink/clamp here and place the order with the rest.
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
     await callKw(sessionId, 'sale.order', 'write', [[cartId], writeVals], {})
 
     // Confirm the order. A UserError here (credit limit, missing field, etc.) is a
-    // business rejection, not an infra failure — surface it as 422 with the Odoo
+    // business rejection, not an infra failure - surface it as 422 with the Odoo
     // message rather than a generic 503, and do NOT drop the admin token cache.
     try {
       await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
     }
 
     // The order is now confirmed in Odoo. If the read-back fails transiently, the
-    // order still exists — return a success shape (using the pre-confirm read)
+    // order still exists - return a success shape (using the pre-confirm read)
     // rather than a 503, so the client never re-submits and duplicates the order.
     try {
       const confirmed = await callKw(sessionId, 'sale.order', 'read', [[cartId]], {

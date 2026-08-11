@@ -114,7 +114,7 @@ export default function InvoicesPage() {
           <button
             key={key}
             onClick={() => applyFilter(key)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${filter === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${filter === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             {t(lang, label)}
           </button>
@@ -126,7 +126,7 @@ export default function InvoicesPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
+          <div className="hidden sm:block bg-white rounded-xl border border-gray-100 overflow-x-auto mb-4">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -150,14 +150,14 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(inv.invoice_date, lang)}</td>
                     <td className="px-4 py-3 text-gray-500">
-                      {inv.invoice_date_due ? formatDate(inv.invoice_date_due, lang) : '—'}
+                      {inv.invoice_date_due ? formatDate(inv.invoice_date_due, lang) : '-'}
                     </td>
                     <td className="px-4 py-3 text-end font-medium text-gray-900">
                       {formatCurrency(inv.amount_total, inv.currency)}
                     </td>
                     <td className="px-4 py-3 text-end">
                       <span className={inv.amount_residual > 0 ? 'font-semibold text-amber-700' : 'text-gray-400'}>
-                        {inv.amount_residual > 0 ? formatCurrency(inv.amount_residual, inv.currency) : '—'}
+                        {inv.amount_residual > 0 ? formatCurrency(inv.amount_residual, inv.currency) : '-'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center text-gray-500">{inv.line_count}</td>
@@ -197,7 +197,7 @@ export default function InvoicesPage() {
                   </div>
                   <PaymentBadge state={inv.payment_state} label={inv.state_label} lang={lang} />
                 </div>
-                <div className="flex items-center justify-between text-sm mt-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm mt-3">
                   <div>
                     <p className="text-xs text-gray-400">{t(lang, 'cart.total')}</p>
                     <p className="font-semibold text-gray-900">{formatCurrency(inv.amount_total, inv.currency)}</p>
@@ -215,10 +215,10 @@ export default function InvoicesPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-4">
+                <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
                   <Link
                     href={`/invoices/${inv.id}`}
-                    className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium"
+                    className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-800 font-medium px-3 py-2 -ms-3 min-h-[44px] rounded-lg"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     {t(lang, 'invoices.view')}
@@ -226,7 +226,7 @@ export default function InvoicesPage() {
                   <button
                     onClick={() => downloadPdf(inv)}
                     disabled={downloading === inv.id}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50 px-3 py-2 min-h-[44px] rounded-lg"
                   >
                     <Download className="h-3.5 w-3.5" />
                     {downloading === inv.id ? '…' : t(lang, 'invoices.downloadPdf')}

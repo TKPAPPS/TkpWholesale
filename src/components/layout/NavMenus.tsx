@@ -27,7 +27,7 @@ const triggerCls = (active: boolean) => cn(
 const itemCls = 'block px-3 py-2 text-sm rounded-lg text-gray-600 hover:bg-brand-50 hover:text-brand-700 transition-colors'
 const panelCls = 'absolute start-0 top-full mt-1 bg-white rounded-2xl border border-gray-100 shadow-xl z-50 p-2'
 
-// Desktop "Orders" dropdown — groups Orders, Reorder, Invoices to keep the bar lean.
+// Desktop "Orders" dropdown - groups Orders, Reorder, Invoices to keep the bar lean.
 export function NavOrders() {
   const { lang } = useLangStore()
   const pathname = usePathname()

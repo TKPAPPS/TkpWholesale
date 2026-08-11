@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, stockLocationContext, getPartnerFiscalPositionId, getFiscalTaxMap, getWebsiteCompanyId, computeDisplayUnitPrice } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
-    // is restricted to published + in-stock + not-admin-hidden products — same rules
+    // is restricted to published + in-stock + not-admin-hidden products - same rules
     // as the listing. Stock is resolved against the cached in-stock id set, not a
     // slow `qty_available` SQL term. locCtx scopes the per-hit qty_available read below
     // to the sellable location (R4/Stock), same as the listing.
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
-    // extra list — Odoo rejects the nested form with "Invalid field ...|".
+    // extra list - Odoo rejects the nested form with "Invalid field ...|".
     // Per-customer hidden products/categories exclude their matches from search too.
     const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
     const skuDomain = ['default_code', 'ilike', q]
@@ -74,10 +74,10 @@ export async function GET(req: NextRequest) {
 
     if (allIds.length === 0) return NextResponse.json({ results: [], query: q, total: 0 })
 
-    // Cap to 20 IDs — the overlay shows 6; fetching 100 templates for 6 results wastes bandwidth
+    // Cap to 20 IDs - the overlay shows 6; fetching 100 templates for 6 results wastes bandwidth
     const topIds = allIds.slice(0, 20)
 
-    // Round 2: template details (EN + HE) in parallel — skips pricelist, categories,
+    // Round 2: template details (EN + HE) in parallel - skips pricelist, categories,
     // hide-OOS, and the full tax pipeline. Price shown is list_price × packaging qty
     // (a preview, not pricelist-adjusted).
     const [enTemplates, heTemplates] = await Promise.all([
@@ -103,7 +103,7 @@ export async function GET(req: NextRequest) {
 
     // Taxes for the matched templates → fiscal-position-aware unit price (same helper as the
     // grid), so a NO-VAT customer sees the ex-VAT price here too. Still list_price-based (not
-    // pricelist-adjusted) — a preview.
+    // pricelist-adjusted) - a preview.
     const allTaxIds = Array.from(new Set(enTemplates.flatMap(t => t.taxes_id)))
     const taxRows = allTaxIds.length > 0
       ? await callKw(sessionId, 'account.tax', 'read', [allTaxIds],
@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
         name: t.name,
         name_he: heMap.get(t.id) ?? t.name,
         sku: t.default_code || '',
-        // 512 to match the listing grid — search results render in the same
+        // 512 to match the listing grid - search results render in the same
         // ProductCard cards, so 128 looked noticeably blurry beside listing.
         image_url: `/api/images/product/${t.id}/512`,
         currency: 'THB',

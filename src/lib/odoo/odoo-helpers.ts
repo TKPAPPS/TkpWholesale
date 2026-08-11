@@ -8,7 +8,7 @@ import { DEFAULT_SITE_SETTINGS, sanitizeSiteSettings, type SiteSettings } from '
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 // The storefront sells from ONE warehouse's stock location (Rama 4 / "R4/Stock" for The
 // Kosher Place Thailand). Odoo's global qty_available nets stock across all companies +
-// internal locations, which is wrong for us — every qty_available read is scoped to this
+// internal locations, which is wrong for us - every qty_available read is scoped to this
 // location subtree via an Odoo `location` context (see stockLocationContext). The warehouse
 // is read from the website record (website.warehouse_id); this code is only a FALLBACK used
 // if the website has no warehouse configured.
@@ -292,7 +292,7 @@ const PRODUCT_FIELDS = [
   'type', 'product_variant_ids', 'packaging_ids',
 ]
 
-// Fetch hide-OOS setting via Next.js data cache — shared across all Vercel instances.
+// Fetch hide-OOS setting via Next.js data cache - shared across all Vercel instances.
 // unstable_cache persists results in Vercel's infrastructure, surviving cold starts.
 const _fetchHideOos = unstable_cache(
   async (): Promise<boolean> => {
@@ -324,7 +324,7 @@ export async function getHideOutOfStock(_sessionId: string): Promise<boolean> {
 // search route so both apply identical visibility:
 //   hideOos on  → (allows OOS) OR (in stock), limited to stockable/consumable types
 //   hideOos off → all published products
-// `extra` is ANDed on (implicit AND across top-level terms) — e.g. a name/sku
+// `extra` is ANDed on (implicit AND across top-level terms) - e.g. a name/sku
 // match for search, or the new-arrivals id filter for the listing.
 export function buildVisibilityDomain(
   settingsMap: Map<number, boolean>,   // templateId -> allow_out_of_stock_order
@@ -342,7 +342,7 @@ export function buildVisibilityDomain(
   if (hideOos) {
     // Resolve stock in JS against the cached in-stock set instead of via a
     // `qty_available > 0` SQL term (which forces Odoo to compute live stock for the
-    // whole catalog, ~600ms). The result is a single `id in [...]` list — ~60ms.
+    // whole catalog, ~600ms). The result is a single `id in [...]` list - ~60ms.
     // Show a product if it allows OOS ordering, or it's in stock. If the in-stock set
     // is unavailable (null), don't filter on stock so a transient failure shows the
     // catalog rather than emptying it. Admin-hidden products are never shown.
@@ -372,7 +372,7 @@ export function buildVisibilityDomain(
   ]
 }
 
-// Fetch published product settings via Next.js data cache — shared across all Vercel instances.
+// Fetch published product settings via Next.js data cache - shared across all Vercel instances.
 // Returns serializable [templateId, allowOos][] tuples (Maps aren't JSON-serializable).
 // Costs ~1s to fetch thousands of rows from Odoo; cached so cold starts don't pay this cost.
 const _fetchWebsiteSettings = unstable_cache(
@@ -399,7 +399,7 @@ export function bustWebsiteSettingsCache() {
 
 export function bustCategoriesCache() {
   // Nav tree, the hidden-category set, and the product listing (which now excludes
-  // products in hidden categories) all depend on this — bust all three so an admin
+  // products in hidden categories) all depend on this - bust all three so an admin
   // category toggle reaches both the nav and the storefront immediately.
   revalidateTag('odoo-categories')
   revalidateTag('odoo-hidden-categories')
@@ -407,7 +407,7 @@ export function bustCategoriesCache() {
 }
 
 // Fetch the set of template IDs published on our website, plus their per-website OOS flag.
-// This is the source of truth — product.template.website_published is global, not per-website.
+// This is the source of truth - product.template.website_published is global, not per-website.
 export async function fetchWebsitePublishedSettings(_sessionId: string): Promise<Map<number, boolean>> {
   const raw = await _fetchWebsiteSettings(WEBSITE_ID)
   return new Map<number, boolean>(raw)
@@ -541,7 +541,7 @@ const _fetchInStockIds = unstable_cache(
     // Odoo 18: physical products are all type `consu`; only `is_storable` ones track
     // inventory. Non-storable consumables always report qty_available = 0 but are
     // perpetually orderable, so they count as "in stock". A storable product is in stock
-    // only when qty_available > 0. (`type in [consu, storable]` was a pre-18 relic —
+    // only when qty_available > 0. (`type in [consu, storable]` was a pre-18 relic -
     // `storable` is no longer a valid type value here.)
     const locCtx = await stockLocationContext()
     return await callKw(sessionId, 'product.template', 'search',
@@ -556,7 +556,7 @@ const _fetchInStockIds = unstable_cache(
 export function bustInStockCache() { revalidateTag('odoo-instock-ids') }
 
 // Returns the set of in-stock template ids, or null if the lookup failed. Callers
-// treat null as "stock unknown — do not hide on stock" so a transient failure shows
+// treat null as "stock unknown - do not hide on stock" so a transient failure shows
 // products rather than emptying the catalog.
 export async function getInStockIds(): Promise<Set<number> | null> {
   try {
@@ -608,10 +608,10 @@ export async function findUnorderableTemplateIdsLive(
 
 // For each given template id, the R4-scoped available UNITS a customer may order, or `null`
 // if unlimited: allow_out_of_stock_order is set (the merchant has explicitly opted this
-// product out of any stock limit — order any quantity, regardless of real stock level), OR
-// the product is a non-storable/untracked consumable (existing Odoo-18 rule — always
+// product out of any stock limit - order any quantity, regardless of real stock level), OR
+// the product is a non-storable/untracked consumable (existing Odoo-18 rule - always
 // orderable, qty_available is meaningless there). Batched into one Odoo round-trip regardless
-// of how many ids are passed — used for the single-product cart add/update check and the
+// of how many ids are passed - used for the single-product cart add/update check and the
 // multi-line checkout re-check alike. Fails open (unlimited) on a lookup error, consistent
 // with findUnorderableTemplateIdsLive, so a transient Odoo blip never blocks every add-to-cart.
 export async function getAvailableUnitsForOrdering(
@@ -631,7 +631,7 @@ export async function getAvailableUnitsForOrdering(
     ])
     const byId = new Map(rows.map(r => [r.id, r]))
     for (const tid of ids) {
-      if (settingsMap.get(tid)) { out.set(tid, null); continue } // allow_out_of_stock_order — unlimited
+      if (settingsMap.get(tid)) { out.set(tid, null); continue } // allow_out_of_stock_order - unlimited
       const r = byId.get(tid)
       if (!r || r.is_storable === false) { out.set(tid, null); continue } // untracked -> unlimited
       out.set(tid, Math.max(0, Math.floor(r.qty_available)))
@@ -968,7 +968,7 @@ export async function setProductPublished(templateId: number, published: boolean
   bustWebsiteSettingsCache()
 }
 
-// Product list results cached via the Next.js Data Cache (unstable_cache) — shared across
+// Product list results cached via the Next.js Data Cache (unstable_cache) - shared across
 // ALL Vercel instances and surviving cold starts, unlike the previous per-instance Map.
 // The Odoo admin session is fetched inside (not passed in) so the rotating session token
 // never becomes part of the cache key. Keyed by domain + pagination + pricelist + lang +
@@ -986,7 +986,7 @@ const _fetchProductsCached = unstable_cache(
     const domain: unknown[] = JSON.parse(domainJson)
     const opts: { limit?: number; offset?: number; order?: string } = JSON.parse(optsJson)
     const sessionId = await getOdooSession()
-    // Customer's fiscal-position tax mapping (empty when none) — applied to each product's
+    // Customer's fiscal-position tax mapping (empty when none) - applied to each product's
     // displayed price so e.g. NO-VAT customers see the ex-VAT price the cart will charge.
     // websiteCompanyId filters out the same product's other-company VAT taxes.
     const [fiscalMap, websiteCompanyId] = await Promise.all([
@@ -995,7 +995,7 @@ const _fetchProductsCached = unstable_cache(
     ])
 
     // Round 1: fetch website settings, hide-OOS toggle, the in-stock id set, and the
-    // hidden id set in parallel — avoids a sequential preflight, and all four are
+    // hidden id set in parallel - avoids a sequential preflight, and all four are
     // cached so cold requests rarely pay the full cost.
     const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
@@ -1007,7 +1007,7 @@ const _fetchProductsCached = unstable_cache(
     if (websiteSettingsMap.size === 0) return { products: [], total: 0 }
 
     // New arrivals = products whose own template was created within the window.
-    // (Previously keyed off product.website.settings.create_date — the publish date —
+    // (Previously keyed off product.website.settings.create_date - the publish date -
     // which silently empties after an Odoo DB import/migration bulk-stamps those
     // records with the import timestamp. The template create_date is the stable signal.)
     let effectiveDomain: unknown[] = domain
@@ -1022,7 +1022,7 @@ const _fetchProductsCached = unstable_cache(
       effectiveDomain = [...stockTerm, ...domain]
     }
 
-    // Visibility rules (published + stock + admin hide) — shared with the search route.
+    // Visibility rules (published + stock + admin hide) - shared with the search route.
     const baseDomain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, effectiveDomain, hiddenCategoryIds)
 
     // The product listing renders one language at a time and refetches on language
@@ -1227,9 +1227,9 @@ const _fetchProductsCached = unstable_cache(
 )
 
 // Public entry point. `lang` selects which language(s) to read from Odoo:
-//   'en' / 'he' — read only that language (the product listing refetches on switch);
-//   'both'      — read EN as canonical plus HE (default, for callers that need both).
-// `sessionId` is accepted for backward compatibility but is no longer used here — the
+//   'en' / 'he' - read only that language (the product listing refetches on switch);
+//   'both'      - read EN as canonical plus HE (default, for callers that need both).
+// `sessionId` is accepted for backward compatibility but is no longer used here - the
 // cached implementation fetches its own admin session so the rotating token stays out
 // of the cache key.
 export async function fetchOdooProducts(
@@ -1346,7 +1346,7 @@ async function readCartLines(sessionId: string, orderId: number): Promise<CartLi
   ]) as unknown as (OdooCartLine & { display_type: string | false; product_id: [number, string] | false; product_template_id: [number, string] | false })[]
 
   // Drop section/note lines (display_type set, no product) that staff may add to
-  // the draft quotation in the Odoo backoffice — they are not cart items.
+  // the draft quotation in the Odoo backoffice - they are not cart items.
   const lines = rawLines.filter(l => !l.display_type && Array.isArray(l.product_id) && Array.isArray(l.product_template_id)) as unknown as OdooCartLine[]
 
   // Read the real Hebrew name and SKU per variant so server reconciliation matches
@@ -1443,7 +1443,7 @@ export async function getOrCreateCart(
   const existing = await findCart(sessionId, partnerId)
   if (existing) return existing
 
-  // Do NOT set pricelist_id — Odoo derives it from the partner's current
+  // Do NOT set pricelist_id - Odoo derives it from the partner's current
   // property_product_pricelist on create. This keeps the cart on the customer's live
   // pricelist (no stale cookie, no re-login) and lets Odoo compute line price_unit natively.
   const createVals: Record<string, unknown> = {
@@ -1456,7 +1456,7 @@ export async function getOrCreateCart(
   const orderId = await callKw(sessionId, 'sale.order', 'create', [createVals], {}) as number
 
   // Race guard: the optimistic UI fires adds without awaiting, so two concurrent
-  // first-adds can each pass the findCart(null) check and each create a cart —
+  // first-adds can each pass the findCart(null) check and each create a cart -
   // then findCart (id desc) would only ever return the newer one, stranding the
   // other's line. Converge everyone on the OLDEST draft portal cart: if an earlier
   // one exists, adopt it and unlink the one we just created (still empty here,
@@ -1488,7 +1488,7 @@ export async function getOrCreateCart(
 
 // Snapshot an order's product lines for a scheduled order: variant id, quantities,
 // packaging, plus EN/HE names + SKU (so the management UI can render without an
-// Odoo round-trip). Prices are intentionally NOT captured — the executor lets Odoo
+// Odoo round-trip). Prices are intentionally NOT captured - the executor lets Odoo
 // compute the live pricelist price at placement.
 export async function readOrderItemsForSchedule(sessionId: string, orderId: number): Promise<import('@/lib/scheduled-orders').ScheduledOrderItem[]> {
   const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
@@ -1548,7 +1548,7 @@ export function emptyCart(): Cart {
 }
 
 // Validate that an order belongs to this partner (security check).
-// NOTE: sale.order has NO `commercial_partner_id` field on this Odoo — reading it throws and
+// NOTE: sale.order has NO `commercial_partner_id` field on this Odoo - reading it throws and
 // made every order-detail view return ORDER_NOT_FOUND. Ownership is verified the same way the
 // orders list does it: a `partner_id child_of <commercialPartnerId>` domain search, which
 // matches the commercial partner and every child contact in its hierarchy.

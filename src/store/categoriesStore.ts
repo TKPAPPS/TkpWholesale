@@ -9,7 +9,7 @@ interface CategoriesState {
 }
 
 // Global category tree, fetched once and shared across the navbar dropdown, the
-// product sidebar, and the mobile drawer — so categories are reachable from any page,
+// product sidebar, and the mobile drawer - so categories are reachable from any page,
 // not just /products.
 export const useCategoriesStore = create<CategoriesState>((set, get) => ({
   categories: [],

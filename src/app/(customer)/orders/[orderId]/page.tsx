@@ -74,7 +74,7 @@ export default function OrderDetailPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline mb-6">
-        <ChevronLeft className="h-4 w-4" /> {t(lang, 'orders.title')}
+        <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'orders.title')}
       </button>
 
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">

@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   if (!scheduleConfigured()) {
-    // No backend configured — behave like an empty list rather than erroring.
+    // No backend configured - behave like an empty list rather than erroring.
     return NextResponse.json({ schedules: [] })
   }
 

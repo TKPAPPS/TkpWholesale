@@ -61,7 +61,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const skuMap: Record<number, string> = {}
     variants.forEach((v) => { skuMap[v.id] = v.default_code || '' })
 
-    // Product names in BOTH languages — the admin session context is English, so
+    // Product names in BOTH languages - the admin session context is English, so
     // reading only product_template_id[1] gave Hebrew customers English names.
     // Read the template names under en_US + he_IL contexts (same pattern as
     // readOrderItemsForSchedule) and map per language.

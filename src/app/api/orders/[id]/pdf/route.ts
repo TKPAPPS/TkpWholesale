@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { callKw, searchRead } = await import('@/lib/odoo/client')
     const { assertOrderOwnership } = await import('@/lib/odoo/odoo-helpers')
 
-    // Verify ownership (sale.order has no commercial_partner_id field — assertOrderOwnership
+    // Verify ownership (sale.order has no commercial_partner_id field - assertOrderOwnership
     // validates via a partner_id child_of hierarchy search).
     let order: Awaited<ReturnType<typeof assertOrderOwnership>>
     try {

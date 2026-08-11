@@ -25,7 +25,7 @@ function buildTree(cats: AdminCategory[]): CategoryNode[] {
     if (node.parent_id && map.has(node.parent_id)) {
       map.get(node.parent_id)!.children.push(node)
     } else {
-      // parent_id is set but the parent isn't in the wholesale category set — it belongs
+      // parent_id is set but the parent isn't in the wholesale category set - it belongs
       // to another website (e.g. a J Cafe / Jdeli restaurant menu). The customer nav only
       // walks down from real top-level categories, so this one never renders there even
       // though it isn't explicitly hidden. Flag it so the admin display tells the truth.

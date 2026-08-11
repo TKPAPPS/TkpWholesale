@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       'amount_total', 'amount_residual', 'payment_state', 'currency_id',
       'invoice_line_ids']
 
-    // outstandingDomain intentionally omits the filter param — outstanding balance
+    // outstandingDomain intentionally omits the filter param - outstanding balance
     // is always across all posted invoices regardless of the current page filter.
     const outstandingDomain: unknown[] = [
       ['move_type', '=', 'out_invoice'],
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
         amount_total: number; amount_residual: number; payment_state: string;
         currency_id: [number, string]; invoice_line_ids: number[]
       }[]>,
-      // read_group returns one aggregated row — avoids fetching up to 500 records just for a SUM
+      // read_group returns one aggregated row - avoids fetching up to 500 records just for a SUM
       callKw(sessionId, 'account.move', 'read_group',
         [outstandingDomain, ['amount_residual:sum'], []],
         { lazy: false },

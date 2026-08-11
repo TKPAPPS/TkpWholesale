@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
     const custHidden = await getCustomerHiddenDomain(parsed.partner_id, parsed.commercial_partner_id)
 
     // Run all independent operations in parallel, including published-status check.
-    // We deliberately do NOT compute price_unit here — the cart carries the partner's current
+    // We deliberately do NOT compute price_unit here - the cart carries the partner's current
     // pricelist (Odoo sets it from the partner on create), so Odoo computes the exact line
     // price natively. That keeps card/cart/review/Odoo prices identical.
     const [pkgInfo, cartId, publishedMap, allowedCount, availableMap] = await Promise.all([
       validatePackaging(sessionId, product_id, packaging_id ?? 0),
       getOrCreateCart(sessionId, parsed.partner_id),
       fetchWebsitePublishedSettings(sessionId),
-      // Must be for sale (sale_ok) and not hidden for this customer — blocks a not-for-sale
+      // Must be for sale (sale_ok) and not hidden for this customer - blocks a not-for-sale
       // or hidden product from being added via reorder / quick-order.
       callKw(sessionId, 'product.template', 'search_count',
         [[['id', '=', product_id], ['sale_ok', '=', true], ...custHidden]], {},
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_PACKAGING', message: 'Packaging not valid for this product.' }, { status: 400 })
     }
 
-    // Fetch every line for this TEMPLATE in the cart (not just the matching packaging) —
+    // Fetch every line for this TEMPLATE in the cart (not just the matching packaging) -
     // stock is tracked per template, so a customer could otherwise bypass the cap by
     // splitting an order across "Unit" and "Case of 12" lines for the same product.
     const templateLines = await searchRead(
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     ) as { id: number; product_packaging_id: [number, string] | false; product_packaging_qty: number; product_uom_qty: number }[]
 
     // Quantity cap: qty_available is null when unlimited (allow_out_of_stock_order, or a
-    // non-storable/untracked consumable — see getAvailableUnitsForOrdering). Otherwise CLAMP
+    // non-storable/untracked consumable - see getAvailableUnitsForOrdering). Otherwise CLAMP
     // the add down to a whole number of packs that fits within what's available (accounting
     // for units already committed to this template elsewhere in the cart); only reject
     // outright if literally nothing more can be added.
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     // Check for existing line with the SAME product AND the same packaging.
     // When packaging_id is falsy (the "Unit" fallback, id 0), match only lines
-    // that also have NO packaging — otherwise a unit add merges into a real
+    // that also have NO packaging - otherwise a unit add merges into a real
     // "Case of 12" line and corrupts its quantities.
     const existingLine = templateLines.find(l =>
       packaging_id ? (l.product_packaging_id && l.product_packaging_id[0] === packaging_id) : !l.product_packaging_id,
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
     // Return the updated cart so the client reconciles in one round-trip
     // (no separate GET /api/cart needed). adjusted_packs is present only when the
-    // requested quantity was clamped down — the client surfaces it as an informative toast.
+    // requested quantity was clamped down - the client surfaces it as an informative toast.
     const cart = await readCart(sessionId, cartId)
     return NextResponse.json({ ...cart, adjusted_packs: adjustedPacks })
   } catch (err) {

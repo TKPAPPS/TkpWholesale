@@ -204,7 +204,7 @@ export default function QuickOrderPage() {
                       <Image src={p.image_url} alt="" fill className="object-contain" sizes="40px"
                         onError={() => setImgErrors(prev => new Set(Array.from(prev).concat(p.template_id)))} />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">—</div>
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">-</div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -295,7 +295,7 @@ export default function QuickOrderPage() {
                     className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
                   >
                     {row.product.packaging_options.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price_per_pack_incl_tax, row.product.currency)}</option>
+                      <option key={p.id} value={p.id}>{p.name} - {formatCurrency(p.price_per_pack_incl_tax, row.product.currency)}</option>
                     ))}
                   </select>
 

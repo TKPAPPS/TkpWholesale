@@ -4,13 +4,17 @@ const ODOO_DB = process.env.ODOO_DB!
 // The ONE company this portal serves: The Kosher Place (Thailand) Co. Ltd, which is the
 // company of website 3. The Odoo database holds ~20 sibling companies (Jcafe Sukhumvit,
 // TKP Samui, Chabad entities...) that share partners and products, so without an explicit
-// scope every query silently spans all of them — that is how customers ended up seeing
+// scope every query silently spans all of them - that is how customers ended up seeing
 // other companies' invoices. See COMPANY SCOPING in CLAUDE.md.
-export const COMPANY_ID = Number(process.env.ODOO_COMPANY_ID ?? 1)
+// Parsed defensively: `??` alone would let an EMPTY env var through as Number('') = 0, and a
+// company id of 0 makes Odoo raise AccessError on env.company for every single call, i.e. the
+// entire portal 503s. Anything not a positive integer falls back to 1.
+const _rawCompanyId = Number(process.env.ODOO_COMPANY_ID)
+export const COMPANY_ID = Number.isInteger(_rawCompanyId) && _rawCompanyId > 0 ? _rawCompanyId : 1
 
 // Every Odoo call gets a hard timeout. Without it a hung/blackholed connection
-// stalls the request for the full platform function timeout, and — because the
-// admin auth promise is shared (admin-session.ts _inflight) — one stuck auth can
+// stalls the request for the full platform function timeout, and - because the
+// admin auth promise is shared (admin-session.ts _inflight) - one stuck auth can
 // stall every concurrent request on the instance until that limit.
 const ODOO_TIMEOUT_MS = 15_000
 
@@ -36,7 +40,7 @@ async function odooFetch(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-// Low-level JSON-RPC call — pass the Odoo session_id cookie
+// Low-level JSON-RPC call - pass the Odoo session_id cookie
 export async function odooRpc(
   endpoint: string,
   params: Record<string, unknown>,
@@ -62,7 +66,7 @@ export async function odooRpc(
   return json.result
 }
 
-// Authenticate a portal user — returns { uid, session_id }
+// Authenticate a portal user - returns { uid, session_id }
 export async function odooAuthenticate(login: string, password: string): Promise<{ uid: number; session_id: string; partner_id: number; lang: string }> {
   const res = await odooFetch(`${ODOO_URL}/web/session/authenticate`, {
     method: 'POST',
@@ -148,8 +152,8 @@ export async function adminAuthenticate(login: string, apikey: string): Promise<
 
 // Shorthand: call_kw helper.
 // sessionId can be:
-//   - a real Odoo web session ID (hex string) — used for customer session calls
-//   - "uid:apikey" format — used for admin API key calls (routes to /jsonrpc automatically)
+//   - a real Odoo web session ID (hex string) - used for customer session calls
+//   - "uid:apikey" format - used for admin API key calls (routes to /jsonrpc automatically)
 export async function callKw(
   sessionId: string,
   model: string,
@@ -204,6 +208,6 @@ export async function destroySession(sessionId: string): Promise<void> {
   try {
     await odooRpc('/web/session/destroy', {}, sessionId)
   } catch {
-    // ignore — session may already be expired
+    // ignore - session may already be expired
   }
 }

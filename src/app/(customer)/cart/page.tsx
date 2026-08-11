@@ -15,14 +15,17 @@ import { ShoppingCart, Trash2 } from 'lucide-react'
 
 export default function CartPage() {
   const { lang } = useLangStore()
-  // Use the store's own sequenced fetchCart (not a separate local fetch) — a parallel,
+  // Use the store's own sequenced fetchCart (not a separate local fetch) - a parallel,
   // unsequenced fetch here could win a race against a just-completed edit's response
   // (e.g. a server-clamped quantity) and silently overwrite it with a stale snapshot.
   const { cart, isLoading, odooUnavailable, setCart, fetchCart } = useCartStore()
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
-  useEffect(() => { fetchCart() }, [])
+  // showLoading only here, on the page's own initial load. Background resyncs (after an
+  // edit, or from the layout) must not flip the global spinner, or every quantity change
+  // would blank the whole page and remount each row.
+  useEffect(() => { fetchCart({ showLoading: true }) }, [])
 
   const clearCart = async () => {
     setClearing(true)
@@ -58,7 +61,7 @@ export default function CartPage() {
         onCancel={() => setConfirmClear(false)}
       />
 
-      {odooUnavailable && <OdooUnavailable message={t(lang, 'cart.odooUnavailable')} onRetry={fetchCart} />}
+      {odooUnavailable && <OdooUnavailable message={t(lang, 'cart.odooUnavailable')} onRetry={() => fetchCart({ showLoading: true })} />}
 
       {!odooUnavailable && (!cart || cart.lines.length === 0) && (
         <EmptyState

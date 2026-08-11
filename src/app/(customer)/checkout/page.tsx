@@ -69,7 +69,7 @@ export default function CheckoutPage() {
     setOdooError(false)
     try {
       const res = await fetch('/api/checkout/review')
-      // Session expired mid-checkout — send the user to login rather than crashing
+      // Session expired mid-checkout - send the user to login rather than crashing
       // on review.lines.map (the error body has no lines).
       if (res.status === 401) {
         router.push(`/login?redirect=${encodeURIComponent('/checkout')}`)
@@ -182,7 +182,7 @@ export default function CheckoutPage() {
             ))}
           </div>
 
-          {/* Out-of-stock items — separated, will NOT be ordered */}
+          {/* Out-of-stock items - separated, will NOT be ordered */}
           {hasOos && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
               <h2 className="text-sm font-semibold text-amber-800 mb-1 flex items-center gap-1.5">

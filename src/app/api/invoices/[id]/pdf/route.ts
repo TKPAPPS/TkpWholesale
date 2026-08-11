@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     // Verify ownership AND company. Without the company check this endpoint would serve the
     // rendered PDF of a sibling company's invoice (on their letterhead) to any customer who
-    // is also billed by that company — a worse exposure than the list, since it is the
+    // is also billed by that company - a worse exposure than the list, since it is the
     // document itself. Both PDF strategies below key off this already-approved id.
     // search_read, NOT read: reading a sibling company's move raises AccessError under the
     // global company scope, which would become a misleading 503. This yields [] -> clean 404.

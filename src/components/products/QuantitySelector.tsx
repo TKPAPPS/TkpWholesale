@@ -20,7 +20,10 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
         disabled={value <= min}
         className={cn(
           'flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
-          sm ? 'h-7 w-7' : 'h-9 w-9',
+          // shrink-0 is load-bearing: these sit in a flex row inside a ~117px product card,
+          // and without it they were squeezed to ~17px wide tap targets on a 360px phone.
+          'shrink-0',
+          sm ? 'h-8 w-8' : 'h-9 w-9',
         )}
       >
         <Minus className={sm ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
@@ -34,21 +37,24 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
           // Free typing, no upper-bound clamp: earlier this rejected (then clamped) any
           // keystroke that pushed the value past `max`, which fought the user mid-type no
           // matter how it was handled (silently ignored, or snapping back to the cap after
-          // every extra digit) — it read as a broken input either way. `max` still guides the
+          // every extra digit) - it read as a broken input either way. `max` still guides the
           // +/- buttons below; the real enforcement is server-side on Add (with a toast if the
           // requested quantity has to be reduced), which is where it belongs.
           const v = parseInt(e.target.value)
           if (isNaN(v) || v < min) return
           onChange(v)
         }}
-        className={cn('text-center text-sm font-medium border-0 focus:outline-none bg-transparent', sm ? 'w-6' : 'w-12')}
+        className={cn('text-center text-sm font-medium border-0 focus:outline-none bg-transparent', sm ? 'w-full min-w-0 flex-1' : 'w-12')}
       />
       <button
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
         className={cn(
           'flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors',
-          sm ? 'h-7 w-7' : 'h-9 w-9',
+          // shrink-0 is load-bearing: these sit in a flex row inside a ~117px product card,
+          // and without it they were squeezed to ~17px wide tap targets on a 360px phone.
+          'shrink-0',
+          sm ? 'h-8 w-8' : 'h-9 w-9',
         )}
       >
         <Plus className={sm ? 'h-3 w-3' : 'h-3.5 w-3.5'} />

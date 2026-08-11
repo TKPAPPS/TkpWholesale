@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
-// Public storefront rules (page sizes, thresholds, etc.). Non-sensitive UI config —
+// Public storefront rules (page sizes, thresholds, etc.). Non-sensitive UI config -
 // returned without auth so the customer app can hydrate without an auth race. Falls
 // back to defaults whenever Odoo is unavailable or in mock mode.
 export async function GET() {

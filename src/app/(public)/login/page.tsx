@@ -52,7 +52,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-white flex">
-      {/* Left panel — decorative wine + gold */}
+      {/* Left panel - decorative wine + gold */}
       <div className="relative hidden lg:flex flex-col justify-between w-[46%] p-12 overflow-hidden bg-[linear-gradient(155deg,#541029_0%,#6B1535_48%,#3d0c1d_100%)]">
         {/* Soft gold glow + subtle texture */}
         <div className="pointer-events-none absolute -top-24 -end-24 h-96 w-96 rounded-full bg-gold/20 blur-3xl" />
@@ -80,7 +80,7 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Right panel — form */}
+      {/* Right panel - form */}
       <div className="flex flex-col items-center justify-center flex-1 px-6 py-12 bg-[#fdfbfa]">
         <div className="w-full max-w-sm space-y-8">
 

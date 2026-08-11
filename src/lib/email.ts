@@ -1,4 +1,4 @@
-// Best-effort transactional email via Resend. Never throws — email is a
+// Best-effort transactional email via Resend. Never throws - email is a
 // notification, not part of the order transaction, so a delivery failure must not
 // fail the caller. Returns true on a 2xx from Resend, false otherwise.
 
@@ -8,7 +8,7 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
   // Email is optional. When Resend is not configured this is an expected, quiet
-  // no-op (portal-side notifications are off) — not a warning worth logging on
+  // no-op (portal-side notifications are off) - not a warning worth logging on
   // every scheduled order.
   if (!apiKey || !from) return false
   if (!opts.to) return false

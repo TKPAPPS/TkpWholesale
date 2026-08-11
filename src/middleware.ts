@@ -21,7 +21,7 @@ export function middleware(req: NextRequest) {
   // mock-mode guard above.
   if (pathname.startsWith('/api')) return NextResponse.next()
 
-  // Admin area — requires the admin_session cookie (except the admin login page).
+  // Admin area - requires the admin_session cookie (except the admin login page).
   // Full token validation happens in each admin API route; middleware only checks
   // cookie presence so the redirect is instant (no network call needed).
   if (pathname.startsWith('/admin')) {
@@ -31,10 +31,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Public pages — always allowed.
+  // Public pages - always allowed.
   if (PUBLIC_PATHS.has(pathname)) return NextResponse.next()
 
-  // Everything else is a customer page — require a session cookie, otherwise send
+  // Everything else is a customer page - require a session cookie, otherwise send
   // to login with a redirect back. (Cookie validity is enforced by the API routes
   // and the customer layout; middleware just gates access to the page shell.)
   if (!req.cookies.get('session')?.value) {

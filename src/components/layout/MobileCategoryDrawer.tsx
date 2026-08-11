@@ -38,7 +38,7 @@ export function MobileCategoryDrawer({ open, onClose, categories, selectedCatego
         onClick={onClose}
       />
 
-      {/* Drawer panel — in RTL (Hebrew) `start-0` = right:0, so closed state slides right */}
+      {/* Drawer panel - in RTL (Hebrew) `start-0` = right:0, so closed state slides right */}
       <div
         className={cn(
           'fixed top-0 start-0 h-full w-72 bg-white z-50 lg:hidden shadow-xl transition-transform duration-300 ease-in-out overflow-y-auto',

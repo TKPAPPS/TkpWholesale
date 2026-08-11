@@ -30,6 +30,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const raw = sessionStorage.getItem(SESSION_KEY)
       if (raw) set({ user: JSON.parse(raw) as User, isLoading: false })
-    } catch { /* ignore — sessionStorage unavailable or JSON malformed */ }
+    } catch { /* ignore - sessionStorage unavailable or JSON malformed */ }
   },
 }))

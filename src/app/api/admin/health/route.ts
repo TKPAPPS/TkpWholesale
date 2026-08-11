@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const checks: { name: string; endpoint: string; status: string; latency: string }[] = []
 
-  // Odoo JSON-RPC ping — a cheap real call, measured.
+  // Odoo JSON-RPC ping - a cheap real call, measured.
   try {
     const sessionId = await getAdminSession()
     const start = Date.now()
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     checks.push({ name: 'Odoo JSON-RPC', endpoint: '/jsonrpc', status: 'error', latency: '-' })
   }
 
-  // Supabase — a real lightweight count query (head: true returns no rows), measured.
+  // Supabase - a real lightweight count query (head: true returns no rows), measured.
   if (supabaseConfigured()) {
     const host = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname
     try {

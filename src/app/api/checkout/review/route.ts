@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       findUnorderableTemplateIdsLive(sessionId, templateIds),
       getAvailableUnitsForOrdering(sessionId, templateIds),
     ])
-    // Quantity warning is a per-line preview (informational) — confirm does the authoritative
+    // Quantity warning is a per-line preview (informational) - confirm does the authoritative
     // sum-across-lines-per-template check and clamp. Good enough to surface to the buyer here.
     let qtyExceeded = false
     const lines = cart.lines.map(l => {

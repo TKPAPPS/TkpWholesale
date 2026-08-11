@@ -144,7 +144,7 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-[0_1px_8px_0_rgba(0,0,0,0.06)] print:hidden">
         <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-6">
+          <div className="flex h-16 items-center justify-between gap-3 md:gap-6">
 
             {/* Logo */}
             <Link href="/dashboard" className="shrink-0">
@@ -182,7 +182,12 @@ export function Navbar() {
 
             {/* Right actions */}
             <div className="flex items-center gap-1">
-              <LanguageSwitcher />
+              {/* Below md this lives in the mobile menu instead; see the panel at the foot of
+                  the header. Keeping it here overflowed the bar and pushed the menu button
+                  off screen at 360px. */}
+              <div className="hidden md:flex">
+                <LanguageSwitcher />
+              </div>
 
               {/* Search button */}
               <button
@@ -319,6 +324,10 @@ export function Navbar() {
                   {label}
                 </Link>
               ))}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{t(lang, 'nav.language')}</span>
+              <LanguageSwitcher />
             </div>
             <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">
               {user && <span className="text-sm text-gray-600 truncate max-w-[180px]">{user.name}</span>}

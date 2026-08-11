@@ -13,7 +13,7 @@ export default function CustomerError({ error, reset }: { error: Error & { diges
   const { lang } = useLangStore()
 
   // A crash reaching this boundary is otherwise invisible server-side (this app has no
-  // Sentry) — report it so it shows up in `vercel logs --level error`. Deps are [error]
+  // Sentry) - report it so it shows up in `vercel logs --level error`. Deps are [error]
   // only: `lang` is UI text here, and depending on it re-fired a duplicate report when
   // the store hydrated post-mount or the user toggled language on the crash page.
   useEffect(() => { reportClientError('customer-error', error) }, [error])

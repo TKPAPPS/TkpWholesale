@@ -19,7 +19,7 @@ async function resolveCartForLine(sessionId: string, lineId: number, partnerId: 
 
   const orderId = lines[0].order_id[0]
 
-  // Verify ownership: the order must be a PORTAL cart — belong to this partner, be
+  // Verify ownership: the order must be a PORTAL cart - belong to this partner, be
   // in draft state, AND carry this website_id. Without the website_id check a portal
   // user could edit/delete lines of a staff-created backoffice quotation for their
   // own partner (findCart enforces the same filter; docs/security-rules.md requires it).
@@ -116,7 +116,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
     await callKw(sessionId, 'sale.order.line', 'write',
       [[resolved.lineId], writeVals], {})
 
-    // adjusted_packs is present only when the requested quantity was clamped down — the
+    // adjusted_packs is present only when the requested quantity was clamped down - the
     // client surfaces it as an informative toast.
     const cart = await readCart(sessionId, resolved.orderId)
     return NextResponse.json({ ...cart, adjusted_packs: adjustedPacks })

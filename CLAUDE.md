@@ -291,6 +291,27 @@ Mock data is never complete — do not treat mock behaviour as ground truth for 
   equals the displayed line total and matches the cards + optimistic line. Do not
   rebuild it from `price_unit` (ex-VAT); that made cart math look wrong.
 
+## Mobile layout constraints (360px is the design floor)
+Verified in headless Chrome at 360 and 390px; every customer page measures
+`scrollWidth == clientWidth` (no horizontal scroll). Three things make this fragile, so
+check them whenever you touch a row that holds a price or a control:
+
+- **`formatCurrency` emits a NON-BREAKING space** (U+00A0) between code and amount, so
+  "THB 1,234,567.00" is a single unbreakable ~139px run at `text-sm`. Money can never wrap
+  to relieve a cramped flex row. Give such rows `flex-wrap`, or pin the money `shrink-0`.
+- **`html { font-size: 112.5% }`** means root = 18px, so every rem utility is 1.125x bigger
+  than the Tailwind name suggests (`w-6` = 27px, `text-4xl` = 40.5px) while breakpoints stay
+  in px. Budget widths in real px, not in Tailwind units.
+- **Usable width at 360px** is 324px inside `main px-4`; a 2-col product card is ~117px
+  inside its padding. That does not fit a stepper beside a button, which is why
+  `ProductCard` stacks them below `sm`.
+
+Fixed here, do not regress: `QuantitySelector` buttons carry `shrink-0` (without it they
+collapsed to ~17px tap targets); the navbar shows the language switcher only at `md+` and
+puts it in the mobile menu instead (all five top-bar controls together pushed the hamburger
+37px off screen at 360px, making the menu unreachable); `Toast` sits at `bottom-20` so it
+clears the `BottomNav` it used to cover.
+
 ## Customer navigation & UI
 - **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best
   Sellers · Quick Order · `Orders ▾` (Orders / Recently Ordered / Scheduled / Invoices) ·

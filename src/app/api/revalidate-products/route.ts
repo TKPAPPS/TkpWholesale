@@ -7,7 +7,7 @@ import { revalidateTag } from 'next/cache'
 // Odoo backend (unpublish, archive, sale_ok off, stock adjustments) have no such hook and
 // normally wait out the TTLs. Hitting this endpoint makes them take effect immediately.
 //
-// Auth: `Authorization: Bearer <CRON_SECRET>` OR `?secret=<CRON_SECRET>` — the query-param
+// Auth: `Authorization: Bearer <CRON_SECRET>` OR `?secret=<CRON_SECRET>` - the query-param
 // variant exists because Odoo's built-in "Send Webhook Notification" automation action
 // cannot set custom headers. Callable manually (curl/browser), from an Odoo automation
 // rule, or from a cron. GET and POST both work; any request body is ignored.

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const sessionId = await getOdooSession()
     const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
-    const { getCompanyDetails, getWebsiteCompanyId } = await import('@/lib/odoo/odoo-helpers')
+    const { getCompanyDetails } = await import('@/lib/odoo/odoo-helpers')
 
     // Fetch invoice + verify ownership via commercial_partner_id. The extra fields here
     // (partner_id, company_id, origin/refs, payment term, amount_paid) are all plain columns
@@ -76,14 +76,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // Charge lines only. `display_type = 'product'` is the exact set Odoo prints as invoice
     // lines: it INCLUDES manual charge lines that carry no product (which the previous
     // `product_id != false` filter silently dropped, so lines could fail to sum to the
-    // subtotal), and EXCLUDES the bookkeeping rows that also live on account.move.line —
+    // subtotal), and EXCLUDES the bookkeeping rows that also live on account.move.line -
     // 'tax' and 'payment_term' (verified present on real invoices; rendering them would put
     // qty-0 / amount-0 junk rows in the table). Verified against 40 recent posted invoices:
     // sum(price_subtotal) == amount_untaxed on all 40. Ordered like the printed invoice.
     const lines = await searchRead(sessionId, 'account.move.line',
       [['move_id', '=', id], ['display_type', '=', 'product']],
       ['id', 'name', 'quantity', 'price_unit', 'price_subtotal', 'price_total', 'product_id', 'product_uom_id'],
-      { order: 'sequence, id' },
+      // limit: 0 = no limit. searchRead defaults to 100, which would silently truncate a long
+      // invoice's line table while the totals below still come from the header - the document
+      // would visibly fail to add up. An invoice must show every line it charges for.
+      { order: 'sequence, id', limit: 0 },
     ) as {
       id: number; name: string; quantity: number; price_unit: number; price_subtotal: number
       price_total: number; product_id: [number, string] | false; product_uom_id: [number, string] | false
@@ -94,7 +97,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const billToId = move.partner_id ? move.partner_id[0] : null
     const invoiceCompanyId = move.company_id ? move.company_id[0] : null
     const variantIds = Array.from(new Set(lines.map((l) => (l.product_id ? l.product_id[0] : 0)).filter(Boolean)))
-    const [billToRows, company, variants, websiteCompanyId] = await Promise.all([
+    const [billToRows, company, variants] = await Promise.all([
       billToId
         ? callKw(sessionId, 'res.partner', 'read', [[billToId]], {
             fields: ['id', 'name', 'street', 'street2', 'city', 'zip', 'state_id', 'country_id', 'vat'],
@@ -108,7 +111,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       variantIds.length > 0
         ? callKw(sessionId, 'product.product', 'read', [variantIds], { fields: ['id', 'default_code'] }) as Promise<{ id: number; default_code: string | false }[]>
         : Promise.resolve([] as { id: number; default_code: string | false }[]),
-      getWebsiteCompanyId(),
     ])
 
     const b = billToRows[0]
@@ -144,10 +146,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       note: move.narration || '',
       bill_to,
       company,
-      // Invoices in this group are issued by several companies (e.g. Jcafe Sukhumvit), not
-      // only the portal's own company. The page shows the Kosher Place wordmark ONLY when
-      // the issuer really is that company; otherwise the issuer's name stands alone.
-      is_website_company: !!invoiceCompanyId && invoiceCompanyId === websiteCompanyId,
+      // Whether to show the Kosher Place wordmark on the masthead. Now that the query above
+      // is hard-scoped to COMPANY_ID this is always true, but it is derived rather than
+      // hardcoded so the page still can't print this company's logo over another issuer's
+      // name if the scope is ever widened. Deliberately NOT re-derived from a live
+      // getWebsiteCompanyId() call: that added a network round trip whose failure would
+      // silently drop the logo from an otherwise correct invoice.
+      is_website_company: invoiceCompanyId === COMPANY_ID,
       invoice_origin: move.invoice_origin || '',
       reference: move.payment_reference || move.ref || '',
       payment_term: move.invoice_payment_term_id ? move.invoice_payment_term_id[1] : '',
@@ -160,7 +165,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         price_unit: l.price_unit,
         // NET unit price for the document's line table. Odoo's `price_unit` is the price as
         // entered, which under this company's price-INCLUDED VAT is gross (e.g. 20.00) while
-        // `price_subtotal` is net (18.69) — printing both on one row makes qty x unit fail to
+        // `price_subtotal` is net (18.69) - printing both on one row makes qty x unit fail to
         // equal the amount, and makes the Amount column fail to sum to the Subtotal. Deriving
         // the net unit keeps the arithmetic on the page self-consistent, which is the whole
         // point of an invoice. Falls back to price_unit when quantity is 0.

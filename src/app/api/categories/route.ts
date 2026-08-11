@@ -6,7 +6,7 @@ import { unstable_cache, revalidateTag } from 'next/cache'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
-// Categories change rarely — shared across all Vercel instances via Data Cache.
+// Categories change rarely - shared across all Vercel instances via Data Cache.
 // Follows the same pattern as _fetchWebsiteSettings in odoo-helpers.ts.
 const _fetchCategories = unstable_cache(
   async () => {

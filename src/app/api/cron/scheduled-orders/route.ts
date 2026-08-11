@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   for (const s of due) {
     summary.processed++
 
-    // Atomic claim — stamps last_run_date=today. Empty result = already claimed.
+    // Atomic claim - stamps last_run_date=today. Empty result = already claimed.
     const { data: claimed } = await supabase.rpc('claim_scheduled_order', { p_id: s.id, p_today: today })
     if (!claimed || (Array.isArray(claimed) && claimed.length === 0)) {
       summary.skipped++
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     try {
       // Recovery: if a prior run crashed after action_confirm but before updating
-      // the row, the order already exists under this deterministic ref — don't
+      // the row, the order already exists under this deterministic ref - don't
       // place it again, just advance.
       const existing = await callKw(sessionId, 'sale.order', 'search_count',
         [[['client_order_ref', 'like', idKey], ['company_id', '=', COMPANY_ID]]], {}) as number
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
         commitment_date: `${runDate} 02:00:00`, // 09:00 Bangkok in UTC
       }], {}) as number
 
-      // All lines in one create call. No price_unit — Odoo computes pricelist price.
+      // All lines in one create call. No price_unit - Odoo computes pricelist price.
       const lineVals = s.items.map(i => ({
         order_id: orderId,
         product_id: i.product_id,
@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
       summary.failed++
       const reason = err instanceof Error ? err.message : 'Unknown error'
       console.error(`cron: schedule ${s.id} failed:`, reason)
-      // Do NOT advance next_run_date — the claim guard resets tomorrow (last_run_date < today).
+      // Do NOT advance next_run_date - the claim guard resets tomorrow (last_run_date < today).
       const failures = s.consecutive_failures + 1
       const paused = failures >= AUTO_PAUSE_AFTER_FAILURES
       await supabase.from('scheduled_orders').update({

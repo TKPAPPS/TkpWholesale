@@ -56,7 +56,7 @@ export function isAdminEmail(email: string): boolean {
   return allow.includes(email.trim().toLowerCase())
 }
 
-// Server-side client using the service role key — never imported in client components.
+// Server-side client using the service role key - never imported in client components.
 // Use this in route handlers and server-side helpers only.
 export function createServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -80,7 +80,7 @@ export async function verifyAdminToken(token: string): Promise<{ email: string }
   const signed = verifySignedAdminToken(token)
   if (signed && isAdminEmail(signed.email)) return signed
 
-  // If Supabase is fully configured, also accept valid Supabase JWTs — but still
+  // If Supabase is fully configured, also accept valid Supabase JWTs - but still
   // require the email to be on the admin allowlist.
   if (isSupabaseConfigured()) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL

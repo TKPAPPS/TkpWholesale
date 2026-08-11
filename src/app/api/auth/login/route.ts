@@ -6,7 +6,7 @@ import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
 export async function POST(req: NextRequest) {
-  // Throttle by IP before doing any auth work — 10 attempts per 10 minutes.
+  // Throttle by IP before doing any auth work - 10 attempts per 10 minutes.
   const allowed = await checkRateLimit(`login:${clientIp(req)}`, 10, 600)
   if (!allowed) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' }, { status: 429 })

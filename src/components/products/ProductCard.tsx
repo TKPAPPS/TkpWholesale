@@ -32,7 +32,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const defaultPkg = product.packaging_options.find((p) => p.is_default) ?? product.packaging_options[0]
   const price = defaultPkg?.price_per_pack_incl_tax ?? 0
   const unitPrice = defaultPkg?.price_per_unit_incl_tax ?? 0
-  // Defense-in-depth UX cap — the server always re-validates on add. undefined = unlimited.
+  // Defense-in-depth UX cap - the server always re-validates on add. undefined = unlimited.
   const maxPacks = defaultPkg ? computeMaxPacks(product.in_stock, product.qty_available, defaultPkg.qty) : undefined
   const soldOut = maxPacks === 0
 
@@ -47,7 +47,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
     addToCartAndSync(product, defaultPkg, qty).then((result) => {
       if (!result.ok) { showToast(result.message ?? 'Could not add to cart. Please try again.', 'error'); return }
       if (result.adjustedPacks !== undefined) {
-        // Sync the stepper to what was actually added — leaving the requested (rejected)
+        // Sync the stepper to what was actually added - leaving the requested (rejected)
         // number in the field made the clamp look like it hadn't happened.
         setQty(result.adjustedPacks)
         showToast(t(lang, 'products.qtyAdjustedAdd').replace(/{n}/g, String(result.adjustedPacks)))
@@ -129,13 +129,17 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
-          <QuantitySelector value={qty} onChange={setQty} size="sm" className="flex-1" max={maxPacks && maxPacks > 0 ? maxPacks : undefined} />
+        {/* Stacked on phones, side by side from sm up. In a two-column grid at 360px the card
+            is ~117px wide inside its padding, which cannot hold the stepper and the add button
+            on one line - the stepper absorbed the deficit and its +/- shrank to unusable
+            slivers. Giving each control the full card width is what makes them tappable. */}
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">
+          <QuantitySelector value={qty} onChange={setQty} size="sm" className="w-full sm:flex-1" max={maxPacks && maxPacks > 0 ? maxPacks : undefined} />
           <Button
             size="sm"
             onClick={addToCart}
             disabled={!product.sellable || soldOut}
-            className="shrink-0 min-w-[40px]"
+            className="w-full sm:w-auto sm:shrink-0 sm:min-w-[40px]"
           >
             {added
               ? <span className="text-xs font-bold">✓</span>
@@ -143,9 +147,13 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             }
           </Button>
         </div>
-        {/* Proactive cap hint — without this the stepper just silently stops accepting
+        {/* Proactive cap hint - without this the stepper just silently stops accepting
             digits past the max, which reads as broken rather than "that's all we have". */}
-        {maxPacks !== undefined && maxPacks > 0 && maxPacks < lowStockThreshold && (
+        {/* Gated on UNITS, matching the "Low stock" badge above and the setting's own
+            definition. Comparing maxPacks (packs) against a unit threshold made the hint
+            over-fire on large packs: 240 units sold in cases of 24 is 10 packs, which reads
+            as "below 20" and warned about a well-stocked product. */}
+        {maxPacks !== undefined && maxPacks > 0 && product.qty_available < lowStockThreshold && (
           <p className="text-[11px] text-amber-600 -mt-1">{t(lang, 'products.maxAvailable').replace('{n}', String(maxPacks))}</p>
         )}
       </div>

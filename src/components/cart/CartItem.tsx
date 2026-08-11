@@ -28,11 +28,11 @@ export function CartItem({ line, currency }: CartItemProps) {
   const name = lang === 'he' ? line.product_name_he : line.product_name
   const subtitle = [line.sku, line.packaging_name].filter(Boolean).join(' · ')
 
-  // A rejected update resyncs the store with the real (unchanged) server quantity — reflect
+  // A rejected update resyncs the store with the real (unchanged) server quantity - reflect
   // that back into the local input so it doesn't keep showing the rejected value. Depend on
   // `line` itself (not line.packaging_qty): every resync produces a fresh line object even
   // when the value is numerically unchanged from before the failed edit (e.g. reject a 50
-  // when the true quantity was already 10 — packaging_qty stays 10, same as pre-edit — a
+  // when the true quantity was already 10 - packaging_qty stays 10, same as pre-edit - a
   // dependency on the primitive value would see "no change" and never fire, leaving the
   // input stuck showing the rejected 50).
   useEffect(() => { setQty(line.packaging_qty) }, [line])
@@ -84,9 +84,13 @@ export function CartItem({ line, currency }: CartItemProps) {
             {line.warnings[0]}
           </div>
         )}
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <QuantitySelector value={qty} onChange={updateQty} />
-          <div className="text-end">
+        {/* flex-wrap, because the three children (stepper, price block, delete) need ~360px
+            of intrinsic width against ~211px available next to the thumbnail at 360px. Money
+            strings contain a non-breaking space so they cannot wrap to relieve it; without
+            wrapping here the stepper was the only shrinkable item and collapsed. */}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <QuantitySelector value={qty} onChange={updateQty} className="shrink-0" />
+          <div className="text-end min-w-0">
             <p className="text-xs text-gray-400 mb-0.5">
               {formatCurrency(line.price_per_pack, currency)} / {line.packaging_name}
             </p>
@@ -94,7 +98,7 @@ export function CartItem({ line, currency }: CartItemProps) {
               {formatCurrency(line.price_total, currency)}
             </p>
           </div>
-          <button onClick={remove} disabled={removing} className="text-gray-400 hover:text-red-500 transition-colors p-2 -m-1">
+          <button onClick={remove} disabled={removing} className="text-gray-400 hover:text-red-500 transition-colors p-2.5 -m-1 shrink-0">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>

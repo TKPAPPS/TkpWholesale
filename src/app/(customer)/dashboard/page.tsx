@@ -89,7 +89,7 @@ export default function DashboardPage() {
           { label: t(lang, 'orders.title'), value: recentOrders.length > 0 ? recentOrders.length + '+' : '0', icon: ClipboardList, href: '/orders' },
           { label: t(lang, 'nav.itemsInCart'), value: String(lineCount), icon: ShoppingCart, href: '/cart' },
           { label: t(lang, 'favorites.title'), value: String(favorites.length), icon: Heart, href: '/favorites' },
-          { label: t(lang, 'cart.total'), value: cart ? formatCurrency(cart.amount_total, cart.currency) : '—', icon: Package, href: '/cart' },
+          { label: t(lang, 'cart.total'), value: cart ? formatCurrency(cart.amount_total, cart.currency) : '-', icon: Package, href: '/cart' },
         ].map(({ label, value, icon: Icon, href }) => (
           <Link key={label} href={href} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-brand-200 transition-colors">
             <div className="flex items-center gap-2 mb-1">

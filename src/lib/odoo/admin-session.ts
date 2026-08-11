@@ -2,7 +2,7 @@ import { adminAuthenticate } from './client'
 
 // Cached admin credentials token in "uid:apikey" format.
 // callKw() detects this format and routes to /jsonrpc (external API) instead of
-// /web/session/authenticate — required for Odoo.com SaaS where API keys don't
+// /web/session/authenticate - required for Odoo.com SaaS where API keys don't
 // work with the web session endpoint.
 // TTL is 30 minutes; uid is stable so re-auth just refreshes the cache entry.
 let _cache: { token: string; expires: number } | null = null
@@ -37,6 +37,6 @@ function invalidate() { _cache = null; _inflight = null }
 export const getOdooSession = acquireSession
 export const invalidateOdooSession = invalidate
 
-// Admin-route names (aliases — same underlying session)
+// Admin-route names (aliases - same underlying session)
 export const getAdminSession = acquireSession
 export const invalidateAdminSession = invalidate

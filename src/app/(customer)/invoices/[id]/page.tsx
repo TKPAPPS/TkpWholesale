@@ -16,10 +16,15 @@ import { ChevronLeft, Download, Printer } from 'lucide-react'
 // Compared on calendar dates so an invoice due today never reads as overdue.
 function daysOverdue(due: string | null): number {
   if (!due) return 0
-  const d = new Date(due)
-  if (Number.isNaN(d.getTime())) return 0
+  // Odoo sends a plain calendar date ("2026-08-11"). `new Date(that)` parses it as UTC
+  // midnight, so reading it back with LOCAL getters shifts it a day earlier for any viewer
+  // west of UTC - an invoice due today would print "Overdue by 1 day". Parse the parts
+  // directly instead, and take today's date from local getters, so both sides are plain
+  // calendar dates in the viewer's own timezone.
+  const m = due.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return 0
+  const a = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
   const today = new Date()
-  const a = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
   const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return Math.floor((b - a) / 86400000)
 }
@@ -92,16 +97,19 @@ export default function InvoiceDetailPage() {
   return (
     <div className="max-w-3xl mx-auto">
       {/* Screen-only controls. The sheet below is what prints. */}
-      <div className="flex items-center justify-between gap-3 mb-6 print:hidden">
-        <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline">
+      {/* Back link on its own row on phones. Side by side, the back link plus both buttons
+          need ~320px of a 324px budget, so the pair wrapped raggedly under the link. Stacking
+          also leaves room for full-size (44px) tap targets on the two actions. */}
+      <div className="flex flex-col gap-3 mb-6 print:hidden sm:flex-row sm:items-center sm:justify-between">
+        <button onClick={() => router.back()} className="flex items-center gap-1 self-start text-sm text-brand-700 hover:underline py-2 -my-2">
           <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'invoices.title')}
         </button>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => window.print()}>
-            <Printer className="h-4 w-4 me-1" /> {t(lang, 'invoices.print')}
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> {t(lang, 'invoices.print')}
           </Button>
-          <Button variant="secondary" size="sm" onClick={downloadPdf} loading={downloadingPdf}>
-            <Download className="h-4 w-4 me-1" /> {t(lang, 'invoices.downloadPdf')}
+          <Button variant="secondary" onClick={downloadPdf} loading={downloadingPdf}>
+            <Download className="h-4 w-4" /> {t(lang, 'invoices.downloadPdf')}
           </Button>
         </div>
       </div>
@@ -130,7 +138,7 @@ export default function InvoiceDetailPage() {
               )}
             </div>
 
-            <div className="text-end shrink-0">
+            <div className="text-end min-w-0 sm:shrink-0">
               <p className={`text-2xl font-bold tracking-[0.2em] text-gray-900 uppercase ${display}`}>
                 {t(lang, 'invoices.documentTitle')}
               </p>
@@ -173,13 +181,13 @@ export default function InvoiceDetailPage() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-gray-400">&mdash;</p>
+              <p className="text-sm text-gray-400">-</p>
             )}
           </div>
 
           <div className="sm:text-end">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'invoices.amountDue')}</p>
-            <p className={`text-4xl font-bold tabular-nums ${display} ${paid ? 'text-gray-400' : 'text-brand-700'}`} dir="ltr">
+            <p className={`text-2xl sm:text-4xl font-bold tabular-nums ${display} ${paid ? 'text-gray-400' : 'text-brand-700'}`} dir="ltr">
               {money(paid ? 0 : invoice.amount_residual)}
             </p>
             {dueLabel && (
@@ -193,7 +201,8 @@ export default function InvoiceDetailPage() {
 
         {/* Line items: real table on sm+, stacked cards below (house convention) */}
         <section className="px-6 sm:px-8">
-          <table className="hidden sm:table w-full text-xs">
+          <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0 print:overflow-visible">
+          <table className="w-full text-xs">
             <thead>
               <tr className="border-y border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                 <th className="text-start px-3 py-2.5">{t(lang, 'invoices.description')}</th>
@@ -218,6 +227,7 @@ export default function InvoiceDetailPage() {
               ))}
             </tbody>
           </table>
+          </div>
 
           <div className="sm:hidden border-t border-gray-100">
             {invoice.lines.map((line) => (

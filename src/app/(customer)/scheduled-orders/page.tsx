@@ -96,7 +96,7 @@ export default function ScheduledOrdersPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{frequencyLabel(s)}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {t(lang, 'scheduled.nextRun')}: <span className="font-medium">{paused ? '—' : s.next_run_date}</span>
+                      {t(lang, 'scheduled.nextRun')}: <span className="font-medium">{paused ? '-' : s.next_run_date}</span>
                       {s.end_date && <> · {t(lang, 'scheduled.ends')} {s.end_date}</>}
                     </p>
                   </div>

@@ -11,8 +11,8 @@ export interface OdooSession {
   name: string
   email: string
   pricelist_name: string
-  iat?: number  // issued-at (unix seconds) — stamped by signSession
-  exp?: number  // expiry (unix seconds) — enforced by verifySession
+  iat?: number  // issued-at (unix seconds) - stamped by signSession
+  exp?: number  // expiry (unix seconds) - enforced by verifySession
 }
 
 // Server-enforced session lifetime. Must match the cookie maxAge in the login
@@ -21,7 +21,7 @@ export interface OdooSession {
 export const SESSION_TTL_SECONDS = 4 * 60 * 60
 
 // In production, SESSION_SECRET must be present and at least 32 chars.
-// Throws if the requirement is not met — callers that issue cookies should let
+// Throws if the requirement is not met - callers that issue cookies should let
 // this propagate (fail the request); callers that only verify should catch it
 // and return null (treat as unauthenticated).
 export function getSecret(): string {
@@ -49,7 +49,7 @@ export function signSession(session: object): string {
 }
 
 function verifySession(token: string): OdooSession | null {
-  // Fail closed if the secret is unavailable — treat as unauthenticated rather than crash.
+  // Fail closed if the secret is unavailable - treat as unauthenticated rather than crash.
   let secret: string
   try {
     secret = getSecret()

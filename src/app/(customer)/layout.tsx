@@ -30,7 +30,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
     // user's (or a prior visit's) choice must not be stomped on every load.
     const hadLangChoice = hasLangCookie()
     initLang()
-    // Fire cart fetch immediately — it uses the session cookie directly
+    // Fire cart fetch immediately - it uses the session cookie directly
     // and doesn't need the auth result. Runs in parallel with auth check.
     fetchCart()
     hydrateSiteSettings()

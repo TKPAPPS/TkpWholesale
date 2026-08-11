@@ -8,7 +8,7 @@ function supabaseConfigured(): boolean {
 
 // Returns true if the action is ALLOWED, false if it should be rate-limited.
 // Backed by the Supabase `check_rate_limit` RPC (atomic, shared across all
-// serverless instances). Fails OPEN — if Supabase is unconfigured or unreachable
+// serverless instances). Fails OPEN - if Supabase is unconfigured or unreachable
 // we allow the request, so an infra blip never locks users out of login.
 export async function checkRateLimit(key: string, max: number, windowSeconds: number): Promise<boolean> {
   if (!supabaseConfigured()) return true

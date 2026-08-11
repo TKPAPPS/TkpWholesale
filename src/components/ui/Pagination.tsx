@@ -38,7 +38,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
         disabled={page === 0}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
       </button>
 
       {pages.map((item, idx) =>
@@ -66,7 +66,7 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
         disabled={page >= totalPages - 1}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4 rtl:rotate-180" />
       </button>
     </div>
   )

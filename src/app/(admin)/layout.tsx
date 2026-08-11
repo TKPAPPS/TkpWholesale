@@ -41,7 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen flex bg-gray-50">
 
-      {/* Desktop sidebar — hidden below md */}
+      {/* Desktop sidebar - hidden below md */}
       <aside className="hidden md:flex w-48 shrink-0 bg-white border-e border-gray-200 flex-col">
         <div className="px-4 py-4 border-b border-gray-100">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Admin</p>
@@ -73,10 +73,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* Content column — full width on mobile, remaining width on md+ */}
+      {/* Content column - full width on mobile, remaining width on md+ */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Mobile top bar — hidden on md+ */}
+        {/* Mobile top bar - hidden on md+ */}
         <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
           <button
             onClick={() => setMobileOpen(true)}

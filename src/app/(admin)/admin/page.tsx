@@ -106,8 +106,8 @@ export default function AdminDashboard() {
 
   const stats = [
     // ?? guards: a partial API response must show the placeholder, not "undefined".
-    { label: 'Orders Today', value: String(data?.orders_today ?? '—') },
-    { label: 'Open Carts', value: String(data?.open_carts ?? '—') },
+    { label: 'Orders Today', value: String(data?.orders_today ?? '-') },
+    { label: 'Open Carts', value: String(data?.open_carts ?? '-') },
     { label: 'Odoo Status', value: error ? 'Error' : data ? 'Online' : '…' },
   ]
 
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
-        {error && <p className="text-sm text-red-500 mt-4">Could not reach Odoo — check connectivity.</p>}
+        {error && <p className="text-sm text-red-500 mt-4">Could not reach Odoo - check connectivity.</p>}
       </div>
 
       {/* Announcements */}

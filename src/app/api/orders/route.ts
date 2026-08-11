@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
 
     const FIELDS = ['id', 'name', 'date_order', 'amount_total', 'currency_id', 'state', 'order_line', 'delivery_status']
 
-    // Count + page in parallel — avoids fetching all orders just to slice
+    // Count + page in parallel - avoids fetching all orders just to slice
     const [total, rawOrders] = await Promise.all([
       callKw(sessionId, 'sale.order', 'search_count', [domain], {}) as Promise<number>,
       searchRead(sessionId, 'sale.order', domain, FIELDS, {

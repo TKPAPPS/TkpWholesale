@@ -10,14 +10,16 @@ interface CartState {
   setLoading: (v: boolean) => void
   setUnavailable: (v: boolean) => void
   lineCount: () => number       // unique products (number of lines)
-  fetchCart: () => Promise<void>
+  // `showLoading` is opt-in and meant only for a page's initial load (the cart page). A
+  // background resync must not flip the global spinner.
+  fetchCart: (opts?: { showLoading?: boolean }) => Promise<void>
   // Optimistically merge/append a line so the UI updates instantly while the
   // Odoo write happens in the background. Returns the previous cart so the
   // caller can roll back if the write fails.
   addLineOptimistic: (product: Product, pkg: PackagingOption, qty: number) => Cart | null
   // Optimistic add + background POST + sequenced reconcile. Resolves { ok: true } on
-  // success — with `adjustedPacks` set if the server clamped the requested quantity down
-  // to what's available (e.g. asked for 50, only 37 in stock — added 37). On failure
+  // success - with `adjustedPacks` set if the server clamped the requested quantity down
+  // to what's available (e.g. asked for 50, only 37 in stock - added 37). On failure
   // (after resyncing), { ok: false, message } carries the server's reason (there's a
   // genuine reject only when literally nothing more can be added). Shared by the product
   // grid and the product detail page so both stay on one cart-sync protocol.
@@ -49,28 +51,46 @@ function withTotals(cart: Cart): Cart {
 // cart and silently drops items the user just added.
 let seqCounter = 0
 let appliedSeq = 0
+// Number of cart-mutating requests currently in flight. A plain background GET must never
+// overwrite the confirmed result of an edit the user just made, even if the GET was
+// dispatched later and resolves first.
+let inflightMutations = 0
 
 export const useCartStore = create<CartState>((set, get) => {
-  // Apply a server cart snapshot iff it is not stale relative to what we've shown. Used for
-  // the plain background refresh (fetchCart), where a slower earlier response should not
-  // overwrite a newer one.
+  // Background refresh (fetchCart). Applies only if it is not stale AND no mutation is in
+  // flight - otherwise a GET that raced an add/update would clobber the mutation's result.
   const reconcile = (cart: Cart, seq: number) => {
+    if (seq < appliedSeq || inflightMutations > 0) return
+    appliedSeq = seq
+    set({ cart })
+  }
+  // A direct mutation's OWN response (add/update/remove line). It wins over a concurrent
+  // background GET (see `inflightMutations` in reconcile), because a fast plain GET is not
+  // more authoritative than the confirmed result of the edit the user just made (e.g. a
+  // server-clamped quantity). It is STILL ordered against other mutations: an older
+  // mutation response that lands late must not overwrite a newer one, which is why the
+  // staleness check stays here rather than being dropped.
+  const applyMutation = (cart: Cart, seq: number) => {
     if (seq < appliedSeq) return
     appliedSeq = seq
     set({ cart })
   }
-  // A direct mutation's OWN response (add/update/remove line) must never be silently
-  // dropped just because an unrelated background fetchCart happened to be dispatched
-  // later and resolve first — that fast, plain GET is not more authoritative than the
-  // confirmed result of the edit the user just made (e.g. a clamped quantity). Still bump
-  // appliedSeq (never backward) so a genuinely older response ordered after this can't
-  // undo it either. Confirmed bug this fixes: an edit that got server-clamped (e.g. 400 ->
-  // 3, because only 3 were in stock) wrote correctly to Odoo, but a same-second background
-  // refresh's faster, unrelated response could win the sequencing race and the cart page
-  // kept showing the customer's original (invalid) typed value instead of the true one.
-  const applyMutation = (cart: Cart, seq: number) => {
-    appliedSeq = Math.max(appliedSeq, seq)
-    set({ cart })
+
+  // Runs a cart mutation while holding off background refreshes, with exactly ONE release
+  // point regardless of which path the mutation exits by. The hold is released BEFORE any
+  // resync, because a resync issued while its own mutation still held the lock would be
+  // suppressed by reconcile() and the failed optimistic line would never be rolled back.
+  // `resync` in the return asks for that post-release refresh.
+  const holdMutation = async <T>(fn: () => Promise<{ resync: boolean; result: T }>): Promise<T> => {
+    inflightMutations++
+    let outcome: { resync: boolean; result: T }
+    try {
+      outcome = await fn()
+    } finally {
+      inflightMutations--
+    }
+    if (outcome.resync) await get().fetchCart()
+    return outcome.result
   }
 
   return {
@@ -81,11 +101,13 @@ export const useCartStore = create<CartState>((set, get) => {
     setLoading: (isLoading) => set({ isLoading }),
     setUnavailable: (odooUnavailable) => set({ odooUnavailable }),
     lineCount: () => get().cart?.lines.length ?? 0,
-    // Also drives the cart page's loading/error UI directly (isLoading/odooUnavailable) —
-    // it no longer keeps its own separate, unsequenced fetch that could clobber a fresher
-    // mutation with no ordering check at all.
-    fetchCart: async () => {
-      set({ isLoading: true })
+    // Also drives the cart page's loading/error UI (isLoading/odooUnavailable) - it no longer
+    // keeps its own separate, unsequenced fetch that could clobber a fresher mutation.
+    // `showLoading` is opt-in: only the cart page's initial load should blank the page into a
+    // spinner. A background resync (layout mount, badge, post-mutation) must not, or every
+    // failed edit would flash the whole cart away and remount each row.
+    fetchCart: async (opts?: { showLoading?: boolean }) => {
+      if (opts?.showLoading) set({ isLoading: true })
       const seq = ++seqCounter
       try {
         const res = await fetch('/api/cart')
@@ -95,9 +117,11 @@ export const useCartStore = create<CartState>((set, get) => {
         set({ odooUnavailable: false })
         reconcile(data, seq)
       } catch {
-        // silently ignore — non-cart-page callers (layout mount, badge) shouldn't surface this
+        // Transport failure. The cart page relies on this flag to show its "cart unavailable"
+        // retry state; without it a network blip renders as a misleading "your cart is empty".
+        set({ odooUnavailable: true })
       } finally {
-        set({ isLoading: false })
+        if (opts?.showLoading) set({ isLoading: false })
       }
     },
     addLineOptimistic: (product, pkg, qty) => {
@@ -160,25 +184,23 @@ export const useCartStore = create<CartState>((set, get) => {
     addToCartAndSync: async (product, pkg, qty) => {
       get().addLineOptimistic(product, pkg, qty)
       const seq = ++seqCounter
-      try {
-        const res = await fetch('/api/cart/lines', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // product_id = template_id (the API validates packaging against this template)
-          body: JSON.stringify({ product_id: product.template_id, packaging_id: pkg.id, packaging_qty: qty }),
-        })
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          // Resync so the optimistic line is undone (sequenced fetch).
-          await get().fetchCart()
-          return { ok: false, message: data?.message }
+      return holdMutation<{ ok: boolean; message?: string; adjustedPacks?: number }>(async () => {
+        try {
+          const res = await fetch('/api/cart/lines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // product_id = template_id (the API validates packaging against this template)
+            body: JSON.stringify({ product_id: product.template_id, packaging_id: pkg.id, packaging_qty: qty }),
+          })
+          const data = await res.json().catch(() => null)
+          // Resync on failure so the optimistic line is undone.
+          if (!res.ok) return { resync: true, result: { ok: false, message: data?.message } }
+          applyMutation(data, seq)
+          return { resync: false, result: { ok: true, adjustedPacks: data?.adjusted_packs } }
+        } catch {
+          return { resync: true, result: { ok: false } }
         }
-        applyMutation(data, seq)
-        return { ok: true, adjustedPacks: data?.adjusted_packs }
-      } catch {
-        await get().fetchCart()
-        return { ok: false }
-      }
+      })
     },
     reorderLines: async (lines) => {
       let failed = 0
@@ -198,40 +220,39 @@ export const useCartStore = create<CartState>((set, get) => {
       return { added: lines.length - failed, failed }
     },
     updateLineQty: async (lineId, packagingQty) => {
-      // Optimistic lines (negative id) have no server row yet — resync instead of
+      // Optimistic lines (negative id) have no server row yet - resync instead of
       // PATCHing a non-existent id (which 404s).
       if (lineId <= 0) { await get().fetchCart(); return { ok: false } }
       const seq = ++seqCounter
-      try {
-        const res = await fetch(`/api/cart/lines/${lineId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ packaging_qty: packagingQty }),
-        })
-        const data = await res.json().catch(() => null)
-        if (!res.ok) {
-          await get().fetchCart()
-          return { ok: false, message: data?.message }
+      return holdMutation<{ ok: boolean; message?: string; adjustedPacks?: number }>(async () => {
+        try {
+          const res = await fetch(`/api/cart/lines/${lineId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ packaging_qty: packagingQty }),
+          })
+          const data = await res.json().catch(() => null)
+          if (!res.ok) return { resync: true, result: { ok: false, message: data?.message } }
+          applyMutation(data, seq)
+          return { resync: false, result: { ok: true, adjustedPacks: data?.adjusted_packs } }
+        } catch {
+          return { resync: true, result: { ok: false } }
         }
-        applyMutation(data, seq)
-        return { ok: true, adjustedPacks: data?.adjusted_packs }
-      } catch {
-        await get().fetchCart()
-        return { ok: false }
-      }
+      })
     },
     removeLine: async (lineId) => {
       if (lineId <= 0) { await get().fetchCart(); return false }
       const seq = ++seqCounter
-      try {
-        const res = await fetch(`/api/cart/lines/${lineId}`, { method: 'DELETE' })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        applyMutation(await res.json(), seq)
-        return true
-      } catch {
-        await get().fetchCart()
-        return false
-      }
+      return holdMutation<boolean>(async () => {
+        try {
+          const res = await fetch(`/api/cart/lines/${lineId}`, { method: 'DELETE' })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          applyMutation(await res.json(), seq)
+          return { resync: false, result: true }
+        } catch {
+          return { resync: true, result: false }
+        }
+      })
     },
   }
 })

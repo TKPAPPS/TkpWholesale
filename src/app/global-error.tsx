@@ -4,11 +4,11 @@ import { reportClientError } from '@/lib/report-client-error'
 
 // Root error boundary: catches render errors that escape every nested boundary
 // (including the root layout). Must render its own <html>/<body>. Kept
-// dependency-free (no stores, no i18n) so it can never crash itself — the report
+// dependency-free (no stores, no i18n) so it can never crash itself - the report
 // helper is the one allowed import because it has zero imports of its own.
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   // A crash reaching this boundary is otherwise invisible server-side (this app has no
-  // Sentry) — report it so it shows up in `vercel logs --level error`.
+  // Sentry) - report it so it shows up in `vercel logs --level error`.
   useEffect(() => { reportClientError('global-error', error) }, [error])
 
   return (

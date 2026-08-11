@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
     const token = await getOdooSession()
     const apikey = token.split(':').slice(1).join(':')
     headers.Authorization = `Bearer ${apikey}`
-  } catch { /* proceed without auth — public images may still work */ }
+  } catch { /* proceed without auth - public images may still work */ }
 
   try {
     // 10s abort: this is the only Odoo call outside client.ts (which has its own

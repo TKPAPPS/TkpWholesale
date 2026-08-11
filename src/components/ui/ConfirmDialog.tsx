@@ -14,7 +14,7 @@ interface ConfirmDialogProps {
   onCancel: () => void
 }
 
-// Small reusable confirm modal — replaces window.confirm so actions get a
+// Small reusable confirm modal - replaces window.confirm so actions get a
 // consistent, styled confirmation with a busy state instead of a browser dialog.
 // Labels are props so callers can pass localized strings.
 export function ConfirmDialog({

@@ -23,7 +23,7 @@ function setSessionCookie(res: NextResponse, token: string) {
 }
 
 export async function POST(req: NextRequest) {
-  // Throttle admin logins harder than customer ones — 6 attempts per 10 minutes per IP.
+  // Throttle admin logins harder than customer ones - 6 attempts per 10 minutes per IP.
   const allowed = await checkRateLimit(`adminlogin:${clientIp(req)}`, 6, 600)
   if (!allowed) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' }, { status: 429 })
@@ -37,13 +37,13 @@ export async function POST(req: NextRequest) {
 
   // Verifying a credential proves identity, not authority. Only emails on the
   // admin allowlist (ADMIN_EMAILS, or ODOO_ADMIN_LOGIN) may hold an admin
-  // session — otherwise any valid portal customer could log into /admin.
+  // session - otherwise any valid portal customer could log into /admin.
   if (!isAdminEmail(email)) {
     return NextResponse.json({ error: 'NOT_AUTHORIZED', message: 'This account is not authorized for admin access.' }, { status: 403 })
   }
 
   // Dedicated portal admin password (env). When ADMIN_PASSWORD is set, it is the
-  // source of truth for allowlisted admins — a fixed credential independent of
+  // source of truth for allowlisted admins - a fixed credential independent of
   // Odoo/Supabase passwords. Compared in constant time.
   const adminPassword = process.env.ADMIN_PASSWORD
   if (adminPassword) {
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Supabase not configured — verify via Odoo /jsonrpc (works with regular passwords on SaaS).
+  // Supabase not configured - verify via Odoo /jsonrpc (works with regular passwords on SaaS).
   if (!url || !anonKey || url.includes('your-project')) {
     let token: string
     try {
