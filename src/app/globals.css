@@ -18,4 +18,18 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* Print. Currently only the invoice document is a deliberate print target; app chrome
+     opts out via `print:hidden`. Odoo's PDF remains the authoritative artifact, this is a
+     convenience path. Rules are print-only and cannot affect screen rendering. */
+  @media print {
+    /* Keep brand burgundy/gold instead of the browser's ink-saving greyscale. */
+    *, *::before, *::after { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* The app paints the page grey and pads for the fixed mobile nav; paper needs neither. */
+    body { background: #fff !important; }
+    main { padding: 0 !important; max-width: none !important; }
+    /* Never split a line item across pages. */
+    tr, .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+    @page { margin: 14mm; }
+  }
 }

@@ -52,7 +52,7 @@ export function AnnouncementBanner() {
   }
 
   return (
-    <div className={cn('border-b px-4 sm:px-6 lg:px-8 py-2.5', bg)}>
+    <div className={cn('border-b px-4 sm:px-6 lg:px-8 py-2.5 print:hidden', bg)}>
       <div className="mx-auto max-w-screen-xl flex items-center gap-3">
         <Icon className={cn('h-4 w-4 shrink-0', text)} />
         <p className={cn('text-sm flex-1', text)}>{announcement.message}</p>

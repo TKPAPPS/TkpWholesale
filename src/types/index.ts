@@ -162,10 +162,25 @@ export interface Invoice {
 export interface InvoiceLine {
   line_id: number
   name: string
+  sku: string          // '' for non-product charge lines (e.g. delivery)
+  uom: string          // unit of measure label, '' when absent
   quantity: number
-  price_unit: number
+  price_unit: number       // raw from Odoo; gross when VAT is price-included
+  price_unit_net: number   // net unit price, so quantity x this == price_subtotal
   price_subtotal: number
   price_total: number
+}
+
+// Postal party on an invoice document. Fields are '' when Odoo has them empty.
+export interface InvoiceParty {
+  name: string
+  street: string
+  street2: string
+  city: string
+  zip: string
+  state: string
+  country: string
+  vat: string
 }
 
 export interface InvoiceDetail extends Invoice {
@@ -173,6 +188,12 @@ export interface InvoiceDetail extends Invoice {
   note: string
   amount_untaxed: number
   amount_tax: number
+  bill_to: InvoiceParty | null              // customer being billed
+  company: (InvoiceParty & { phone: string; email: string }) | null  // issuer
+  is_website_company: boolean               // issuer is the portal's own company (show wordmark)
+  invoice_origin: string                    // source sales order, e.g. S00123
+  reference: string                         // payment reference / customer ref
+  payment_term: string                      // e.g. "30 Days"
 }
 
 export interface ApiError {

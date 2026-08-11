@@ -26,7 +26,7 @@ export function BottomNav() {
     exact ? pathname === href : pathname.startsWith(href)
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-100 shadow-[0_-1px_8px_0_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-100 shadow-[0_-1px_8px_0_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)] print:hidden">
       <div className="grid grid-cols-5">
         {tabs.map(({ href, label, icon: Icon, exact, badge }) => {
           const active = isActive(href, exact)

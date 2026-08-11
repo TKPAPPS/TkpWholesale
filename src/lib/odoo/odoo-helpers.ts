@@ -471,6 +471,55 @@ export async function getWebsiteCompanyId(): Promise<number | null> {
   try { return await _fetchWebsiteCompanyId() } catch { return null }
 }
 
+// Issuer (seller) details for invoice documents: legal name, address, tax id. Company
+// records change ~never, so this is cached a day and costs effectively nothing per request.
+// Keyed by company id because an invoice carries its OWN company_id, which is the correct
+// issuer to show (not necessarily the website's company).
+export interface CompanyDetails {
+  name: string
+  street: string
+  street2: string
+  city: string
+  zip: string
+  state: string
+  country: string
+  phone: string
+  email: string
+  vat: string
+}
+const _fetchCompanyDetails = unstable_cache(
+  async (companyId: number): Promise<CompanyDetails | null> => {
+    const sessionId = await getOdooSession()
+    const rows = await callKw(sessionId, 'res.company', 'read', [[companyId]], {
+      fields: ['name', 'street', 'street2', 'city', 'zip', 'state_id', 'country_id', 'phone', 'email', 'vat'],
+    }) as {
+      name: string; street: string | false; street2: string | false; city: string | false
+      zip: string | false; state_id: [number, string] | false; country_id: [number, string] | false
+      phone: string | false; email: string | false; vat: string | false
+    }[]
+    const c = rows[0]
+    if (!c) return null
+    return {
+      name: c.name || '',
+      street: c.street || '',
+      street2: c.street2 || '',
+      city: c.city || '',
+      zip: c.zip || '',
+      state: c.state_id ? c.state_id[1] : '',
+      country: c.country_id ? c.country_id[1] : '',
+      phone: c.phone || '',
+      email: c.email || '',
+      vat: c.vat || '',
+    }
+  },
+  ['odoo-company-details'],
+  { revalidate: 86400, tags: ['odoo-company-details'] },
+)
+export async function getCompanyDetails(companyId: number | null): Promise<CompanyDetails | null> {
+  if (!companyId) return null
+  try { return await _fetchCompanyDetails(companyId) } catch { return null }
+}
+
 // Odoo context that scopes qty_available to the sellable location subtree. Merge into any
 // base context (e.g. lang). Empty object when the location can't be resolved (fail open →
 // global qty_available, today's behaviour).

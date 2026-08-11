@@ -1,32 +1,34 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { InvoiceDetail } from '@/types'
+import { InvoiceDetail, InvoiceParty } from '@/types'
 import { useLangStore } from '@/store/langStore'
 import { t } from '@/lib/i18n/translations'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Logo } from '@/components/layout/Logo'
 import { useToastStore } from '@/store/toastStore'
-import { Package, ChevronLeft, Download } from 'lucide-react'
+import { ChevronLeft, Download, Printer } from 'lucide-react'
 
-// Compact payment-state badge (mirrors the one on the invoices list).
-function PaymentBadge({ state, label, lang }: { state: string; label: string; lang: string }) {
-  const map: Record<string, string> = {
-    paid: 'bg-green-50 text-green-700 border-green-200',
-    in_payment: 'bg-blue-50 text-blue-700 border-blue-200',
-    partial: 'bg-amber-50 text-amber-700 border-amber-200',
-    overdue: 'bg-red-50 text-red-700 border-red-200',
-    due: 'bg-gray-50 text-gray-500 border-gray-200',
-  }
-  const key = state === 'not_paid' ? (label === 'Overdue' ? 'overdue' : 'due') : state
-  const i18nKey = `invoices.${key === 'overdue' ? 'overdue' : key === 'due' ? 'due' : key === 'paid' ? 'paid' : key === 'partial' ? 'partial' : 'inPayment'}` as Parameters<typeof t>[1]
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${map[key] ?? map.due}`}>
-      {t(lang as 'en' | 'he', i18nKey)}
-    </span>
-  )
+// Days between a due date and today, in whole days. Positive = overdue.
+// Compared on calendar dates so an invoice due today never reads as overdue.
+function daysOverdue(due: string | null): number {
+  if (!due) return 0
+  const d = new Date(due)
+  if (Number.isNaN(d.getTime())) return 0
+  const today = new Date()
+  const a = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  return Math.floor((b - a) / 86400000)
+}
+
+// Address lines, skipping whatever Odoo left empty. Joining blindly produces stray
+// commas (", Bangkok") when a street is missing.
+function addressLines(p: InvoiceParty): string[] {
+  const cityLine = [p.zip, p.city, p.state].filter(Boolean).join(' ')
+  return [p.street, p.street2, cityLine, p.country].filter(Boolean)
 }
 
 export default function InvoiceDetailPage() {
@@ -68,74 +70,223 @@ export default function InvoiceDetailPage() {
   if (loading) return <LoadingSpinner />
   if (notFound || !invoice) return <EmptyState title={t(lang, 'invoices.notFound')} action={<Button onClick={() => router.back()} variant="secondary">{t(lang, 'common.back')}</Button>} />
 
-  return (
-    <div className="max-w-2xl mx-auto">
-      <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline mb-6">
-        <ChevronLeft className="h-4 w-4" /> {t(lang, 'invoices.title')}
-      </button>
+  // Georgia (font-serif) carries no Hebrew glyphs, so the display face is English-only.
+  // Money is unaffected: formatCurrency always renders Latin numerals (en-US).
+  const display = lang === 'he' ? '' : 'font-serif'
+  const paid = invoice.payment_state === 'paid' || invoice.amount_residual <= 0
+  const late = !paid && daysOverdue(invoice.invoice_date_due) > 0
+  const overdueDays = daysOverdue(invoice.invoice_date_due)
 
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900">{invoice.name}</h1>
-            <PaymentBadge state={invoice.payment_state} label={invoice.state_label} lang={lang} />
-          </div>
-          <p className="text-sm text-gray-400">{formatDate(invoice.invoice_date, lang)}</p>
-        </div>
-        <div className="shrink-0">
+  const dueLabel = paid
+    ? t(lang, 'invoices.paidInFull')
+    : late
+      ? t(lang, 'invoices.overdueByDays').replace('{n}', String(overdueDays))
+      : overdueDays === 0 && invoice.invoice_date_due
+        ? t(lang, 'invoices.dueToday')
+        : invoice.invoice_date_due
+          ? `${t(lang, 'invoices.dueDate')} ${formatDate(invoice.invoice_date_due, lang)}`
+          : ''
+
+  const money = (n: number) => formatCurrency(n, invoice.currency)
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      {/* Screen-only controls. The sheet below is what prints. */}
+      <div className="flex items-center justify-between gap-3 mb-6 print:hidden">
+        <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline">
+          <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'invoices.title')}
+        </button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" onClick={() => window.print()}>
+            <Printer className="h-4 w-4 me-1" /> {t(lang, 'invoices.print')}
+          </Button>
           <Button variant="secondary" size="sm" onClick={downloadPdf} loading={downloadingPdf}>
             <Download className="h-4 w-4 me-1" /> {t(lang, 'invoices.downloadPdf')}
           </Button>
         </div>
       </div>
 
-      {/* Dates + outstanding */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-        <span className="text-gray-500">{t(lang, 'invoices.invoiceDate')}: <span className="text-gray-900 font-medium">{formatDate(invoice.invoice_date, lang)}</span></span>
-        {invoice.invoice_date_due && (
-          <span className="text-gray-500">{t(lang, 'invoices.dueDate')}: <span className="text-gray-900 font-medium">{formatDate(invoice.invoice_date_due, lang)}</span></span>
-        )}
-        {invoice.amount_residual > 0 && (
-          <span className="text-gray-500">{t(lang, 'invoices.outstanding')}: <span className="text-amber-700 font-semibold">{formatCurrency(invoice.amount_residual, invoice.currency)}</span></span>
-        )}
-      </div>
+      {/* The document sheet */}
+      <article className="bg-white rounded-xl border border-gray-100 print:border-0 print:rounded-none">
 
-      {/* Lines */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{t(lang, 'orders.items')}</p>
-        {invoice.lines.map((line) => (
-          <div key={line.line_id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Package className="h-8 w-8 text-gray-200 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 line-clamp-2">{line.name}</p>
-                <p className="text-xs text-gray-400 truncate">{t(lang, 'invoices.qty')}: {line.quantity} · {formatCurrency(line.price_unit, invoice.currency)}/{t(lang, 'products.perUnit')}</p>
-              </div>
+        {/* Masthead: issuer on the start side, document identity on the end side */}
+        <header className="p-6 sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="min-w-0">
+              {/* Group invoices are issued by several companies; only stamp the Kosher Place
+                  wordmark when the issuer actually is that company. Otherwise the issuer's
+                  own name carries the masthead. */}
+              {invoice.is_website_company && <Logo className="h-10 w-auto mb-3" />}
+              {invoice.company && (
+                <>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'invoices.issuedBy')}</p>
+                  <p className={`text-base font-semibold text-brand-700 ${display}`}>{invoice.company.name}</p>
+                  <div className="mt-1 text-xs text-gray-500 leading-relaxed">
+                    {addressLines(invoice.company).map((l) => <p key={l}>{l}</p>)}
+                    {invoice.company.vat && <p>{t(lang, 'invoices.taxId')}: {invoice.company.vat}</p>}
+                    {invoice.company.phone && <p dir="ltr">{invoice.company.phone}</p>}
+                  </div>
+                </>
+              )}
             </div>
-            <p className="text-sm font-semibold text-end">{formatCurrency(line.price_total, invoice.currency)}</p>
+
+            <div className="text-end shrink-0">
+              <p className={`text-2xl font-bold tracking-[0.2em] text-gray-900 uppercase ${display}`}>
+                {t(lang, 'invoices.documentTitle')}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 tabular-nums" dir="ltr">{invoice.name}</p>
+              <dl className="mt-3 text-xs text-gray-500 space-y-0.5">
+                <div className="flex justify-end gap-2">
+                  <dt>{t(lang, 'invoices.invoiceDate')}</dt>
+                  <dd className="text-gray-900 font-medium">{formatDate(invoice.invoice_date, lang)}</dd>
+                </div>
+                {invoice.invoice_date_due && (
+                  <div className="flex justify-end gap-2">
+                    <dt>{t(lang, 'invoices.dueDate')}</dt>
+                    <dd className="text-gray-900 font-medium">{formatDate(invoice.invoice_date_due, lang)}</dd>
+                  </div>
+                )}
+                {invoice.invoice_origin && (
+                  <div className="flex justify-end gap-2">
+                    <dt>{t(lang, 'invoices.orderRef')}</dt>
+                    <dd className="text-gray-900 font-medium" dir="ltr">{invoice.invoice_origin}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
           </div>
-        ))}
-      </div>
+        </header>
 
-      {/* Totals */}
-      <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 space-y-2">
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>{t(lang, 'cart.subtotal')}</span><span>{formatCurrency(invoice.amount_untaxed, invoice.currency)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>{t(lang, 'cart.tax')}</span><span>{formatCurrency(invoice.amount_tax, invoice.currency)}</span>
-        </div>
-        <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-2">
-          <span>{t(lang, 'cart.total')}</span><span>{formatCurrency(invoice.amount_total, invoice.currency)}</span>
-        </div>
-      </div>
+        {/* The one ceremonial accent, used once */}
+        <div className="h-px bg-gold/40" />
 
-      {invoice.note && (
-        <div className="mt-4 bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.orderNote')}</p>
-          <p className="text-sm text-gray-600">{invoice.note}</p>
-        </div>
-      )}
+        {/* Bill to + the signature amount-due panel */}
+        <section className="p-6 sm:p-8 grid gap-6 sm:grid-cols-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'invoices.billTo')}</p>
+            {invoice.bill_to ? (
+              <>
+                <p className="text-sm font-semibold text-gray-900">{invoice.bill_to.name}</p>
+                <div className="mt-1 text-sm text-gray-500 leading-relaxed">
+                  {addressLines(invoice.bill_to).map((l) => <p key={l}>{l}</p>)}
+                  {invoice.bill_to.vat && <p>{t(lang, 'invoices.taxId')}: {invoice.bill_to.vat}</p>}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-400">&mdash;</p>
+            )}
+          </div>
+
+          <div className="sm:text-end">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'invoices.amountDue')}</p>
+            <p className={`text-4xl font-bold tabular-nums ${display} ${paid ? 'text-gray-400' : 'text-brand-700'}`} dir="ltr">
+              {money(paid ? 0 : invoice.amount_residual)}
+            </p>
+            {dueLabel && (
+              <p className={`mt-1 text-xs font-medium ${late ? 'text-red-600' : paid ? 'text-gray-500' : 'text-gray-500'}`}>
+                {dueLabel}
+              </p>
+            )}
+            {paid && <div className="mt-3 h-px w-16 bg-gold sm:ms-auto" />}
+          </div>
+        </section>
+
+        {/* Line items: real table on sm+, stacked cards below (house convention) */}
+        <section className="px-6 sm:px-8">
+          <table className="hidden sm:table w-full text-xs">
+            <thead>
+              <tr className="border-y border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="text-start px-3 py-2.5">{t(lang, 'invoices.description')}</th>
+                <th className="text-end px-3 py-2.5 w-20">{t(lang, 'invoices.qty')}</th>
+                <th className="text-end px-3 py-2.5 w-32">{t(lang, 'invoices.unitPrice')}</th>
+                <th className="text-end px-3 py-2.5 w-32">{t(lang, 'invoices.amount')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {invoice.lines.map((line) => (
+                <tr key={line.line_id} className="break-inside-avoid">
+                  <td className="px-3 py-2.5 align-top">
+                    <p className="text-gray-900">{line.name}</p>
+                    {line.sku && <p className="text-[11px] text-gray-400 font-mono mt-0.5" dir="ltr">{line.sku}</p>}
+                  </td>
+                  <td className="px-3 py-2.5 text-end align-top text-gray-600 tabular-nums" dir="ltr">
+                    {line.quantity}{line.uom && <span className="text-gray-400"> {line.uom}</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-end align-top text-gray-600 tabular-nums" dir="ltr">{money(line.price_unit_net)}</td>
+                  <td className="px-3 py-2.5 text-end align-top font-medium text-gray-900 tabular-nums" dir="ltr">{money(line.price_subtotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="sm:hidden border-t border-gray-100">
+            {invoice.lines.map((line) => (
+              <div key={line.line_id} className="py-3 border-b border-gray-50 last:border-0">
+                <div className="flex justify-between gap-3">
+                  <p className="text-sm text-gray-900 min-w-0">{line.name}</p>
+                  <p className="text-sm font-medium text-gray-900 tabular-nums shrink-0" dir="ltr">{money(line.price_subtotal)}</p>
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5" dir="ltr">
+                  {line.sku && <span className="font-mono">{line.sku} · </span>}
+                  {line.quantity}{line.uom ? ` ${line.uom}` : ''} × {money(line.price_unit_net)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Totals, aligned to the end edge like a printed invoice */}
+        <section className="p-6 sm:p-8 pt-4 sm:pt-6">
+          <div className="sm:w-72 sm:ms-auto space-y-1.5 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-500">{t(lang, 'cart.subtotal')}</span>
+              <span className="text-gray-900 tabular-nums" dir="ltr">{money(invoice.amount_untaxed)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-500">{t(lang, 'cart.tax')}</span>
+              <span className="text-gray-900 tabular-nums" dir="ltr">{money(invoice.amount_tax)}</span>
+            </div>
+            <div className="flex justify-between gap-4 border-t border-gray-200 pt-2 mt-2">
+              <span className="font-semibold text-gray-900">{t(lang, 'cart.total')}</span>
+              <span className={`text-lg font-bold text-brand-700 tabular-nums ${display}`} dir="ltr">{money(invoice.amount_total)}</span>
+            </div>
+            {!paid && invoice.amount_residual !== invoice.amount_total && (
+              <div className="flex justify-between gap-4 text-xs pt-1">
+                <span className="text-gray-500">{t(lang, 'invoices.outstanding')}</span>
+                <span className="font-semibold text-gray-900 tabular-nums" dir="ltr">{money(invoice.amount_residual)}</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Footer: terms, reference, notes. Only rendered when Odoo has something to say. */}
+        {(invoice.payment_term || invoice.reference || invoice.note) && (
+          <footer className="border-t border-gray-100 p-6 sm:p-8 grid gap-4 sm:grid-cols-2 text-xs">
+            {(invoice.payment_term || invoice.reference) && (
+              <dl className="space-y-1">
+                {invoice.payment_term && (
+                  <div className="flex gap-2">
+                    <dt className="text-gray-400">{t(lang, 'invoices.paymentTerms')}</dt>
+                    <dd className="text-gray-700 font-medium">{invoice.payment_term}</dd>
+                  </div>
+                )}
+                {invoice.reference && (
+                  <div className="flex gap-2">
+                    <dt className="text-gray-400">{t(lang, 'invoices.reference')}</dt>
+                    <dd className="text-gray-700 font-medium" dir="ltr">{invoice.reference}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+            {invoice.note && (
+              <div className="min-w-0">
+                <p className="text-gray-400 mb-1">{t(lang, 'invoices.notes')}</p>
+                <p className="text-gray-600 whitespace-pre-line">{invoice.note}</p>
+              </div>
+            )}
+          </footer>
+        )}
+      </article>
     </div>
   )
 }
