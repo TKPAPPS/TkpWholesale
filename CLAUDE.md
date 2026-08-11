@@ -469,6 +469,15 @@ clears the `BottomNav` it used to cover.
   an explicit localized alphabetical option (Odoo orders by the active language's name).
 
 ## Company scoping (multi-company safety)
+> **NEVER apply `allowed_company_ids` to a CUSTOMER web session.** Odoo raises
+> `AccessError("Access to unauthorized or invalid company")` whenever the context names a
+> company the acting user does not belong to, and **503 of 555 active portal users sit on
+> sibling companies** (mostly Jcafe Sukhumvit, id 15), not company 1. Forcing the scope on
+> that path locked them out of the portal entirely: Odoo accepted the password, the next
+> call threw, and login answered 503. The scope belongs on the admin (`uid:apikey`) path
+> only, which is where every customer-visible query already runs. The customer session is
+> used in exactly one place, the login route, to read the user's own user/partner row.
+
 
 **This portal serves exactly ONE company: `company_id` 1, The Kosher Place (Thailand) Co. Ltd**
 (the company of website 3). The Odoo database contains ~20 sibling companies (Jcafe Sukhumvit,

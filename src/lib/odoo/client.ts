@@ -91,6 +91,13 @@ export async function odooAuthenticate(login: string, password: string): Promise
   // launch-day misconfig look like every customer suddenly has the wrong
   // password, with nothing logged.
   if (json.error) {
+    // A wrong password comes back as an ERROR named odoo.exceptions.AccessDenied, not as
+    // uid:false. Treating it as a generic ODOO_ERROR made the login route answer 503
+    // "Could not reach Odoo" for every mistyped password, so customers were told the system
+    // was down and contacted their sales rep instead of simply retrying.
+    if (json.error.data?.name === 'odoo.exceptions.AccessDenied') {
+      throw new OdooError('Invalid credentials', 'INVALID_CREDENTIALS')
+    }
     throw new OdooError(json.error.data?.message || json.error.message, 'ODOO_ERROR', json.error)
   }
   if (json.result?.uid === false) throw new OdooError('Invalid credentials', 'INVALID_CREDENTIALS')
@@ -161,21 +168,28 @@ export async function callKw(
   args: unknown[],
   kwargs: Record<string, unknown> = {},
 ): Promise<unknown> {
-  // GLOBAL COMPANY SCOPE. Every call runs with allowed_company_ids = [COMPANY_ID], so Odoo's
-  // own multi-company record rules exclude sibling companies' records everywhere at once.
-  // This is the only mechanism that also fixes company-dependent PROPERTY fields
-  // (res.partner.property_product_pricelist / property_account_position_id), which resolve
-  // against env.company and cannot be constrained by a domain. Records with company_id = false
-  // (products, packagings, categories, most partners) stay visible, so the catalog is intact.
-  // Merged first so a caller's own context keys (lang, location, ...) are preserved.
-  const context = { allowed_company_ids: [COMPANY_ID], ...((kwargs.context as Record<string, unknown>) ?? {}) }
-  const scopedKwargs = { ...kwargs, context }
-
   const adminMatch = sessionId.match(/^(\d+):(.+)$/)
+
   if (adminMatch) {
-    return callKwExternal(Number(adminMatch[1]), adminMatch[2], model, method, args, scopedKwargs)
+    // GLOBAL COMPANY SCOPE, admin path only. Every customer-visible query in the app (catalog,
+    // orders, invoices, cart) runs through this admin session, so scoping here still isolates
+    // sibling companies everywhere it matters. It also fixes company-dependent PROPERTY fields
+    // (property_product_pricelist / property_account_position_id), which resolve against
+    // env.company and cannot be constrained by a domain. Records with company_id = false
+    // (products, packagings, categories, most partners) stay visible, so the catalog is intact.
+    // Merged first so a caller's own context keys (lang, location, ...) are preserved.
+    const context = { allowed_company_ids: [COMPANY_ID], ...((kwargs.context as Record<string, unknown>) ?? {}) }
+    return callKwExternal(Number(adminMatch[1]), adminMatch[2], model, method, args, { ...kwargs, context })
   }
-  return odooRpc('/web/dataset/call_kw', { model, method, args, kwargs: scopedKwargs }, sessionId)
+
+  // CUSTOMER web session: deliberately NOT company-scoped. Odoo raises
+  // AccessError("Access to unauthorized or invalid company") whenever allowed_company_ids
+  // names a company the acting user does not belong to, and 503 of 555 active portal users
+  // sit on sibling companies (mostly Jcafe Sukhumvit, id 15) rather than company 1. Forcing
+  // the scope here locked them all out of the portal: Odoo accepted their password, then the
+  // very next call threw and login returned a 503. This path is used only by the login route,
+  // to read the user's OWN res.users and res.partner row, so there is nothing to isolate.
+  return odooRpc('/web/dataset/call_kw', { model, method, args, kwargs }, sessionId)
 }
 
 // search_read shorthand
