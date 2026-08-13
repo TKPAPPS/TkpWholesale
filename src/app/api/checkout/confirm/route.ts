@@ -60,6 +60,12 @@ async function createSchedule(args: {
 // short human-readable sentences worth showing verbatim. Anything that looks like
 // a server error (tracebacks, internal model/field names, walls of text) must not
 // reach a customer; show a generic message instead.
+// The chatter body is HTML, and the name/email come from the Odoo partner record, so they
+// are escaped rather than interpolated raw.
+function escapeChatterHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 function sanitizeOdooMessage(msg: string): string {
   const generic = 'Your order could not be confirmed. Please contact your sales representative.'
   if (!msg || msg.length > 300) return generic
@@ -318,6 +324,26 @@ export async function POST(req: NextRequest) {
         )
       }
       throw confirmErr
+    }
+
+    // Record WHO placed this order. Every portal order is created by the single "Odoo API"
+    // account, so create_uid identifies the channel but never the person; without this there
+    // is no trace of which login actually checked out. Posted as an internal log note
+    // (mail.mt_note), NOT a comment, so it is visible to staff in the chatter and is never
+    // emailed to the customer or their followers.
+    // Best-effort by design: the order is already confirmed at this point, so a failure here
+    // must never turn a placed order into an error for the customer.
+    try {
+      const who = parsed.email
+        ? `${escapeChatterHtml(parsed.name || parsed.email)} (${escapeChatterHtml(parsed.email)})`
+        : escapeChatterHtml(parsed.name || `user #${parsed.uid}`)
+      await callKw(sessionId, 'sale.order', 'message_post', [[cartId]], {
+        body: `<p>Placed through the wholesale portal by <strong>${who}</strong> (Odoo user #${parsed.uid}).</p>`,
+        message_type: 'comment',
+        subtype_xmlid: 'mail.mt_note',
+      })
+    } catch (noteErr) {
+      console.error('order attribution note failed (order still confirmed):', noteErr)
     }
 
     // The order is confirmed. If a recurrence was requested, snapshot the just-

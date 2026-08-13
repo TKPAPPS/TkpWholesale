@@ -523,6 +523,20 @@ the admin API user has company 1 in `company_ids` (no AccessError). Known accept
 DRY-1952/1953, JDC-1533) leave the catalog. To restore any of them, set their company to
 The Kosher Place Thailand or blank in Odoo.
 
+## Order attribution (who placed a portal order)
+Every portal order is created by the single "Odoo API" account (apps@kosher-place.com,
+uid 688), so `create_uid` identifies the CHANNEL but never the person. On confirm, the
+checkout route posts an internal log note to the order chatter naming the portal login
+(`message_post`, `subtype_xmlid: 'mail.mt_note'`). That subtype is `internal=true`, so the
+note is staff-only and is never emailed to the customer or their followers. The post is
+best-effort and wrapped in try/catch: the order is already confirmed by then, so a chatter
+failure must never surface as a failed checkout.
+
+Related: the Salesperson (`user_id`) column is EMPTY on portal orders (9 of 9, vs 1%
+elsewhere) because `website.salesperson_id` is not set on website 3 and `website_sale` uses
+that field rather than falling back to the creating user. Fix is Odoo config (set a
+salesperson on website 3), not code.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
