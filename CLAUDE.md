@@ -527,7 +527,8 @@ The Kosher Place Thailand or blank in Odoo.
 Every portal order is created by the single "Odoo API" account (apps@kosher-place.com,
 uid 688), so `create_uid` identifies the CHANNEL but never the person. On confirm, the
 checkout route posts an internal log note to the order chatter naming the portal login
-(`message_post`, `subtype_xmlid: 'mail.mt_note'`). That subtype is `internal=true`, so the
+(`message_post`, `subtype_xmlid: 'mail.mt_note'`, `author_id` = the customer contact so the
+chatter shows the PERSON rather than "Odoo API" as the author). That subtype is `internal=true`, so the
 note is staff-only and is never emailed to the customer or their followers. The post is
 best-effort and wrapped in try/catch: the order is already confirmed by then, so a chatter
 failure must never surface as a failed checkout.

@@ -341,6 +341,12 @@ export async function POST(req: NextRequest) {
         body: `<p>Placed through the wholesale portal by <strong>${who}</strong> (Odoo user #${parsed.uid}).</p>`,
         message_type: 'comment',
         subtype_xmlid: 'mail.mt_note',
+        // Attribute the note to the CUSTOMER CONTACT, not to the API account. Without this
+        // the chatter shows "Odoo API" as the author on every portal order, which is the
+        // integration account and hides the very thing this note exists to record. The body
+        // still spells the person out, so the entry reads correctly even if the avatar does
+        // not. Odoo falls back to the acting user if this partner id is ever invalid.
+        author_id: parsed.partner_id,
       })
     } catch (noteErr) {
       console.error('order attribution note failed (order still confirmed):', noteErr)
