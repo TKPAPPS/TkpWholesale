@@ -492,16 +492,17 @@ export interface CompanyDetails {
   phone: string
   email: string
   vat: string
+  website: string
 }
 const _fetchCompanyDetails = unstable_cache(
   async (companyId: number): Promise<CompanyDetails | null> => {
     const sessionId = await getOdooSession()
     const rows = await callKw(sessionId, 'res.company', 'read', [[companyId]], {
-      fields: ['name', 'street', 'street2', 'city', 'zip', 'state_id', 'country_id', 'phone', 'email', 'vat'],
+      fields: ['name', 'street', 'street2', 'city', 'zip', 'state_id', 'country_id', 'phone', 'email', 'vat', 'website'],
     }) as {
       name: string; street: string | false; street2: string | false; city: string | false
       zip: string | false; state_id: [number, string] | false; country_id: [number, string] | false
-      phone: string | false; email: string | false; vat: string | false
+      phone: string | false; email: string | false; vat: string | false; website: string | false
     }[]
     const c = rows[0]
     if (!c) return null
@@ -516,6 +517,7 @@ const _fetchCompanyDetails = unstable_cache(
       phone: c.phone || '',
       email: c.email || '',
       vat: c.vat || '',
+      website: c.website || '',
     }
   },
   ['odoo-company-details'],

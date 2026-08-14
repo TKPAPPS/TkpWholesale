@@ -118,10 +118,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       company: {
         name: company?.name ?? '',
         street: company?.street ?? '',
+        street2: company?.street2 ?? '',
         city: company?.city ?? '',
+        zip: company?.zip ?? '',
+        state: company?.state ?? '',
         country: company?.country ?? '',
         vat: company?.vat ?? '',
         phone: company?.phone ?? '',
+        email: company?.email ?? '',
+        website: company?.website ?? '',
       },
       lines: lines.map((l) => ({
         product_name: l.product_id ? l.product_id[1] : l.name,

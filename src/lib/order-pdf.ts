@@ -36,7 +36,7 @@ export interface OrderPdfData {
   currency: string
   note?: string | null
   ship_to: { name: string; street?: string; city?: string; country?: string }
-  company: { name: string; street?: string; city?: string; country?: string; vat?: string; phone?: string }
+  company: { name: string; street?: string; street2?: string; city?: string; zip?: string; state?: string; country?: string; vat?: string; phone?: string; email?: string; website?: string }
   lines: OrderPdfLine[]
   amount_untaxed: number
   amount_tax: number
@@ -121,7 +121,6 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   const shortLines = d.lines.filter(isShort)
 
   let page: PDFPage = pdf.addPage([A4.w, A4.h])
-  let y = 0
 
   const right = (p: PDFPage, text: string, x: number, yy: number, f: PDFFont, size: number, color = INK) =>
     p.drawText(text, { x: x - f.widthOfTextAtSize(text, size), y: yy, size, font: f, color })
@@ -141,56 +140,81 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
     return drawTableHead(page, A4.h - M)
   }
 
-  // ---------- masthead ----------
-  y = A4.h - M
-  page.drawText('THE KOSHER PLACE', { x: M, y: y - 16, size: 17, font: serif, color: BURGUNDY })
-  y -= 30
-  const issuer = [d.company.street, d.company.city, d.company.country].filter(Boolean).map(safe)
-  if (d.company.vat) issuer.push(`Tax ID: ${safe(d.company.vat)}`)
-  if (d.company.phone) issuer.push(safe(d.company.phone))
-  issuer.forEach((l) => { page.drawText(l, { x: M, y, size: 7.5, font: body, color: MUTED }); y -= 10 })
+  // ---------- brand wordmark ----------
+  // Rebuilt from the app's own Logo: THE and PLACE in letterspaced gold around KOSHER in
+  // burgundy. pdf-lib has no letter-spacing, so tracked text is drawn a character at a time.
+  const tracked = (p: PDFPage, text: string, x: number, yy: number, f: PDFFont, size: number, color: ReturnType<typeof rgb>, track: number) => {
+    let cx = x
+    for (const ch of text) {
+      p.drawText(ch, { x: cx, y: yy, size, font: f, color })
+      cx += f.widthOfTextAtSize(ch, size) + track
+    }
+    return cx - track
+  }
 
-  // document identity, on the end side
-  let ry = A4.h - M - 14
-  right(page, 'ORDER', A4.w - M, ry, serif, 20, INK)
+  const HEAD_TOP = A4.h - M
+
+  tracked(page, 'THE', M + 2, HEAD_TOP - 9, serif, 7, GOLD, 3.2)
+  page.drawText('KOSHER', { x: M, y: HEAD_TOP - 34, size: 27, font: serif, color: BURGUNDY })
+  const kosherW = serif.widthOfTextAtSize('KOSHER', 27)
+  tracked(page, 'PLACE', M + kosherW - 46, HEAD_TOP - 44, serif, 7, GOLD, 3.2)
+
+  // Legal entity + whatever contact detail Odoo actually holds. Nothing is padded with a
+  // placeholder: an invented address on a commercial document is worse than a short one.
+  let y = HEAD_TOP - 60
+  page.drawText(safe(d.company.name), { x: M, y, size: 8.5, font: bold, color: INK })
+  y -= 11
+  const cityLine = [d.company.zip, d.company.city, d.company.state].filter(Boolean).map(safe).join(' ')
+  const issuer = [
+    [d.company.street, d.company.street2].filter(Boolean).map(safe).join(', '),
+    cityLine,
+    safe(d.company.country),
+    d.company.vat ? `Tax ID ${safe(d.company.vat)}` : '',
+    [d.company.phone, d.company.email].filter(Boolean).map(safe).join('   '),
+    safe(d.company.website).replace(/^https?:\/\//, '').replace(/\/$/, ''),
+  ].filter(Boolean)
+  issuer.forEach((l) => { page.drawText(l, { x: M, y, size: 7.5, font: body, color: MUTED }); y -= 9 })
+
+  // ---------- document identity ----------
+  let ry = HEAD_TOP - 14
+  right(page, 'ORDER', A4.w - M, ry, serif, 21, INK)
+  ry -= 18
+  right(page, safe(d.name), A4.w - M, ry, bold, 11, BURGUNDY)
   ry -= 16
-  right(page, safe(d.name), A4.w - M, ry, bold, 10, INK)
-  ry -= 14
   const meta: [string, string][] = [['Order date', fmtDate(d.date_order)]]
   if (d.commitment_date) meta.push(['Requested delivery', fmtDate(d.commitment_date)])
   if (d.client_order_ref) meta.push(['PO / Reference', safe(d.client_order_ref)])
   meta.forEach(([k, v]) => {
     right(page, v, A4.w - M, ry, bold, 8, INK)
-    right(page, k, A4.w - M - Math.max(bold.widthOfTextAtSize(v, 8) + 8, 8), ry, body, 8, MUTED)
-    ry -= 11
+    right(page, k, A4.w - M - bold.widthOfTextAtSize(v, 8) - 10, ry, body, 8, MUTED)
+    ry -= 11.5
   })
 
   // ---------- deliver to ----------
   y = Math.min(y, ry) - 12
-  page.drawText('DELIVER TO', { x: M, y, size: 7, font: bold, color: MUTED })
+  page.drawText('DELIVER TO', { x: M, y, size: 6.5, font: bold, color: MUTED })
   y -= 13
-  page.drawText(safe(d.ship_to.name), { x: M, y, size: 10.5, font: bold, color: INK })
+  page.drawText(safe(d.ship_to.name), { x: M, y, size: 11, font: bold, color: INK })
   y -= 12
-  ;[d.ship_to.street, d.ship_to.city, d.ship_to.country].filter(Boolean).forEach((l) => {
-    page.drawText(safe(l), { x: M, y, size: 8, font: body, color: MUTED }); y -= 10
-  })
+  const shipLines = [d.ship_to.street, d.ship_to.city, d.ship_to.country].filter(Boolean).map(safe)
+  shipLines.forEach((l) => { page.drawText(l, { x: M, y, size: 8, font: body, color: MUTED }); y -= 10 })
 
-  // gold hairline, the one ceremonial mark the brand uses
+  // the one ceremonial mark the brand uses
   y -= 8
   page.drawLine({ start: { x: M, y }, end: { x: A4.w - M, y }, thickness: 1, color: GOLD })
-  y -= 22
+  y -= 20
 
   // ---------- delivery summary ----------
-  page.drawText('DELIVERY', { x: M, y, size: 7, font: bold, color: MUTED })
-  y -= 20
+  page.drawText('DELIVERY', { x: M, y, size: 6.5, font: bold, color: MUTED })
+  y -= 19
   if (shortLines.length > 0) {
-    page.drawText(`${shortLines.length} short`, { x: M, y, size: 19, font: serif, color: BURGUNDY })
-    y -= 14
+    page.drawText(`${shortLines.length} short`, { x: M, y, size: 20, font: serif, color: BURGUNDY })
+    y -= 15
     page.drawText(`${physical.length - shortLines.length} of ${physical.length} items delivered in full`,
       { x: M, y, size: 9, font: body, color: MUTED })
   } else {
-    page.drawText(safe(d.state_label), { x: M, y, size: 19, font: serif, color: INK })
-    y -= 14
+    page.drawText(safe(d.state_label), { x: M, y, size: 20, font: serif, color: INK })
+    y -= 15
     page.drawText(physical.length > 0 ? 'Everything on this order was delivered' : 'No delivery recorded yet',
       { x: M, y, size: 9, font: body, color: MUTED })
   }
@@ -199,31 +223,29 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   // ---------- line items ----------
   y = drawTableHead(page, y)
 
-  const descWidth = COL.ordered - COL.desc - 24
+  const descWidth = COL.ordered - COL.desc - 30
   for (const l of d.lines) {
     const nameLines = wrap(l.product_name, body, 9, descWidth)
     const sub = [safe(l.sku), `${safe(l.packaging_name)}${l.packaging_qty ? ` x ${qty(l.packaging_qty)}` : ''}`]
-      .filter(Boolean).join('  ')
+      .filter(Boolean).join('   ')
     const short = isShort(l)
     const notes: string[] = []
     if (short) notes.push(l.qty_delivered === 0 ? 'Not sent' : `Short by ${qty(l.unit_qty - l.qty_delivered)}`)
     if (l.weighed && l.deliverable) notes.push('weighed at picking')
     if (l.deliverable && l.qty_delivered > 0 && l.qty_invoiced === 0) notes.push('not yet invoiced')
 
-    const rowH = 14 + nameLines.length * 11 + (notes.length ? 10 : 0)
-    // Reserve only a row's worth of space. Reserving room for the totals block on EVERY row
-    // left ~90pt idle at the foot of every page and pushed long orders onto extra sheets.
-    if (y - rowH < M + 40) y = newPage()
+    const rowH = 14 + nameLines.length * 11 + (notes.length ? 9 : 0)
+    if (y - rowH < M + 46) y = newPage()
 
     if (short) {
-      page.drawRectangle({ x: M, y: y - rowH + 8, width: A4.w - M * 2, height: rowH, color: SHORT_BG })
+      page.drawRectangle({ x: M, y: y - rowH + 9, width: A4.w - M * 2, height: rowH, color: SHORT_BG })
     }
 
     let ly = y
-    nameLines.forEach((ln) => { page.drawText(ln, { x: COL.desc + 6, y: ly, size: 9, font: body, color: INK }); ly -= 11 })
-    if (sub) { page.drawText(sub, { x: COL.desc + 6, y: ly, size: 7, font: body, color: FAINT }); ly -= 10 }
+    nameLines.forEach((ln) => { page.drawText(ln, { x: COL.desc + 8, y: ly, size: 9, font: body, color: INK }); ly -= 11 })
+    if (sub) { page.drawText(sub, { x: COL.desc + 8, y: ly, size: 7, font: body, color: FAINT }); ly -= 10 }
     if (notes.length) {
-      page.drawText(notes.join('   '), { x: COL.desc + 6, y: ly, size: 7, font: bold, color: short ? BURGUNDY : FAINT })
+      page.drawText(notes.join('    '), { x: COL.desc + 8, y: ly, size: 7, font: bold, color: short ? BURGUNDY : FAINT })
     }
 
     const orderedTxt = `${qty(l.unit_qty)}${l.uom ? ` ${safe(l.uom)}` : ''}`
@@ -234,44 +256,53 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
     } else {
       right(page, 'Charge', COL.delivered + 62, y, body, 9, FAINT)
     }
-    right(page, money(l.price_total, d.currency), COL.amount - 6, y, bold, 9, INK)
+    right(page, money(l.price_total, d.currency), COL.amount - 8, y, bold, 9, INK)
 
     y -= rowH
-    page.drawLine({ start: { x: M, y: y + 6 }, end: { x: A4.w - M, y: y + 6 }, thickness: 0.5, color: RULE })
+    page.drawLine({ start: { x: M, y: y + 7 }, end: { x: A4.w - M, y: y + 7 }, thickness: 0.5, color: RULE })
   }
 
   // ---------- totals ----------
-  if (y < M + 96) y = newPage()
-  y -= 16
-  const tx = A4.w - M
-  const label = (s: string, v: string, f: PDFFont, size: number, color = INK) => {
-    right(page, s, tx - 118, y, body, size, MUTED)
+  // The block consumes ~85pt (lead-in, three rows, rule, grand total). Reserving 104 pushed the
+  // totals of a full-page order onto a sheet of their own with the rest of page one left blank.
+  if (y < M + 88) y = newPage()
+  y -= 20
+  const tx = A4.w - M - 8
+  const totalRow = (s2: string, v: string, f: PDFFont, size: number, color = INK) => {
+    right(page, s2, tx - 128, y, body, size, MUTED)
     right(page, v, tx, y, f, size, color)
-    y -= 14
+    y -= 15
   }
-  label('Subtotal', money(d.amount_untaxed, d.currency), body, 9)
-  label('VAT', money(d.amount_tax, d.currency), body, 9)
-  page.drawLine({ start: { x: tx - 176, y: y + 6 }, end: { x: tx, y: y + 6 }, thickness: 0.5, color: RULE })
-  y -= 4
-  right(page, 'Total', tx - 118, y, bold, 10, INK)
-  right(page, money(d.amount_total, d.currency), tx, y, serif, 13, BURGUNDY)
-  y -= 26
+  totalRow('Subtotal', money(d.amount_untaxed, d.currency), body, 9)
+  totalRow('VAT', money(d.amount_tax, d.currency), body, 9)
+  page.drawLine({ start: { x: tx - 190, y: y + 7 }, end: { x: tx, y: y + 7 }, thickness: 0.5, color: RULE })
+  y -= 5
+  right(page, 'Total', tx - 128, y, bold, 10, INK)
+  right(page, money(d.amount_total, d.currency), tx, y, serif, 14, BURGUNDY)
+  y -= 30
 
   // ---------- note ----------
   if (d.note) {
-    if (y < M + 50) y = newPage()
-    page.drawText('ORDER NOTE', { x: M, y, size: 7, font: bold, color: MUTED })
+    if (y < M + 56) y = newPage()
+    page.drawText('ORDER NOTE', { x: M, y, size: 6.5, font: bold, color: MUTED })
     y -= 12
     wrap(d.note, body, 8.5, A4.w - M * 2, 4).forEach((ln) => {
       page.drawText(ln, { x: M, y, size: 8.5, font: body, color: MUTED }); y -= 11
     })
   }
 
-  // ---------- page numbers, once the total is known ----------
+  // ---------- footer band on every page ----------
+  const footer = [
+    safe(d.company.name),
+    safe(d.company.website).replace(/^https?:\/\//, '').replace(/\/$/, ''),
+    safe(d.company.phone),
+  ].filter(Boolean).join('   ·   ')
   const pages = pdf.getPages()
   pages.forEach((p, i) => {
-    const txt = `${safe(d.name)}   ${i + 1} of ${pages.length}`
-    p.drawText(txt, { x: M, y: M - 16, size: 7, font: body, color: FAINT })
+    p.drawLine({ start: { x: M, y: M + 4 }, end: { x: A4.w - M, y: M + 4 }, thickness: 0.5, color: RULE })
+    if (footer) p.drawText(footer, { x: M, y: M - 8, size: 6.5, font: body, color: FAINT })
+    const pn = `${safe(d.name)}   Page ${i + 1} of ${pages.length}`
+    p.drawText(pn, { x: A4.w - M - body.widthOfTextAtSize(pn, 6.5), y: M - 8, size: 6.5, font: body, color: FAINT })
   })
 
   return pdf.save()
