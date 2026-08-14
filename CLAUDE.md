@@ -583,6 +583,12 @@ not fetched from Odoo. This is also the file that will be attached to the delive
 has to stand alone. It carries ordered against delivered, which Odoo's own sales order report
 does not.
 
+The legal issuer block (name, address, Tax ID) is a constant in `order-pdf.ts`, NOT read from
+Odoo. `res.company` id 1 is incomplete and partly wrong: no street, city, VAT or email, and a
+zip of 10270 when the head office is 10110. Correcting the Odoo record would let the constant
+be deleted, and would also fix Odoo's own invoice PDFs, which customers receive today with the
+address missing. Phone and website still come from Odoo, where they are correct.
+
 Notes for future edits:
 - **English only, deliberately.** The standard PDF fonts are Latin-1; Hebrew would need an
   embedded font plus bidi reordering. Anything outside Latin-1 is stripped by `safe()` rather

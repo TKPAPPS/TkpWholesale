@@ -43,6 +43,25 @@ export interface OrderPdfData {
   amount_total: number
 }
 
+// The legal issuer block for generated documents.
+//
+// These are held here rather than read from Odoo because res.company id 1 is both incomplete
+// and partly wrong: no street, no city, no VAT number, no email, and a zip of 10270 when the
+// head office is 10110. A document that goes to wholesale buyers cannot carry a wrong address,
+// so these values take precedence over whatever Odoo returns.
+//
+// Correcting the Odoo record is still worth doing and would let this be deleted. It would also
+// fix Odoo's own invoice PDFs, which customers already receive today with the address missing.
+const ISSUER = {
+  name: 'The Kosher Place (Thailand) Co., Ltd. (Head Office)',
+  address: [
+    '66/4 Sukhumvit 20 (Mille Malle Community Mall)',
+    'Room 301-302, 3rd floor, Khlong Toei',
+    'Bangkok 10110, Thailand',
+  ],
+  vat: '0105547143391',
+}
+
 const A4 = { w: 595.28, h: 841.89 }
 const M = 46                      // page margin
 const BURGUNDY = rgb(0.420, 0.082, 0.208)   // #6B1535
@@ -162,18 +181,17 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   // Legal entity + whatever contact detail Odoo actually holds. Nothing is padded with a
   // placeholder: an invented address on a commercial document is worse than a short one.
   let y = HEAD_TOP - 60
-  page.drawText(safe(d.company.name), { x: M, y, size: 8.5, font: bold, color: INK })
+  page.drawText(ISSUER.name, { x: M, y, size: 8.5, font: bold, color: INK })
   y -= 11
-  const cityLine = [d.company.zip, d.company.city, d.company.state].filter(Boolean).map(safe).join(' ')
-  const issuer = [
-    [d.company.street, d.company.street2].filter(Boolean).map(safe).join(', '),
-    cityLine,
-    safe(d.company.country),
-    d.company.vat ? `Tax ID ${safe(d.company.vat)}` : '',
-    [d.company.phone, d.company.email].filter(Boolean).map(safe).join('   '),
-    safe(d.company.website).replace(/^https?:\/\//, '').replace(/\/$/, ''),
+  const contact = [d.company.phone, d.company.email].filter(Boolean).map(safe).join('   ')
+  const site = safe(d.company.website).replace(/^https?:\/\//, '').replace(/\/$/, '')
+  const issuerLines = [
+    ...ISSUER.address,
+    `Tax ID ${ISSUER.vat}`,
+    contact,
+    site,
   ].filter(Boolean)
-  issuer.forEach((l) => { page.drawText(l, { x: M, y, size: 7.5, font: body, color: MUTED }); y -= 9 })
+  issuerLines.forEach((l) => { page.drawText(l, { x: M, y, size: 7.5, font: body, color: MUTED }); y -= 9 })
 
   // ---------- document identity ----------
   let ry = HEAD_TOP - 14
@@ -310,7 +328,7 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
 
   // ---------- footer band on every page ----------
   const footer = [
-    safe(d.company.name),
+    ISSUER.name,
     safe(d.company.website).replace(/^https?:\/\//, '').replace(/\/$/, ''),
     safe(d.company.phone),
   ].filter(Boolean).join('   ·   ')
