@@ -10,7 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToastStore } from '@/store/toastStore'
 import { useCartStore } from '@/store/cartStore'
-import { ChevronLeft, RefreshCw, Printer } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Printer } from 'lucide-react'
 import { Logo } from '@/components/layout/Logo'
 
 export default function OrderDetailPage() {
@@ -21,6 +21,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const showToast = useToastStore((s) => s.show)
   const reorderLines = useCartStore((s) => s.reorderLines)
 
@@ -30,6 +31,25 @@ export default function OrderDetailPage() {
       .then((d) => { if (d) setOrder(d) })
       .finally(() => setLoading(false))
   }, [orderId])
+
+  const downloadPdf = async () => {
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/pdf`)
+      if (!res.ok) { showToast(t(lang, 'orders.pdfFailed'), 'error'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${order?.name ?? `order-${orderId}`}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast(t(lang, 'orders.pdfFailed'), 'error')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   const reorder = async () => {
     if (!order) return
@@ -96,6 +116,9 @@ export default function OrderDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> {t(lang, 'invoices.print')}
+          </Button>
+          <Button variant="secondary" onClick={downloadPdf} loading={downloadingPdf}>
+            <Download className="h-4 w-4" /> {t(lang, 'orders.downloadPdf')}
           </Button>
           <Button variant="ghost" onClick={reorder} loading={reordering}>
             <RefreshCw className="h-4 w-4" /> {t(lang, 'orders.reorder')}
