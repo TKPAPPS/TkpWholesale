@@ -538,6 +538,28 @@ elsewhere) because `website.salesperson_id` is not set on website 3 and `website
 that field rather than falling back to the creating user. Fix is Odoo config (set a
 salesperson on website 3), not code.
 
+## Ordered vs delivered (delivery reporting)
+The order detail page shows ordered, delivered and invoiced quantity per line, and the status
+badge is derived from the LINES rather than Odoo's `delivery_status`. Three rules matter and
+all three came from real production data:
+
+- **`qty_delivered_method` is the "is this a physical item" test.** `stock_move` means Odoo
+  derives the delivered quantity from actual stock moves; `manual` marks charge lines such as
+  Delivery Service, which never ship. 356 of ~3,000 order lines in a fortnight are `manual`,
+  and counting them would report a permanent phantom shortfall on every rep-entered order.
+  Do NOT infer this from the product type.
+- **Weight-priced goods are exempt from the shortfall comparison.** Resolve from the UoM
+  CATEGORY being `Weight` (this catches "Box of 5 kg", which a name match would miss). Fish and
+  produce are weighed at picking, so delivered rarely equals ordered.
+- **Never badge from `delivery_status`.** It reports `full` once nothing is OUTSTANDING, and a
+  cancelled line is not outstanding. Order S17189 read "full" with 2 of 14 lines never shipped,
+  so the portal told the customer their order arrived complete. `deliveryStateFromLines()` in
+  `src/lib/order-labels.ts` is the shared derivation; the list and the detail both use it so
+  they cannot disagree.
+
+Rep-entered orders are covered automatically: the order history has never filtered on
+`website_id`, so phone orders appear beside portal ones and carry identical delivery data.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the

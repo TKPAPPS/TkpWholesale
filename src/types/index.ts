@@ -131,6 +131,14 @@ export interface OrderLine {
   packaging_name: string
   packaging_qty: number
   unit_qty: number
+  // Delivery reporting. `deliverable` is false for charge lines (Delivery Service and
+  // similar) which never ship; `weighed` marks weight-priced goods, where the picked
+  // quantity legitimately differs from the ordered one. Neither counts as a shortfall.
+  uom: string
+  qty_delivered: number
+  qty_invoiced: number
+  deliverable: boolean
+  weighed: boolean
   price_unit: number
   price_subtotal: number
   price_total: number

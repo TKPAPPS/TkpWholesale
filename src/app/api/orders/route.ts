@@ -3,7 +3,7 @@ import { MOCK_ORDERS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { parsePagination } from '@/lib/pagination'
-import { orderStateLabel } from '@/lib/order-labels'
+import { orderStateLabel, deliveryStateFromLines, DELIVERY_STATE_LABELS, type DeliveryLine } from '@/lib/order-labels'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -55,9 +55,51 @@ export async function GET(req: NextRequest) {
       }) as Promise<{ id: number; name: string; date_order: string; amount_total: number; currency_id: [number, string]; state: string; order_line: number[]; delivery_status?: string }[]>,
     ])
 
+    // Derive the delivery badge from the LINES, not from Odoo's delivery_status, which reports
+    // "full" as soon as nothing is outstanding and therefore counts a CANCELLED line as
+    // satisfied. That is how S17189 came to be badged "Delivered" with two of its fourteen
+    // lines never shipped. One batched read covers the whole page (~20 orders), and it fails
+    // soft: if it errors we fall back to the old label rather than break the order list.
+    const lineIds = rawOrders.flatMap(o => o.order_line)
+    const linesByOrder = new Map<number, DeliveryLine[]>()
+    if (lineIds.length > 0) {
+      try {
+        const rawLines = await searchRead(sessionId, 'sale.order.line',
+          [['id', 'in', lineIds]],
+          ['id', 'order_id', 'product_uom_qty', 'qty_delivered', 'qty_delivered_method', 'product_uom'],
+          { limit: 0 },
+        ) as unknown as { order_id: [number, string]; product_uom_qty: number; qty_delivered: number
+          qty_delivered_method: string; product_uom: [number, string] | false }[]
+        const uomIds = Array.from(new Set(rawLines.map(l => (l.product_uom ? l.product_uom[0] : 0)).filter(Boolean)))
+        const weightUomIds = new Set<number>()
+        if (uomIds.length > 0) {
+          const uoms = await callKw(sessionId, 'uom.uom', 'read', [uomIds], { fields: ['id', 'category_id'] }) as
+            { id: number; category_id: [number, string] | false }[]
+          uoms.forEach(u => { if (u.category_id && u.category_id[1] === 'Weight') weightUomIds.add(u.id) })
+        }
+        rawLines.forEach(l => {
+          const oid = l.order_id[0]
+          const arr = linesByOrder.get(oid) ?? []
+          arr.push({
+            qty_ordered: l.product_uom_qty,
+            qty_delivered: l.qty_delivered,
+            deliverable: l.qty_delivered_method === 'stock_move',
+            weighed: weightUomIds.has(l.product_uom ? l.product_uom[0] : 0),
+          })
+          linesByOrder.set(oid, arr)
+        })
+      } catch (err) {
+        console.error('delivery state lookup failed, falling back to delivery_status:', err)
+      }
+    }
+
     const orders = rawOrders.map(o => {
       const deliveryStatus = o.delivery_status ?? null
-      const stateLabel = orderStateLabel(o.state, deliveryStatus)
+      const derived = linesByOrder.get(o.id)
+      const deliveryState = derived ? deliveryStateFromLines(derived) : 'unknown'
+      const stateLabel = derived && deliveryState !== 'unknown'
+        ? DELIVERY_STATE_LABELS[deliveryState]
+        : orderStateLabel(o.state, deliveryStatus)
       return {
         id: o.id,
         name: o.name,
@@ -66,6 +108,7 @@ export async function GET(req: NextRequest) {
         currency: o.currency_id[1] ?? 'THB',
         state: o.state,
         delivery_status: deliveryStatus,
+        delivery_state: deliveryState,
         state_label: stateLabel,
         line_count: o.order_line.length,
       }

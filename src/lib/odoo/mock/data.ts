@@ -315,8 +315,13 @@ export const MOCK_ORDER_DETAIL: OrderDetail = {
   client_order_ref: 'PO-2026-0042',
   commitment_date: '2026-06-25 09:00:00',
   lines: [
-    { line_id: 1001, product_id: 22, template_id: 22, packaging_id: 1, product_name: 'Extra Virgin Olive Oil 5L', product_name_he: 'שמן זית כתית מובחר 5 ליטר', sku: 'OIL-EV-5L', packaging_name: 'Pack of 4', packaging_qty: 2, unit_qty: 8, price_unit: 240.00, price_subtotal: 1920.00, price_total: 2016.00 },
-    { line_id: 1002, product_id: 23, template_id: 23, packaging_id: 2, product_name: 'Tahini 500g', product_name_he: 'טחינה גולמית 500 גרם', sku: 'TAH-500', packaging_name: 'Pack of 12', packaging_qty: 1, unit_qty: 12, price_unit: 90.00, price_subtotal: 1080.00, price_total: 1134.00 },
+    // Deliberately covers all four delivery cases, so local dev exercises the real logic:
+    // fully delivered, short, weight-priced (over the ordered number, not a shortfall),
+    // and a charge line that never ships.
+    { line_id: 1001, product_id: 22, template_id: 22, packaging_id: 1, product_name: 'Extra Virgin Olive Oil 5L', product_name_he: 'שמן זית כתית מובחר 5 ליטר', sku: 'OIL-EV-5L', packaging_name: 'Pack of 4', packaging_qty: 2, unit_qty: 8, uom: 'Unit', qty_delivered: 8, qty_invoiced: 8, deliverable: true, weighed: false, price_unit: 240.00, price_subtotal: 1920.00, price_total: 2016.00 },
+    { line_id: 1002, product_id: 23, template_id: 23, packaging_id: 2, product_name: 'Tahini 500g', product_name_he: 'טחינה גולמית 500 גרם', sku: 'TAH-500', packaging_name: 'Pack of 12', packaging_qty: 1, unit_qty: 12, uom: 'Unit', qty_delivered: 5, qty_invoiced: 5, deliverable: true, weighed: false, price_unit: 90.00, price_subtotal: 1080.00, price_total: 1134.00 },
+    { line_id: 1003, product_id: 24, template_id: 24, packaging_id: null, product_name: 'Seabass Fillet', product_name_he: 'פילה לברק', sku: 'FSH-SB', packaging_name: 'Box of 10 Kg', packaging_qty: 1, unit_qty: 10, uom: 'kg', qty_delivered: 10.42, qty_invoiced: 10.42, deliverable: true, weighed: true, price_unit: 780.00, price_subtotal: 8127.60, price_total: 8533.98 },
+    { line_id: 1004, product_id: 25, template_id: 25, packaging_id: null, product_name: 'Delivery Service', product_name_he: 'שירות משלוח', sku: '', packaging_name: 'Unit', packaging_qty: 1, unit_qty: 1, uom: 'Unit', qty_delivered: 0, qty_invoiced: 0, deliverable: false, weighed: false, price_unit: 150.00, price_subtotal: 150.00, price_total: 157.50 },
   ],
 }
 

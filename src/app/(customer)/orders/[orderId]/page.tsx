@@ -112,21 +112,60 @@ export default function OrderDetailPage() {
       {/* Lines */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{t(lang, 'orders.items')}</p>
-        {order.lines.map((line) => (
-          <div key={line.line_id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Package className="h-8 w-8 text-gray-200 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 line-clamp-2">{lang === 'he' ? line.product_name_he : line.product_name}</p>
-                <p className="text-xs text-gray-400 truncate">{line.sku} · {line.packaging_name} × {line.packaging_qty}</p>
+        {order.lines.map((line) => {
+          // A line is short only when it is stock-tracked AND not weight-priced. Charge lines
+          // (Delivery Service) never ship, and weighed goods rarely match the ordered number,
+          // so neither is a shortfall. Marking them would bury the real ones.
+          const short = line.deliverable && !line.weighed && line.qty_delivered < line.unit_qty
+          const none = short && line.qty_delivered === 0
+          return (
+            <div key={line.line_id} className="py-3 border-b border-gray-50 last:border-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <Package className="h-8 w-8 text-gray-200 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 line-clamp-2">{lang === 'he' ? line.product_name_he : line.product_name}</p>
+                    <p className="text-xs text-gray-400 truncate">{line.sku} · {line.packaging_name} × {line.packaging_qty}</p>
+                  </div>
+                </div>
+                <div className="text-end shrink-0">
+                  <p className="text-sm font-semibold">{formatCurrency(line.price_total, order.currency)}</p>
+                  <p className="text-xs text-gray-400">{formatCurrency(line.price_unit, order.currency)}/unit</p>
+                </div>
+              </div>
+
+              {/* Ordered against delivered. Shown on every line so the customer never has to
+                  wonder whether a quiet line means "fine" or "not checked". */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs ps-11">
+                <span className="text-gray-400">
+                  {t(lang, 'orders.ordered')} <span className="text-gray-700 tabular-nums font-medium">{line.unit_qty}</span>
+                  {line.uom && <span className="text-gray-400"> {line.uom}</span>}
+                </span>
+                {line.deliverable ? (
+                  <span className={short ? 'text-amber-700 font-medium' : 'text-gray-400'}>
+                    {t(lang, 'orders.delivered')} <span className="tabular-nums font-medium">{line.qty_delivered}</span>
+                    {line.uom && <span> {line.uom}</span>}
+                    {line.weighed && <span className="text-gray-400"> · {t(lang, 'orders.weighed')}</span>}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">{t(lang, 'orders.notShipped')}</span>
+                )}
+                {line.qty_invoiced > 0 && (
+                  <span className="text-gray-400">
+                    {t(lang, 'orders.invoiced')} <span className="tabular-nums">{line.qty_invoiced}</span>
+                  </span>
+                )}
+                {short && (
+                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
+                    {none
+                      ? t(lang, 'orders.notSent')
+                      : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
+                  </span>
+                )}
               </div>
             </div>
-            <div className="text-end">
-              <p className="text-sm font-semibold">{formatCurrency(line.price_total, order.currency)}</p>
-              <p className="text-xs text-gray-400">{formatCurrency(line.price_unit, order.currency)}/unit</p>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Totals */}
