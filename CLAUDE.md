@@ -571,6 +571,18 @@ rule, so the document reads in one colour family.
 Rep-entered orders are covered automatically: the order history has never filtered on
 `website_id`, so phone orders appear beside portal ones and carry identical delivery data.
 
+## PDFs: invoices yes, sales orders no
+The invoice PDF works because Odoo stores one as an `ir.attachment` when the invoice is
+posted (sampled 25 of 25 recent invoices had one). Sales orders do NOT get a stored PDF
+(0 of 25), and there is no way to render one over JSON-RPC: Odoo 17+ removed the public
+`ir.actions.report.render_qweb_pdf`, and the replacement `_render_qweb_pdf` is private, so RPC
+rejects it outright. Do not try to "fix" the order PDF by hunting for another report method.
+
+The order page therefore offers **Print** rather than Download PDF, which produces a PDF from
+the on-screen document and carries the delivered quantities that Odoo's own sales order report
+does not. `/api/orders/[id]/pdf` still serves a stored attachment if one ever exists, and
+otherwise answers 404, not 503, so it never claims a transient outage for something permanent.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
