@@ -10,7 +10,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToastStore } from '@/store/toastStore'
 import { useCartStore } from '@/store/cartStore'
-import { Package, ChevronLeft, Download, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Download, RefreshCw, Printer } from 'lucide-react'
+import { Logo } from '@/components/layout/Logo'
 
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>()
@@ -71,122 +72,242 @@ export default function OrderDetailPage() {
   if (loading) return <LoadingSpinner />
   if (notFound || !order) return <EmptyState title="Order not found" action={<Button onClick={() => router.back()} variant="secondary">Go back</Button>} />
 
+  // Georgia (font-serif) carries no Hebrew glyphs, so the display face is English only.
+  // Money is unaffected: formatCurrency always renders Latin numerals.
+  const display = lang === 'he' ? '' : 'font-serif'
+
+  // Only stock-tracked, non-weighed lines can be short. Charge lines never ship and weighed
+  // goods rarely match the ordered number, so neither is a shortfall.
+  const isShort = (l: typeof order.lines[number]) =>
+    l.deliverable && !l.weighed && l.qty_delivered < l.unit_qty
+  const physical = order.lines.filter((l) => l.deliverable)
+  const shortLines = order.lines.filter(isShort)
+  const deliveredInFull = physical.length - shortLines.length
+  const money = (n: number) => formatCurrency(n, order.currency)
+
+  // Quantity cell, shared by the table and the stacked cards so the two can never drift.
+  const qtyCell = (l: typeof order.lines[number]) => {
+    if (!l.deliverable) return <span className="text-gray-300">{t(lang, 'orders.chargeLine')}</span>
+    const short = isShort(l)
+    return (
+      <span className={short ? 'font-semibold text-amber-700' : 'text-gray-600'}>
+        {l.qty_delivered}
+        {l.weighed && <span className="text-gray-400"> {l.uom}</span>}
+      </span>
+    )
+  }
+
   return (
-    <div className="max-w-2xl mx-auto">
-      <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-brand-700 hover:underline mb-6">
-        <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'orders.title')}
-      </button>
-
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-gray-900">{order.name}</h1>
-          <p className="text-sm text-gray-400">{formatDate(order.date_order, lang)} · {order.state_label}</p>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <Button variant="secondary" size="sm" onClick={downloadPdf} loading={downloadingPdf}>
-            <Download className="h-4 w-4 me-1" /> {t(lang, 'orders.downloadPdf')}
+    <div className="max-w-3xl mx-auto">
+      {/* Screen-only controls. The sheet below is what prints. */}
+      <div className="flex flex-col gap-3 mb-6 print:hidden sm:flex-row sm:items-center sm:justify-between">
+        <button onClick={() => router.back()} className="flex items-center gap-1 self-start text-sm text-brand-700 hover:underline py-2 -my-2">
+          <ChevronLeft className="h-4 w-4 rtl:rotate-180" /> {t(lang, 'orders.title')}
+        </button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> {t(lang, 'invoices.print')}
           </Button>
-          <Button variant="ghost" size="sm" onClick={reorder} loading={reordering}>
-            <RefreshCw className="h-4 w-4 me-1" /> {t(lang, 'orders.reorder')}
+          <Button variant="secondary" onClick={downloadPdf} loading={downloadingPdf}>
+            <Download className="h-4 w-4" /> {t(lang, 'orders.downloadPdf')}
+          </Button>
+          <Button variant="ghost" onClick={reorder} loading={reordering}>
+            <RefreshCw className="h-4 w-4" /> {t(lang, 'orders.reorder')}
           </Button>
         </div>
       </div>
 
-      {/* Delivery */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.deliveryAddress')}</p>
-        <p className="text-sm font-medium text-gray-900">{order.partner_shipping.name}</p>
-        <p className="text-sm text-gray-500 line-clamp-2">{order.partner_shipping.street}, {order.partner_shipping.city}</p>
-        {(order.commitment_date || order.client_order_ref) && (
-          <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap gap-x-8 gap-y-1 text-sm">
-            {order.commitment_date && (
-              <span className="text-gray-500">{t(lang, 'checkout.deliveryDate')}: <span className="text-gray-900 font-medium">{formatDate(order.commitment_date, lang)}</span></span>
-            )}
-            {order.client_order_ref && (
-              <span className="text-gray-500">{t(lang, 'checkout.poRef')}: <span className="text-gray-900 font-medium">{order.client_order_ref}</span></span>
-            )}
-          </div>
-        )}
-      </div>
+      <article className="bg-white rounded-xl border border-gray-100 print:border-0 print:rounded-none">
 
-      {/* Lines */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{t(lang, 'orders.items')}</p>
-        {order.lines.map((line) => {
-          // A line is short only when it is stock-tracked AND not weight-priced. Charge lines
-          // (Delivery Service) never ship, and weighed goods rarely match the ordered number,
-          // so neither is a shortfall. Marking them would bury the real ones.
-          const short = line.deliverable && !line.weighed && line.qty_delivered < line.unit_qty
-          const none = short && line.qty_delivered === 0
-          return (
-            <div key={line.line_id} className="py-3 border-b border-gray-50 last:border-0">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <Package className="h-8 w-8 text-gray-200 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 line-clamp-2">{lang === 'he' ? line.product_name_he : line.product_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{line.sku} · {line.packaging_name} × {line.packaging_qty}</p>
-                  </div>
-                </div>
-                <div className="text-end shrink-0">
-                  <p className="text-sm font-semibold">{formatCurrency(line.price_total, order.currency)}</p>
-                  <p className="text-xs text-gray-400">{formatCurrency(line.price_unit, order.currency)}/unit</p>
-                </div>
-              </div>
-
-              {/* Ordered against delivered. Shown on every line so the customer never has to
-                  wonder whether a quiet line means "fine" or "not checked". */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs ps-11">
-                <span className="text-gray-400">
-                  {t(lang, 'orders.ordered')} <span className="text-gray-700 tabular-nums font-medium">{line.unit_qty}</span>
-                  {line.uom && <span className="text-gray-400"> {line.uom}</span>}
-                </span>
-                {line.deliverable ? (
-                  <span className={short ? 'text-amber-700 font-medium' : 'text-gray-400'}>
-                    {t(lang, 'orders.delivered')} <span className="tabular-nums font-medium">{line.qty_delivered}</span>
-                    {line.uom && <span> {line.uom}</span>}
-                    {line.weighed && <span className="text-gray-400"> · {t(lang, 'orders.weighed')}</span>}
-                  </span>
-                ) : (
-                  <span className="text-gray-400">{t(lang, 'orders.notShipped')}</span>
-                )}
-                {line.qty_invoiced > 0 && (
-                  <span className="text-gray-400">
-                    {t(lang, 'orders.invoiced')} <span className="tabular-nums">{line.qty_invoiced}</span>
-                  </span>
-                )}
-                {short && (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
-                    {none
-                      ? t(lang, 'orders.notSent')
-                      : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
-                  </span>
-                )}
+        {/* Masthead */}
+        <header className="p-6 sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="min-w-0">
+              <Logo className="h-10 w-auto mb-3" />
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t(lang, 'orders.deliverTo')}</p>
+              <p className="text-base font-semibold text-gray-900 mt-1">{order.partner_shipping.name}</p>
+              <div className="mt-1 text-xs text-gray-500 leading-relaxed">
+                {[order.partner_shipping.street, order.partner_shipping.city, order.partner_shipping.country]
+                  .filter(Boolean).map((l) => <p key={l}>{l}</p>)}
               </div>
             </div>
-          )
-        })}
-      </div>
 
-      {/* Totals */}
-      <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 space-y-2">
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>{t(lang, 'cart.subtotal')}</span><span>{formatCurrency(order.amount_untaxed, order.currency)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-gray-600">
-          <span>{t(lang, 'cart.tax')}</span><span>{formatCurrency(order.amount_tax, order.currency)}</span>
-        </div>
-        <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-2">
-          <span>{t(lang, 'cart.total')}</span><span>{formatCurrency(order.amount_total, order.currency)}</span>
-        </div>
-      </div>
+            <div className="text-end min-w-0 sm:shrink-0">
+              <p className={`text-2xl font-bold tracking-[0.2em] text-gray-900 uppercase ${display}`}>
+                {t(lang, 'orders.documentTitle')}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 tabular-nums text-end" dir="ltr">{order.name}</p>
+              <dl className="mt-3 text-xs text-gray-500 space-y-0.5">
+                <div className="flex justify-end gap-2">
+                  <dt>{t(lang, 'orders.orderDate')}</dt>
+                  <dd className="text-gray-900 font-medium">{formatDate(order.date_order, lang)}</dd>
+                </div>
+                {order.commitment_date && (
+                  <div className="flex justify-end gap-2">
+                    <dt>{t(lang, 'checkout.deliveryDate')}</dt>
+                    <dd className="text-gray-900 font-medium">{formatDate(order.commitment_date, lang)}</dd>
+                  </div>
+                )}
+                {order.client_order_ref && (
+                  <div className="flex justify-end gap-2">
+                    <dt>{t(lang, 'checkout.poRef')}</dt>
+                    <dd className="text-gray-900 font-medium">{order.client_order_ref}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          </div>
+        </header>
 
-      {order.note && (
-        <div className="mt-4 bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.orderNote')}</p>
-          <p className="text-sm text-gray-600">{order.note}</p>
-        </div>
-      )}
+        <div className="h-px bg-gold/60" />
+
+        {/* Delivery summary. The question a customer opens this page to answer is "did I get
+            everything", so it leads rather than sitting under the line items. */}
+        <section className="px-6 sm:px-8 py-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'orders.deliverySummary')}</p>
+          {shortLines.length > 0 ? (
+            <>
+              <p className={`text-2xl sm:text-3xl font-bold text-amber-700 ${display}`}>
+                {t(lang, 'orders.linesShort').replace('{n}', String(shortLines.length))}
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                {t(lang, 'orders.linesDelivered')
+                  .replace('{n}', String(deliveredInFull))
+                  .replace('{m}', String(physical.length))}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className={`text-2xl sm:text-3xl font-bold text-gray-900 ${display}`}>{order.state_label}</p>
+              <p className="mt-1 text-sm text-gray-500">
+                {deliveredInFull > 0 ? t(lang, 'orders.allDelivered') : t(lang, 'orders.nothingDelivered')}
+              </p>
+              {deliveredInFull > 0 && <div className="mt-3 h-px w-16 bg-gold" />}
+            </>
+          )}
+        </section>
+
+        {/* Line items: real table on sm+, stacked cards below (house convention) */}
+        <section className="px-6 sm:px-8">
+          <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0 print:overflow-visible">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-y border-gray-100 bg-gray-50 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="text-start px-3 py-2.5">{t(lang, 'invoices.description')}</th>
+                  <th className="text-end px-3 py-2.5 w-20">{t(lang, 'orders.ordered')}</th>
+                  <th className="text-end px-3 py-2.5 w-24">{t(lang, 'orders.delivered')}</th>
+                  <th className="text-end px-3 py-2.5 w-20">{t(lang, 'orders.invoiced')}</th>
+                  <th className="text-end px-3 py-2.5 w-28">{t(lang, 'invoices.amount')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {order.lines.map((line) => (
+                  <tr key={line.line_id} className={`break-inside-avoid ${isShort(line) ? 'bg-amber-50/50' : ''}`}>
+                    <td className="px-3 py-2.5 align-top">
+                      <p className="text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {line.sku && <span className="font-mono" dir="ltr">{line.sku}</span>}
+                        {line.sku && line.packaging_name ? ' · ' : ''}
+                        {line.packaging_name}{line.packaging_qty ? ` × ${line.packaging_qty}` : ''}
+                      </p>
+                      {isShort(line) && (
+                        <p className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                          {line.qty_delivered === 0
+                            ? t(lang, 'orders.notSent')
+                            : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
+                        </p>
+                      )}
+                      {line.weighed && line.deliverable && (
+                        <p className="mt-1 text-[11px] text-gray-400">{t(lang, 'orders.weighed')}</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-end align-top text-gray-600 tabular-nums" dir="ltr">
+                      {line.unit_qty}{line.uom && <span className="text-gray-400"> {line.uom}</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-end align-top tabular-nums" dir="ltr">{qtyCell(line)}</td>
+                    <td className="px-3 py-2.5 text-end align-top text-gray-500 tabular-nums" dir="ltr">
+                      {line.deliverable ? line.qty_invoiced : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-end align-top font-medium text-gray-900 tabular-nums" dir="ltr">{money(line.price_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Stacked fallback below sm. Carries every column the table does. */}
+          <div className="sm:hidden divide-y divide-gray-50 border-y border-gray-100">
+            {order.lines.map((line) => (
+              <div key={line.line_id} className={`py-3 ${isShort(line) ? 'bg-amber-50/50' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-gray-900 min-w-0 break-words">{lang === 'he' ? line.product_name_he : line.product_name}</p>
+                  <p className="text-sm font-medium text-gray-900 tabular-nums shrink-0" dir="ltr">{money(line.price_total)}</p>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {line.sku && <span className="font-mono" dir="ltr">{line.sku}</span>}
+                  {line.sku && line.packaging_name ? ' · ' : ''}
+                  {line.packaging_name}{line.packaging_qty ? ` × ${line.packaging_qty}` : ''}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  <span className="text-gray-400">
+                    {t(lang, 'orders.ordered')} <span className="text-gray-700 tabular-nums font-medium">{line.unit_qty}</span>
+                    {line.uom && <span> {line.uom}</span>}
+                  </span>
+                  {/* A charge line has no delivered quantity, so it reads as a standalone label.
+                      Prefixing it with "Delivered" produced "Delivered Charge". */}
+                  {line.deliverable ? (
+                    <span className="text-gray-400">
+                      {t(lang, 'orders.delivered')} <span className="tabular-nums">{qtyCell(line)}</span>
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">{t(lang, 'orders.chargeLine')}</span>
+                  )}
+                  {line.deliverable && line.qty_invoiced > 0 && (
+                    <span className="text-gray-400">
+                      {t(lang, 'orders.invoiced')} <span className="tabular-nums">{line.qty_invoiced}</span>
+                    </span>
+                  )}
+                  {isShort(line) && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
+                      {line.qty_delivered === 0
+                        ? t(lang, 'orders.notSent')
+                        : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
+                    </span>
+                  )}
+                </div>
+                {line.weighed && line.deliverable && (
+                  <p className="mt-1 text-[11px] text-gray-400">{t(lang, 'orders.weighed')}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Totals */}
+        <section className="px-6 sm:px-8 py-6">
+          <div className="sm:w-72 sm:ms-auto space-y-1.5">
+            <div className="flex justify-between gap-4 text-sm text-gray-500">
+              <span>{t(lang, 'cart.subtotal')}</span>
+              <span className="tabular-nums text-gray-700" dir="ltr">{money(order.amount_untaxed)}</span>
+            </div>
+            <div className="flex justify-between gap-4 text-sm text-gray-500">
+              <span>{t(lang, 'cart.tax')}</span>
+              <span className="tabular-nums text-gray-700" dir="ltr">{money(order.amount_tax)}</span>
+            </div>
+            <div className="flex justify-between gap-4 border-t border-gray-200 pt-2 mt-2">
+              <span className="text-sm font-semibold text-gray-900">{t(lang, 'cart.total')}</span>
+              <span className={`text-lg font-bold text-brand-700 tabular-nums ${display}`} dir="ltr">{money(order.amount_total)}</span>
+            </div>
+          </div>
+        </section>
+
+        {order.note && (
+          <footer className="px-6 sm:px-8 pb-6 pt-2 border-t border-gray-50">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.orderNote')}</p>
+            <p className="text-sm text-gray-600 break-words">{order.note}</p>
+          </footer>
+        )}
+      </article>
     </div>
   )
 }
