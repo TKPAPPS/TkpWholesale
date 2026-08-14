@@ -557,6 +557,17 @@ all three came from real production data:
   `src/lib/order-labels.ts` is the shared derivation; the list and the detail both use it so
   they cannot disagree.
 
+The invoiced quantity is deliberately NOT a column. Measured across 8,000 stock-tracked lines
+since 1 July 2026: 98.9% had `qty_invoiced` exactly equal to `qty_delivered`, and every one of
+the remaining 1.1% was simply not yet invoiced (never partial, never over). A column repeating
+the one beside it, showing a bare 0 in the only case it differs, reads as "shipped but never
+billed". It is stated as a muted "Not yet invoiced" note instead, which is true and clears
+itself when the invoice is raised.
+
+Shortfall styling uses the BRAND palette (brand-50 row wash, brand-100/800 chip, brand-700
+figure), not amber. Gold stays reserved for the masthead hairline and the delivered-in-full
+rule, so the document reads in one colour family.
+
 Rep-entered orders are covered automatically: the order history has never filtered on
 `website_id`, so phone orders appear beside portal ones and carry identical delivery data.
 

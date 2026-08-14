@@ -83,6 +83,15 @@ export default function OrderDetailPage() {
   const physical = order.lines.filter((l) => l.deliverable)
   const shortLines = order.lines.filter(isShort)
   const deliveredInFull = physical.length - shortLines.length
+  // The only case where the invoiced quantity ever carried information. Measured across 8,000
+  // stock-tracked lines since 1 July: 98.9% had invoiced exactly equal to delivered, and every
+  // one of the remaining 1.1% was simply not yet invoiced (never partial, never over). A column
+  // of numbers that repeats the one beside it, and shows a bare 0 in the one case it differs,
+  // reads as "shipped but never billed". Said as a status instead, it is true and it clears
+  // itself once the invoice is raised.
+  const notInvoiced = (l: typeof order.lines[number]) =>
+    l.deliverable && l.qty_delivered > 0 && l.qty_invoiced === 0
+
   const money = (n: number) => formatCurrency(n, order.currency)
 
   // Quantity cell, shared by the table and the stacked cards so the two can never drift.
@@ -90,7 +99,7 @@ export default function OrderDetailPage() {
     if (!l.deliverable) return <span className="text-gray-300">{t(lang, 'orders.chargeLine')}</span>
     const short = isShort(l)
     return (
-      <span className={short ? 'font-semibold text-amber-700' : 'text-gray-600'}>
+      <span className={short ? 'font-semibold text-brand-700' : 'text-gray-600'}>
         {l.qty_delivered}
         {l.weighed && <span className="text-gray-400"> {l.uom}</span>}
       </span>
@@ -167,7 +176,7 @@ export default function OrderDetailPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'orders.deliverySummary')}</p>
           {shortLines.length > 0 ? (
             <>
-              <p className={`text-2xl sm:text-3xl font-bold text-amber-700 ${display}`}>
+              <p className={`text-2xl sm:text-3xl font-bold text-brand-700 ${display}`}>
                 {t(lang, 'orders.linesShort').replace('{n}', String(shortLines.length))}
               </p>
               <p className="mt-1 text-sm text-gray-500">
@@ -196,13 +205,12 @@ export default function OrderDetailPage() {
                   <th className="text-start px-3 py-2.5">{t(lang, 'invoices.description')}</th>
                   <th className="text-end px-3 py-2.5 w-20">{t(lang, 'orders.ordered')}</th>
                   <th className="text-end px-3 py-2.5 w-24">{t(lang, 'orders.delivered')}</th>
-                  <th className="text-end px-3 py-2.5 w-20">{t(lang, 'orders.invoiced')}</th>
                   <th className="text-end px-3 py-2.5 w-28">{t(lang, 'invoices.amount')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {order.lines.map((line) => (
-                  <tr key={line.line_id} className={`break-inside-avoid ${isShort(line) ? 'bg-amber-50/50' : ''}`}>
+                  <tr key={line.line_id} className={`break-inside-avoid ${isShort(line) ? 'bg-brand-50' : ''}`}>
                     <td className="px-3 py-2.5 align-top">
                       <p className="text-gray-900">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                       <p className="text-[11px] text-gray-400 mt-0.5">
@@ -211,7 +219,7 @@ export default function OrderDetailPage() {
                         {line.packaging_name}{line.packaging_qty ? ` × ${line.packaging_qty}` : ''}
                       </p>
                       {isShort(line) && (
-                        <p className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        <p className="mt-1 inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold text-brand-800">
                           {line.qty_delivered === 0
                             ? t(lang, 'orders.notSent')
                             : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
@@ -220,14 +228,14 @@ export default function OrderDetailPage() {
                       {line.weighed && line.deliverable && (
                         <p className="mt-1 text-[11px] text-gray-400">{t(lang, 'orders.weighed')}</p>
                       )}
+                      {notInvoiced(line) && (
+                        <p className="mt-1 text-[11px] text-gray-400">{t(lang, 'orders.notInvoicedYet')}</p>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-end align-top text-gray-600 tabular-nums" dir="ltr">
                       {line.unit_qty}{line.uom && <span className="text-gray-400"> {line.uom}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-end align-top tabular-nums" dir="ltr">{qtyCell(line)}</td>
-                    <td className="px-3 py-2.5 text-end align-top text-gray-500 tabular-nums" dir="ltr">
-                      {line.deliverable ? line.qty_invoiced : <span className="text-gray-300">-</span>}
-                    </td>
                     <td className="px-3 py-2.5 text-end align-top font-medium text-gray-900 tabular-nums" dir="ltr">{money(line.price_total)}</td>
                   </tr>
                 ))}
@@ -238,7 +246,7 @@ export default function OrderDetailPage() {
           {/* Stacked fallback below sm. Carries every column the table does. */}
           <div className="sm:hidden divide-y divide-gray-50 border-y border-gray-100">
             {order.lines.map((line) => (
-              <div key={line.line_id} className={`py-3 ${isShort(line) ? 'bg-amber-50/50' : ''}`}>
+              <div key={line.line_id} className={`py-3 ${isShort(line) ? 'bg-brand-50' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm text-gray-900 min-w-0 break-words">{lang === 'he' ? line.product_name_he : line.product_name}</p>
                   <p className="text-sm font-medium text-gray-900 tabular-nums shrink-0" dir="ltr">{money(line.price_total)}</p>
@@ -262,13 +270,11 @@ export default function OrderDetailPage() {
                   ) : (
                     <span className="text-gray-300">{t(lang, 'orders.chargeLine')}</span>
                   )}
-                  {line.deliverable && line.qty_invoiced > 0 && (
-                    <span className="text-gray-400">
-                      {t(lang, 'orders.invoiced')} <span className="tabular-nums">{line.qty_invoiced}</span>
-                    </span>
+                  {notInvoiced(line) && (
+                    <span className="text-gray-400">{t(lang, 'orders.notInvoicedYet')}</span>
                   )}
                   {isShort(line) && (
-                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">
+                    <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 font-semibold text-brand-800">
                       {line.qty_delivered === 0
                         ? t(lang, 'orders.notSent')
                         : t(lang, 'orders.shortBy').replace('{n}', String(Math.round((line.unit_qty - line.qty_delivered) * 1000) / 1000))}
