@@ -132,7 +132,7 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
     right(p, 'ORDERED', COL.ordered + 46, startY - 9, bold, 7, MUTED)
     right(p, 'DELIVERED', COL.delivered + 62, startY - 9, bold, 7, MUTED)
     right(p, 'AMOUNT', COL.amount - 6, startY - 9, bold, 7, MUTED)
-    return startY - 26
+    return startY - 15
   }
 
   const newPage = (): number => {
@@ -224,6 +224,18 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   y = drawTableHead(page, y)
 
   const descWidth = COL.ordered - COL.desc - 30
+
+  // Each row is a box: PAD_TOP, its text, PAD_BOTTOM, then the separator ON the bottom edge.
+  // Previously the separator was drawn 7pt above the NEXT baseline, which put it right on the
+  // cap-height of the line below (the rule appeared to touch "[CKC-0016] Pickled Cucumbers")
+  // while leaving a wide gap above it. Anchoring the rule to the row boundary instead gives an
+  // even gap on both sides.
+  const PAD_TOP = 12
+  const PAD_BOTTOM = 3
+  const H_NAME = 11
+  const H_SUB = 10
+  const H_NOTE = 9
+
   for (const l of d.lines) {
     const nameLines = wrap(l.product_name, body, 9, descWidth)
     const sub = [safe(l.sku), `${safe(l.packaging_name)}${l.packaging_qty ? ` x ${qty(l.packaging_qty)}` : ''}`]
@@ -234,32 +246,37 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
     if (l.weighed && l.deliverable) notes.push('weighed at picking')
     if (l.deliverable && l.qty_delivered > 0 && l.qty_invoiced === 0) notes.push('not yet invoiced')
 
-    const rowH = 14 + nameLines.length * 11 + (notes.length ? 9 : 0)
+    const rowH = PAD_TOP + nameLines.length * H_NAME + (sub ? H_SUB : 0) + (notes.length ? H_NOTE : 0) + PAD_BOTTOM
     if (y - rowH < M + 46) y = newPage()
 
+    const rowTop = y
+    const rowBottom = rowTop - rowH
+
     if (short) {
-      page.drawRectangle({ x: M, y: y - rowH + 9, width: A4.w - M * 2, height: rowH, color: SHORT_BG })
+      page.drawRectangle({ x: M, y: rowBottom, width: A4.w - M * 2, height: rowH, color: SHORT_BG })
     }
 
-    let ly = y
-    nameLines.forEach((ln) => { page.drawText(ln, { x: COL.desc + 8, y: ly, size: 9, font: body, color: INK }); ly -= 11 })
-    if (sub) { page.drawText(sub, { x: COL.desc + 8, y: ly, size: 7, font: body, color: FAINT }); ly -= 10 }
+    // First baseline sits PAD_TOP below the row's top edge; the figures on the right align to it.
+    const firstBaseline = rowTop - PAD_TOP
+    let ly = firstBaseline
+    nameLines.forEach((ln) => { page.drawText(ln, { x: COL.desc + 8, y: ly, size: 9, font: body, color: INK }); ly -= H_NAME })
+    if (sub) { page.drawText(sub, { x: COL.desc + 8, y: ly, size: 7, font: body, color: FAINT }); ly -= H_SUB }
     if (notes.length) {
       page.drawText(notes.join('    '), { x: COL.desc + 8, y: ly, size: 7, font: bold, color: short ? BURGUNDY : FAINT })
     }
 
     const orderedTxt = `${qty(l.unit_qty)}${l.uom ? ` ${safe(l.uom)}` : ''}`
-    right(page, orderedTxt, COL.ordered + 46, y, body, 9, MUTED)
+    right(page, orderedTxt, COL.ordered + 46, firstBaseline, body, 9, MUTED)
     if (l.deliverable) {
       const delTxt = `${qty(l.qty_delivered)}${l.weighed && l.uom ? ` ${safe(l.uom)}` : ''}`
-      right(page, delTxt, COL.delivered + 62, y, short ? bold : body, 9, short ? BURGUNDY : INK)
+      right(page, delTxt, COL.delivered + 62, firstBaseline, short ? bold : body, 9, short ? BURGUNDY : INK)
     } else {
-      right(page, 'Charge', COL.delivered + 62, y, body, 9, FAINT)
+      right(page, 'Charge', COL.delivered + 62, firstBaseline, body, 9, FAINT)
     }
-    right(page, money(l.price_total, d.currency), COL.amount - 8, y, bold, 9, INK)
+    right(page, money(l.price_total, d.currency), COL.amount - 8, firstBaseline, bold, 9, INK)
 
-    y -= rowH
-    page.drawLine({ start: { x: M, y: y + 7 }, end: { x: A4.w - M, y: y + 7 }, thickness: 0.5, color: RULE })
+    page.drawLine({ start: { x: M, y: rowBottom }, end: { x: A4.w - M, y: rowBottom }, thickness: 0.5, color: RULE })
+    y = rowBottom
   }
 
   // ---------- totals ----------
