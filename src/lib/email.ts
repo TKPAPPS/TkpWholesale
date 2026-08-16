@@ -4,7 +4,14 @@
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
-export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<boolean> {
+// `attachments` carry base64 content, which is what Resend expects. Kept optional so the existing
+// scheduled-order callers are untouched.
+export async function sendEmail(opts: {
+  to: string
+  subject: string
+  html: string
+  attachments?: { filename: string; content: string }[]
+}): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
   // Email is optional. When Resend is not configured this is an expected, quiet
@@ -16,8 +23,11 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
     const res = await fetch(RESEND_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ from, to: opts.to, subject: opts.subject, html: opts.html }),
-      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({
+        from, to: opts.to, subject: opts.subject, html: opts.html,
+        ...(opts.attachments && opts.attachments.length ? { attachments: opts.attachments } : {}),
+      }),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) {
       console.warn('sendEmail failed:', res.status, await res.text().catch(() => ''))
