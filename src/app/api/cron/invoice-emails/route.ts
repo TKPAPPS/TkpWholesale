@@ -49,6 +49,10 @@ export async function GET(req: NextRequest) {
   // In live mode the floor is always START_DATE.
   const sinceOverride = testTo ? req.nextUrl.searchParams.get('since') : null
   const floor = sinceOverride || START_DATE
+  // Same gating: pick a specific invoice or originating order for the sample, so a particular
+  // case (a short delivery, a weighed line) can be shown on demand rather than whatever happens
+  // to be newest. Test mode only.
+  const pick = testTo ? req.nextUrl.searchParams.get('invoice') : null
 
   try {
     const { getOdooSession } = await import('@/lib/odoo/admin-session')
@@ -82,7 +86,12 @@ export async function GET(req: NextRequest) {
     let pending = invoices.filter((i) => !handled.has(i.id))
     // In test mode only ever touch one, and do not consult or write the log, so the sample can be
     // re-sent as often as needed without burning a real invoice's one-and-only send.
-    if (testTo) pending = invoices.slice(0, 1)
+    if (testTo) {
+      const matched = pick
+        ? invoices.filter((i) => i.name === pick || (i.invoice_origin || '').includes(pick))
+        : invoices
+      pending = matched.slice(0, 1)
+    }
 
     const capped = pending.slice(0, MAX_PER_RUN)
     const results: Record<string, unknown>[] = []
