@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
   const dry = req.nextUrl.searchParams.get('dry') === '1'
   const testTo = req.nextUrl.searchParams.get('test')
 
+  // `since` widens the window for a SAMPLE only, and is ignored unless ?test= names a recipient.
+  // Gating it on test mode is the point: test mode sends to that one address, handles a single
+  // invoice and never writes the log, so an older date cannot become a mass mailing of history.
+  // In live mode the floor is always START_DATE.
+  const sinceOverride = testTo ? req.nextUrl.searchParams.get('since') : null
+  const floor = sinceOverride || START_DATE
+
   try {
     const { getOdooSession } = await import('@/lib/odoo/admin-session')
     const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
@@ -56,7 +63,7 @@ export async function GET(req: NextRequest) {
         ['company_id', '=', COMPANY_ID],
         ['move_type', '=', 'out_invoice'],
         ['state', '=', 'posted'],
-        ['invoice_date', '>=', START_DATE],
+        ['invoice_date', '>=', floor],
       ],
       ['id', 'name', 'invoice_date', 'invoice_origin', 'partner_id', 'amount_total', 'currency_id'],
       { order: 'id desc', limit: 200 },
@@ -162,7 +169,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       mode: testTo ? 'test' : dry ? 'dry' : 'live',
-      start_date: START_DATE,
+      start_date: floor,
       eligible: pending.length,
       processed: results.length,
       results,
