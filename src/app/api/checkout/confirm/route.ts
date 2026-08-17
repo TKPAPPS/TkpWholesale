@@ -331,11 +331,16 @@ export async function POST(req: NextRequest) {
         // Log it. This branch returns the reason to the customer but recorded nothing, so a
         // customer reporting "I cannot confirm" left no trace at all on the server, which is
         // exactly what happened here.
+        // Log the TAIL of Odoo's traceback, not the whole thing. The head is always the same
+        // http.py/dispatch frames and log viewers truncate before reaching the frames that
+        // actually name the failing module, which are the only ones worth having.
+        const dbg = (confirmErr.odooData as { data?: { debug?: string; name?: string } })?.data
         console.error('order confirm rejected by Odoo:', {
           cartId,
           partner: parsed.commercial_partner_id,
           message: confirmErr.message,
-          odoo: confirmErr.odooData,
+          exception: dbg?.name,
+          tail: typeof dbg?.debug === 'string' ? dbg.debug.slice(-1600) : undefined,
         })
         return NextResponse.json(
           { error: 'ORDER_REJECTED', message: sanitizeOdooMessage(confirmErr.message) },
