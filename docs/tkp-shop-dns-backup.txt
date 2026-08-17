@@ -1,0 +1,10 @@
+# BACKUP of tkp-shop.com Resend DNS, taken 2026-08-17 before replacing the DKIM record.
+# Restore these exact values if removing the old DKIM breaks an unknown mail stream.
+
+TXT  resend._domainkey.tkp-shop.com
+"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDW43e3qa3Rb70nYGzOYzxCPugeiNT7L4jhtm3eEy94jA1ZWpif98IWvOOQ05OeXraz/i8FYT5T7SNkZ0wBjbM8yI+4l7R8T6BrqoYji9sNzoz5NNzm6czFw3EPMR0IfxXxv+znG9oq9EYGHYpXAJuZ0IeGw6gorAZfyLZ9fvJl7wIDAQAB"
+
+TXT  send.tkp-shop.com
+"v=spf1 include:dc-fd741b8612._spfm.send.tkp-shop.com ~all"
+
+MX   tkp-shop.com ->
