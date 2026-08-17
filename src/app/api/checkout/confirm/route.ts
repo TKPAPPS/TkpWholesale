@@ -325,7 +325,8 @@ export async function POST(req: NextRequest) {
       // customer before we got here, and this acts on that single record. Dropping the
       // restriction lets Odoo use the API user's own company set, which is how the same
       // confirmation succeeds when staff or the Odoo webshop do it.
-      await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {}, { scopeToCompany: false })
+      const { confirmSaleOrder } = await import('@/lib/odoo/confirm-order')
+      await confirmSaleOrder(sessionId, cartId)
     } catch (confirmErr) {
       if (confirmErr instanceof OdooError && confirmErr.code === 'ODOO_ERROR') {
         // Log it. This branch returns the reason to the customer but recorded nothing, so a

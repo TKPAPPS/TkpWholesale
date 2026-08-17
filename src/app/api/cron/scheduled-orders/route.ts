@@ -123,7 +123,8 @@ export async function GET(req: NextRequest) {
       // sister company makes Odoo raise an inter-company purchase order in that company, which
       // a context pinned to allowed_company_ids [1] cannot do ("object is not bound"). A
       // scheduled order must not fail for the six branches the way a manual checkout did.
-      await callKw(sessionId, 'sale.order', 'action_confirm', [[orderId]], {}, { scopeToCompany: false })
+      const { confirmSaleOrder } = await import('@/lib/odoo/confirm-order')
+      await confirmSaleOrder(sessionId, orderId)
 
       const confirmed = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
         fields: ['id', 'name', 'amount_total', 'currency_id'],

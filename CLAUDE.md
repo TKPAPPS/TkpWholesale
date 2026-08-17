@@ -599,6 +599,33 @@ Notes for future edits:
 - The delivery status uses the same `deliveryStateFromLines()` as the page, so the PDF cannot
   contradict the screen it was downloaded from.
 
+## Order confirmation goes through an Odoo webhook, and why
+`confirmSaleOrder()` (`src/lib/odoo/confirm-order.ts`) tries `action_confirm` over JSON-RPC and
+falls back to an Odoo automation webhook on one specific crash. Do not "simplify" this back to a
+direct call.
+
+The custom module **`bizzup_web_po_confirm`** (author Lilach Gilliam) overrides
+`purchase.order.create()` with `request.session.get('sale_last_order_id')`. `request` is a
+Werkzeug proxy that exists only during a browser request, so over JSON-RPC it raises
+`RuntimeError: object is not bound`. That fires whenever confirming an order raises an
+inter-company purchase order, which is every customer resolving to a sister company: seven
+branch logins today.
+
+Odoo's webhook endpoint is a real HTTP route, so `request` is bound and the module's call
+returns None instead of raising. Automation rule id 31, "Portal: confirm sales order (webhook)",
+model sale.order, trigger on_webhook, `record_getter` browses `payload["id"]`, action confirms
+only DRAFT orders so a replayed webhook cannot disturb a confirmed one. URL is in
+`ODOO_CONFIRM_WEBHOOK_URL`, and it is a bearer secret: anyone holding it can confirm any order
+by id.
+
+Direct call first, webhook only on that crash, so Odoo's readable business rejections (credit
+limit, blocked customer) keep reaching the customer. The webhook always answers
+`{"status":"ok"}`, so the order state is read back afterwards; its response proves nothing.
+
+The real fix belongs in the vendor's module (`... if request else None`). It currently breaks
+EVERY purchase order created outside a browser request, including Odoo's own scheduled actions
+and imports.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
