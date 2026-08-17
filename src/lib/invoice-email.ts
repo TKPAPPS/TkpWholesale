@@ -69,7 +69,7 @@ export function renderInvoiceEmail(d: InvoiceEmailData): string {
 
    <tr><td style="padding:18px 28px 0"><div style="height:1px;background:${GOLD}"></div></td></tr>
 
-   <tr><td style="padding:20px 28px 0;font-family:Arial,Helvetica,sans-serif">
+   <tr><td style="padding:20px 28px 0;font-family:Roboto,'Helvetica Neue',Arial,sans-serif">
      <p style="margin:0 0 16px;font-size:14px;color:${INK}">Dear ${esc(d.customerName) || 'customer'},</p>
      <p style="margin:0 0 18px;font-size:14px;color:${MUTED}">
        Invoice <strong style="color:${INK}">${esc(d.invoiceName)}</strong> for order
@@ -80,24 +80,24 @@ export function renderInvoiceEmail(d: InvoiceEmailData): string {
      ${shortList}
    </td></tr>
 
-   <tr><td style="padding:22px 28px 0;font-family:Arial,Helvetica,sans-serif">
+   <tr><td style="padding:22px 28px 0;font-family:Roboto,'Helvetica Neue',Arial,sans-serif">
      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #e7dfe2">
        <tr>
          <td style="padding:12px 0 0;font-size:13px;color:${MUTED}">Invoice total</td>
-         <td style="padding:12px 0 0;font-size:17px;font-weight:700;color:${BURGUNDY};text-align:right;font-family:Georgia,serif">
+         <td style="padding:12px 0 0;font-size:17px;font-weight:700;color:${BURGUNDY};text-align:right;font-family:Roboto,'Helvetica Neue',Arial,sans-serif">
            ${esc(money(d.amountTotal, d.currency))}
          </td>
        </tr>
      </table>
    </td></tr>
 
-   <tr><td style="padding:22px 28px 26px;font-family:Arial,Helvetica,sans-serif">
+   <tr><td style="padding:22px 28px 26px;font-family:Roboto,'Helvetica Neue',Arial,sans-serif">
      <p style="margin:0;font-size:12px;color:${MUTED}">
        Questions about this delivery? Reply to this email and we will look into it.
      </p>
    </td></tr>
 
-   <tr><td style="padding:0 28px 24px;font-family:Arial,Helvetica,sans-serif">
+   <tr><td style="padding:0 28px 24px;font-family:Roboto,'Helvetica Neue',Arial,sans-serif">
      <div style="border-top:1px solid #e7dfe2;padding-top:12px;font-size:11px;color:#a99ba2;line-height:1.6">
        The Kosher Place (Thailand) Co., Ltd. (Head Office)<br>
        66/4 Sukhumvit 20 (Mille Malle Community Mall), Room 301-302, 3rd floor<br>

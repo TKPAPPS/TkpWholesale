@@ -139,8 +139,9 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   pdf.registerFontkit(fontkit)
   const body = await pdf.embedFont(ROBOTO_REGULAR, { subset: true })
   const bold = await pdf.embedFont(ROBOTO_BOLD, { subset: true })
-  // The wordmark and the ORDER title stay serif: that is the brand's mark, set in Georgia on
-  // screen, and rendering it in Roboto would stop it reading as the logo.
+  // Serif is now used for ONE thing: the KOSHER wordmark, which is the brand's mark and is set
+  // in Georgia on screen. Everything else, including the document title, the delivery headline
+  // and the grand total, is Roboto, so the sheet does not mix two typefaces for no reason.
   const serif = await pdf.embedFont(StandardFonts.TimesRomanBold)
 
   const isShort = (l: OrderPdfLine) => l.deliverable && !l.weighed && l.qty_delivered < l.unit_qty
@@ -203,7 +204,7 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
 
   // ---------- document identity ----------
   let ry = HEAD_TOP - 14
-  right(page, 'ORDER', A4.w - M, ry, serif, 21, INK)
+  right(page, 'ORDER', A4.w - M, ry, bold, 20, INK)
   ry -= 18
   right(page, safe(d.name), A4.w - M, ry, bold, 11, BURGUNDY)
   ry -= 16
@@ -234,12 +235,12 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   page.drawText('DELIVERY', { x: M, y, size: 6.5, font: bold, color: MUTED })
   y -= 19
   if (shortLines.length > 0) {
-    page.drawText(`${shortLines.length} short`, { x: M, y, size: 20, font: serif, color: BURGUNDY })
+    page.drawText(`${shortLines.length} short`, { x: M, y, size: 19, font: bold, color: BURGUNDY })
     y -= 15
     page.drawText(`${physical.length - shortLines.length} of ${physical.length} items delivered in full`,
       { x: M, y, size: 9, font: body, color: MUTED })
   } else {
-    page.drawText(safe(d.state_label), { x: M, y, size: 20, font: serif, color: INK })
+    page.drawText(safe(d.state_label), { x: M, y, size: 19, font: bold, color: INK })
     y -= 15
     page.drawText(physical.length > 0 ? 'Everything on this order was delivered' : 'No delivery recorded yet',
       { x: M, y, size: 9, font: body, color: MUTED })
@@ -326,7 +327,7 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   // ordered). Both documents arrive in the same email, so a bare "Total" beside the invoice's
   // total reads as a billing error.
   right(page, 'Order value', tx - 128, y, bold, 10, INK)
-  right(page, money(d.amount_total, d.currency), tx, y, serif, 14, BURGUNDY)
+  right(page, money(d.amount_total, d.currency), tx, y, bold, 13, BURGUNDY)
   y -= 14
   right(page, 'Amounts shown are the order value. See the invoice for amounts billed.', tx, y, body, 7, FAINT)
   y -= 24
