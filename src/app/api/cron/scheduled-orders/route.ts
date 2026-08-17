@@ -119,7 +119,11 @@ export async function GET(req: NextRequest) {
       }))
       await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
 
-      await callKw(sessionId, 'sale.order', 'action_confirm', [[orderId]], {})
+      // Unscoped for the same reason as the checkout route: a customer that resolves to a
+      // sister company makes Odoo raise an inter-company purchase order in that company, which
+      // a context pinned to allowed_company_ids [1] cannot do ("object is not bound"). A
+      // scheduled order must not fail for the six branches the way a manual checkout did.
+      await callKw(sessionId, 'sale.order', 'action_confirm', [[orderId]], {}, { scopeToCompany: false })
 
       const confirmed = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
         fields: ['id', 'name', 'amount_total', 'currency_id'],
