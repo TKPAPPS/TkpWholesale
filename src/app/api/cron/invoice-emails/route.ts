@@ -35,10 +35,14 @@ export async function GET(req: NextRequest) {
   // Its own secret, not the shared CRON_SECRET. The scheduled-orders job already runs on that
   // one from an external scheduler, so rotating or reusing it to test this endpoint risks
   // breaking a job that is working. Falls back to CRON_SECRET only if the dedicated one is unset.
-  const secret = process.env.INVOICE_CRON_SECRET || process.env.CRON_SECRET
+  // Accepts EITHER secret. INVOICE_CRON_SECRET is the one used for manual runs, so testing this
+  // endpoint never touches the shared CRON_SECRET the scheduled-orders job depends on. Vercel Cron
+  // sends CRON_SECRET automatically as a bearer token, so accepting both lets the platform
+  // scheduler work without the secret being written into vercel.json and committed.
   const given = req.nextUrl.searchParams.get('secret')
     ?? (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
-  if (!secret || given !== secret) return unauthorized()
+  const accepted = [process.env.INVOICE_CRON_SECRET, process.env.CRON_SECRET].filter(Boolean)
+  if (accepted.length === 0 || !given || !accepted.includes(given)) return unauthorized()
 
   const dry = req.nextUrl.searchParams.get('dry') === '1'
   const testTo = req.nextUrl.searchParams.get('test')
