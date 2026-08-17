@@ -1,6 +1,7 @@
 {
   "regions": ["sin1"],
   "crons": [
-    { "path": "/api/cron/scheduled-orders", "schedule": "30 23 * * *" }
+    { "path": "/api/cron/scheduled-orders", "schedule": "30 23 * * *" },
+    { "path": "/api/cron/invoice-emails", "schedule": "*/15 * * * *" }
   ]
 }
