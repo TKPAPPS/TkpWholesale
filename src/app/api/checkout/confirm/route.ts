@@ -315,9 +315,28 @@ export async function POST(req: NextRequest) {
     // business rejection, not an infra failure - surface it as 422 with the Odoo
     // message rather than a generic 503, and do NOT drop the admin token cache.
     try {
-      await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {})
+      // NOT company-scoped, unlike every other call. Confirming an order whose customer is a
+      // sister company makes Odoo raise an inter-company PURCHASE ORDER in that other company
+      // (Jcafe Sukhumvit is company 15, and 9 companies have the rule enabled). With
+      // allowed_company_ids pinned to [1] that cross-company write cannot happen and Odoo fails
+      // with "object is not bound", leaving the customer unable to check out at all.
+      //
+      // Safe to unscope here: the order was already verified to be company 1 AND owned by this
+      // customer before we got here, and this acts on that single record. Dropping the
+      // restriction lets Odoo use the API user's own company set, which is how the same
+      // confirmation succeeds when staff or the Odoo webshop do it.
+      await callKw(sessionId, 'sale.order', 'action_confirm', [[cartId]], {}, { scopeToCompany: false })
     } catch (confirmErr) {
       if (confirmErr instanceof OdooError && confirmErr.code === 'ODOO_ERROR') {
+        // Log it. This branch returns the reason to the customer but recorded nothing, so a
+        // customer reporting "I cannot confirm" left no trace at all on the server, which is
+        // exactly what happened here.
+        console.error('order confirm rejected by Odoo:', {
+          cartId,
+          partner: parsed.commercial_partner_id,
+          message: confirmErr.message,
+          odoo: confirmErr.odooData,
+        })
         return NextResponse.json(
           { error: 'ORDER_REJECTED', message: sanitizeOdooMessage(confirmErr.message) },
           { status: 422 },
