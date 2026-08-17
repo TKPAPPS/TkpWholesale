@@ -1,4 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
+import { ROBOTO_REGULAR, ROBOTO_BOLD } from '@/lib/fonts-roboto'
 
 // Order PDF, generated here rather than by Odoo.
 //
@@ -131,8 +133,14 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   pdf.setTitle(`Order ${safe(d.name)}`)
   pdf.setCreator('The Kosher Place Wholesale')
 
-  const body = await pdf.embedFont(StandardFonts.Helvetica)
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  // Roboto for everything the reader actually reads, matching Odoo's invoice: company 1 has its
+  // report font set to Roboto, so the two PDFs arriving in the same email now share a typeface
+  // instead of pairing Helvetica against it. Subset on embed, so only the glyphs used are carried.
+  pdf.registerFontkit(fontkit)
+  const body = await pdf.embedFont(ROBOTO_REGULAR, { subset: true })
+  const bold = await pdf.embedFont(ROBOTO_BOLD, { subset: true })
+  // The wordmark and the ORDER title stay serif: that is the brand's mark, set in Georgia on
+  // screen, and rendering it in Roboto would stop it reading as the logo.
   const serif = await pdf.embedFont(StandardFonts.TimesRomanBold)
 
   const isShort = (l: OrderPdfLine) => l.deliverable && !l.weighed && l.qty_delivered < l.unit_qty
