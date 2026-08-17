@@ -312,9 +312,16 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   totalRow('VAT', money(d.amount_tax, d.currency), body, 9)
   page.drawLine({ start: { x: tx - 190, y: y + 7 }, end: { x: tx, y: y + 7 }, thickness: 0.5, color: RULE })
   y -= 5
-  right(page, 'Total', tx - 128, y, bold, 10, INK)
+  // "Order value", not "Total". These amounts are the ORDER: ordered quantities, VAT inclusive.
+  // The invoice bills the DELIVERED quantity, net, and the two legitimately differ, on S17189 by
+  // 6,551 THB (two lines never sent, and a weighed line delivered at 20.785 kg against 10 kg
+  // ordered). Both documents arrive in the same email, so a bare "Total" beside the invoice's
+  // total reads as a billing error.
+  right(page, 'Order value', tx - 128, y, bold, 10, INK)
   right(page, money(d.amount_total, d.currency), tx, y, serif, 14, BURGUNDY)
-  y -= 30
+  y -= 14
+  right(page, 'Amounts shown are the order value. See the invoice for amounts billed.', tx, y, body, 7, FAINT)
+  y -= 24
 
   // ---------- note ----------
   if (d.note) {

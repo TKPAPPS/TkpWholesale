@@ -301,7 +301,7 @@ export default function OrderDetailPage() {
               <span className="tabular-nums text-gray-700" dir="ltr">{money(order.amount_tax)}</span>
             </div>
             <div className="flex justify-between gap-4 border-t border-gray-200 pt-2 mt-2">
-              <span className="text-sm font-semibold text-gray-900">{t(lang, 'cart.total')}</span>
+              <span className="text-sm font-semibold text-gray-900">{t(lang, 'orders.orderValue')}</span>
               <span className={`text-lg font-bold text-brand-700 tabular-nums ${display}`} dir="ltr">{money(order.amount_total)}</span>
             </div>
           </div>
