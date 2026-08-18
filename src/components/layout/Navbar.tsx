@@ -144,7 +144,7 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-[0_1px_8px_0_rgba(0,0,0,0.06)] print:hidden">
         <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-3 md:gap-6">
+          <div className="flex h-16 items-center justify-between gap-3 xl:gap-6">
 
             {/* Logo */}
             <Link href="/dashboard" className="shrink-0">
@@ -152,7 +152,7 @@ export function Navbar() {
             </Link>
 
             {/* Desktop nav: Products · New Arrivals · Best Sellers · Quick Order · Orders ▾ · Favorites */}
-            <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center">
+            <nav className="hidden xl:flex items-center gap-0.5 flex-1 justify-center">
               {desktopPrimary.map(({ href, label }) => {
                 const active = pathname.startsWith(href)
                 return (
@@ -160,7 +160,7 @@ export function Navbar() {
                     key={href}
                     href={href}
                     className={cn(
-                      'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                      'px-3 py-2 text-sm font-medium rounded-lg transition-colors',
                       active ? 'text-brand-700 bg-brand-50' : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
                     )}
                   >
@@ -172,7 +172,7 @@ export function Navbar() {
               <Link
                 href="/favorites"
                 className={cn(
-                  'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                  'px-3 py-2 text-sm font-medium rounded-lg transition-colors',
                   pathname.startsWith('/favorites') ? 'text-brand-700 bg-brand-50' : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
                 )}
               >
@@ -185,7 +185,7 @@ export function Navbar() {
               {/* Below md this lives in the mobile menu instead; see the panel at the foot of
                   the header. Keeping it here overflowed the bar and pushed the menu button
                   off screen at 360px. */}
-              <div className="hidden md:flex">
+              <div className="hidden xl:flex">
                 <LanguageSwitcher />
               </div>
 
@@ -275,7 +275,7 @@ export function Navbar() {
 
               {/* User + logout */}
               {user && (
-                <div className="hidden md:flex items-center gap-2 ms-2 ps-3 border-s border-gray-100">
+                <div className="hidden xl:flex items-center gap-2 ms-2 ps-3 border-s border-gray-100">
                   <div className="flex flex-col items-end leading-none">
                     {/* Customer name only. The pricelist NAME is deliberately not shown to
                         customers; pricing still follows their pricelist via pricelist_id. */}
@@ -293,7 +293,7 @@ export function Navbar() {
 
               {/* Mobile menu button */}
               <button
-                className="md:hidden flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100"
+                className="xl:hidden flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:bg-gray-100"
                 onClick={() => setMobileOpen(!mobileOpen)}
                 aria-label={mobileOpen ? t(lang, 'common.close') : t(lang, 'nav.menu')}
                 aria-expanded={mobileOpen}
@@ -306,7 +306,7 @@ export function Navbar() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white">
+          <div className="xl:hidden border-t border-gray-100 bg-white">
             <div className="px-4 py-2 space-y-0.5">
               {navLinks.map(({ href, label, icon: Icon }) => (
                 <Link

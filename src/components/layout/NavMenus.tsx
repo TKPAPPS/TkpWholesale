@@ -20,7 +20,7 @@ function useHoverMenu() {
 }
 
 const triggerCls = (active: boolean) => cn(
-  'flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+  'flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors',
   active ? 'text-brand-700 bg-brand-50' : 'text-gray-500 hover:text-brand-700 hover:bg-gray-50',
 )
 
