@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { sendEmail } from '@/lib/email'
+import { sendEmailDetailed } from '@/lib/email'
 import { buildOrderPdf, type OrderPdfLine } from '@/lib/order-pdf'
 import { renderInvoiceEmail } from '@/lib/invoice-email'
 
@@ -25,6 +25,23 @@ export const maxDuration = 60
 //                   only, without recording it, so the real customer never receives the sample
 
 const START_DATE = process.env.INVOICE_EMAIL_START_DATE ?? '2026-08-16'
+const MAX_ATTEMPTS = 5
+
+// Odoo's res.partner.email is free text and in this database frequently holds SEVERAL addresses
+// in one field, with inconsistent separators and spacing:
+//   "avi@x.com, yg@y.com"
+//   "dovberbh@x.com , Chabadphangan@y.com , Yair@z.com"
+//   "Yossi Goldberg <yg@x.com>"     (valid, Resend accepts the display-name form)
+//   "3"                             (garbage on at least one partner)
+// Passing the raw string to Resend as one recipient failed 30 of 67 sends on the first live day.
+// Split, keep anything containing a plausible address, drop the rest.
+function parseRecipients(raw: string): string[] {
+  return raw
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) || /<[^\s@]+@[^\s@]+\.[^\s@]+>/.test(s))
+    .filter((s, i, a) => a.indexOf(s) === i)
+}
 const MAX_PER_RUN = 40
 
 function unauthorized() {
@@ -83,9 +100,18 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient()
     const { data: already } = await supabase
       .from('invoice_emails')
-      .select('odoo_invoice_id')
+      .select('odoo_invoice_id, status, attempts')
       .in('odoo_invoice_id', invoices.map((i) => i.id))
-    const handled = new Set((already ?? []).map((r: { odoo_invoice_id: number }) => r.odoo_invoice_id))
+    // A FAILED row is not finished business: the first live day failed 30 of 67 on a recipient
+    // parsing bug, and those customers still need their invoice. Failures are retried until
+    // MAX_ATTEMPTS so a permanently bad address cannot loop forever.
+    const rows = (already ?? []) as { odoo_invoice_id: number; status: string; attempts: number }[]
+    const attemptsById = new Map(rows.map((r) => [r.odoo_invoice_id, r.attempts ?? 1]))
+    const handled = new Set(
+      rows.filter((r) => r.status === 'sent' || r.status === 'skipped_no_email'
+        || (r.status === 'failed' && (r.attempts ?? 1) >= MAX_ATTEMPTS))
+        .map((r) => r.odoo_invoice_id),
+    )
 
     let pending = invoices.filter((i) => !handled.has(i.id))
     // In test mode only ever touch one, and do not consult or write the log, so the sample can be
@@ -118,16 +144,18 @@ export async function GET(req: NextRequest) {
           recipient = parent[0]?.email || ''
         }
       }
-      const to = testTo || recipient
+      const parsed = testTo ? [testTo] : parseRecipients(recipient)
+      const to = parsed
 
-      if (!to) {
-        results.push({ invoice: inv.name, status: 'skipped_no_email' })
+      if (to.length === 0) {
+        results.push({ invoice: inv.name, status: 'skipped_no_email', raw_email: recipient || null })
         if (!dry && !testTo) {
-          await supabase.from('invoice_emails').insert({
+          await supabase.from('invoice_emails').upsert({
             odoo_invoice_id: inv.id, invoice_name: inv.name, order_name: orderName,
             partner_id: partnerId, recipient: null, status: 'skipped_no_email',
-            detail: 'no email on the billed contact or its parent',
-          })
+            detail: recipient ? `no usable address in "${recipient.slice(0, 120)}"` : 'no email on the billed contact or its parent',
+            attempts: (attemptsById.get(inv.id) ?? 0) + 1,
+          }, { onConflict: 'odoo_invoice_id' })
         }
         continue
       }
@@ -162,21 +190,24 @@ export async function GET(req: NextRequest) {
         physicalCount: built.physicalCount,
       })
 
-      const ok = await sendEmail({
+      const send = await sendEmailDetailed({
         to,
         subject: `${inv.name} · Invoice and delivery note${built.shortLines.length ? ' (items short)' : ''}`,
         html,
         attachments,
       })
 
-      results.push({ invoice: inv.name, order: orderName, to, sent: ok })
+      results.push({ invoice: inv.name, order: orderName, to, sent: send.ok, error: send.error })
 
       if (!testTo) {
-        await supabase.from('invoice_emails').insert({
+        // Upsert, not insert: a retried invoice already has a row and the unique key would
+        // reject a second one, so the failure would never clear.
+        await supabase.from('invoice_emails').upsert({
           odoo_invoice_id: inv.id, invoice_name: inv.name, order_name: orderName,
-          partner_id: partnerId, recipient: to, status: ok ? 'sent' : 'failed',
-          detail: ok ? null : 'resend rejected the message',
-        })
+          partner_id: partnerId, recipient: to.join(', '), status: send.ok ? 'sent' : 'failed',
+          detail: send.ok ? null : (send.error ?? 'send failed'),
+          attempts: (attemptsById.get(inv.id) ?? 0) + 1,
+        }, { onConflict: 'odoo_invoice_id' })
       }
     }
 

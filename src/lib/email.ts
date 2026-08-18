@@ -7,36 +7,49 @@ const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 // `attachments` carry base64 content, which is what Resend expects. Kept optional so the existing
 // scheduled-order callers are untouched.
 export async function sendEmail(opts: {
-  to: string
+  to: string | string[]
   subject: string
   html: string
   attachments?: { filename: string; content: string }[]
 }): Promise<boolean> {
+  return (await sendEmailDetailed(opts)).ok
+}
+
+// Same send, but returns WHY it failed. The cron records the reason, and "resend rejected the
+// message" with no detail is useless when half a run fails, as happened on the first live day.
+export async function sendEmailDetailed(opts: {
+  to: string | string[]
+  subject: string
+  html: string
+  attachments?: { filename: string; content: string }[]
+}): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
   // Email is optional. When Resend is not configured this is an expected, quiet
   // no-op (portal-side notifications are off) - not a warning worth logging on
   // every scheduled order.
-  if (!apiKey || !from) return false
-  if (!opts.to) return false
+  if (!apiKey || !from) return { ok: false, error: 'email not configured' }
+  const to = Array.isArray(opts.to) ? opts.to : [opts.to]
+  if (to.length === 0) return { ok: false, error: 'no recipient' }
   try {
     const res = await fetch(RESEND_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        from, to: opts.to, subject: opts.subject, html: opts.html,
+        from, to, subject: opts.subject, html: opts.html,
         ...(opts.attachments && opts.attachments.length ? { attachments: opts.attachments } : {}),
       }),
       signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) {
-      console.warn('sendEmail failed:', res.status, await res.text().catch(() => ''))
-      return false
+      const body = await res.text().catch(() => '')
+      console.warn('sendEmail failed:', res.status, body)
+      return { ok: false, error: `HTTP ${res.status} ${body}`.slice(0, 300) }
     }
-    return true
+    return { ok: true }
   } catch (err) {
     console.warn('sendEmail error:', err)
-    return false
+    return { ok: false, error: String(err).slice(0, 300) }
   }
 }
 
