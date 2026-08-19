@@ -55,6 +55,9 @@ const MAX_PER_RUN = 5
 // Breathing room between invoices, for the same reason. Cheap here, and it keeps a worker free
 // for whoever is actually shopping.
 const PAUSE_BETWEEN_MS = 1500
+// If a trivial Odoo call takes longer than this, Odoo is already under load and this run stands
+// down rather than adding to it. Normal is well under a second; 3s means requests are queueing.
+const ODOO_BUSY_MS = 3000
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function unauthorized() {
@@ -109,6 +112,18 @@ export async function GET(req: NextRequest) {
       id: number; name: string; invoice_date: string; invoice_origin: string | false
       partner_id: [number, string] | false; amount_total: number; currency_id: [number, string]
     }[]
+
+    // GATE. Emails are never worth degrading the shop for. A customer waiting on add-to-cart is
+    // doing something time-critical; an invoice email is not, and skipping costs at most 15
+    // minutes because the next run picks it up untouched. This is the structural version of the
+    // fix: rather than watching for the problem, the cron simply declines to compete.
+    const probeStart = Date.now()
+    await callKw(sessionId, 'res.company', 'search_count', [[['id', '=', COMPANY_ID]]], {})
+    const probeMs = Date.now() - probeStart
+    if (probeMs > ODOO_BUSY_MS && !testTo) {
+      console.warn('invoice email run stood down, Odoo busy:', { probeMs })
+      return NextResponse.json({ mode: 'stood_down', reason: 'odoo_busy', probe_ms: probeMs, processed: 0 })
+    }
 
     const supabase = createServerClient()
     const { data: already } = await supabase
@@ -181,7 +196,21 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const built = await buildForInvoice(sessionId, orderName, inv, callKw, searchRead, COMPANY_ID, getCompanyDetails)
+      // Second gate: if Odoo starts timing out mid-run, stop immediately instead of grinding
+      // through the remaining invoices while customers are being refused. Whatever is left keeps
+      // its place in the queue, because nothing is recorded for an invoice that was not attempted.
+      let built
+      try {
+        built = await buildForInvoice(sessionId, orderName, inv, callKw, searchRead, COMPANY_ID, getCompanyDetails)
+      } catch (buildErr) {
+        const code = (buildErr as { code?: string }).code
+        if (code === 'TIMEOUT' || code === 'NETWORK_ERROR') {
+          console.warn('invoice email run aborted mid-way, Odoo unresponsive:', { invoice: inv.name, code })
+          results.push({ invoice: inv.name, status: 'aborted_odoo_unresponsive' })
+          break
+        }
+        throw buildErr
+      }
       const attachments: { filename: string; content: string }[] = []
       if (built.orderPdf) attachments.push({ filename: `${orderName || 'order'}.pdf`, content: built.orderPdf })
 
