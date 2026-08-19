@@ -42,7 +42,20 @@ function parseRecipients(raw: string): string[] {
     .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) || /<[^\s@]+@[^\s@]+\.[^\s@]+>/.test(s))
     .filter((s, i, a) => a.indexOf(s) === i)
 }
-const MAX_PER_RUN = 40
+// Deliberately small. At 15-minute intervals this still clears ~480 invoices a day against a
+// real volume of ~48, so the only thing a bigger batch buys is a burst.
+//
+// The burst was the problem: on 2026-08-19 a run processed 8 invoices across 15:03-15:04 BKK and
+// customers' add-to-cart calls began timing out seconds later, for about three minutes. Each
+// invoice costs roughly eight Odoo calls, one of which pulls a ~128KB PDF attachment, so a batch
+// saturates the shared Odoo workers and interactive requests queue behind it until they hit the
+// 15s client timeout. The portal was competing with its own customers.
+const MAX_PER_RUN = 5
+
+// Breathing room between invoices, for the same reason. Cheap here, and it keeps a worker free
+// for whoever is actually shopping.
+const PAUSE_BETWEEN_MS = 1500
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function unauthorized() {
   return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
@@ -126,7 +139,10 @@ export async function GET(req: NextRequest) {
     const capped = pending.slice(0, MAX_PER_RUN)
     const results: Record<string, unknown>[] = []
 
+    let processedCount = 0
     for (const inv of capped) {
+      if (processedCount > 0 && !dry) await sleep(PAUSE_BETWEEN_MS)
+      processedCount++
       const orderName = (inv.invoice_origin || '').split(',')[0].trim()
       const partnerId = inv.partner_id ? inv.partner_id[0] : null
 
@@ -171,11 +187,18 @@ export async function GET(req: NextRequest) {
 
       // Odoo stores the invoice PDF on posting, so the customer gets the real billing document
       // alongside ours rather than a second version of the same numbers.
-      const invAtt = await searchRead(sessionId, 'ir.attachment',
+      // Two steps on purpose. Selecting `datas` pulls the whole base64 blob (~128KB per invoice)
+      // and that is the single most expensive call in this loop, so ask for the id first and only
+      // fetch the bytes when there is actually something to fetch.
+      const invAttIds = await searchRead(sessionId, 'ir.attachment',
         [['res_model', '=', 'account.move'], ['res_id', '=', inv.id], ['mimetype', '=', 'application/pdf']],
-        ['datas'], { limit: 1, order: 'write_date desc' })
-      if (invAtt.length > 0 && invAtt[0].datas) {
-        attachments.push({ filename: `${inv.name.replace(/\//g, '-')}.pdf`, content: invAtt[0].datas as string })
+        ['id'], { limit: 1, order: 'write_date desc' })
+      if (invAttIds.length > 0) {
+        const blob = await callKw(sessionId, 'ir.attachment', 'read', [[invAttIds[0].id as number]],
+          { fields: ['datas'] }) as { datas: string | false }[]
+        if (blob[0]?.datas) {
+          attachments.push({ filename: `${inv.name.replace(/\//g, '-')}.pdf`, content: blob[0].datas })
+        }
       }
 
       const html = renderInvoiceEmail({
