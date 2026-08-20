@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CART } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { readJsonObject } from '@/lib/request-body'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
   const session = req.cookies.get('session')?.value
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const { product_id, packaging_id, packaging_qty } = await req.json()
+  const { product_id, packaging_id, packaging_qty } = await readJsonObject(req)
 
   if (!Number.isInteger(product_id) || product_id <= 0 ||
       !Number.isInteger(packaging_qty) || packaging_qty <= 0) {

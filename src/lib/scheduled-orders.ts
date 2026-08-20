@@ -1,6 +1,8 @@
 // Shared types + validation for scheduled / repeating orders. Import-safe on both
 // server and client (no server-only imports).
 
+import { todayBkk } from '@/lib/schedule-dates'
+
 export interface ScheduledOrderItem {
   product_id: number      // product.product (variant) id
   name: string
@@ -75,6 +77,16 @@ export function normalizeScheduleInput(raw: unknown): { ok: true; value: Require
   if (s.end_date !== undefined && s.end_date !== null && s.end_date !== '') {
     if (typeof s.end_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.end_date) || Number.isNaN(Date.parse(s.end_date))) {
       return { ok: false, error: 'End date is invalid.' }
+    }
+    // An end date of today or earlier can never produce a run: nextRunDate() returns the
+    // first date strictly AFTER the anchor, so the earliest possible run is tomorrow.
+    // Rejected here rather than downstream because createSchedule() only discovers this
+    // AFTER the (non-reversible) order is placed, leaving the customer with a soft
+    // schedule_error and no recurrence. This catches the obvious case with a clear message;
+    // the caller additionally checks nextRunDate() for the ones only the cadence can reveal
+    // (e.g. a weekly schedule whose end date falls before its first run).
+    if (s.end_date <= todayBkk()) {
+      return { ok: false, error: 'End date must be in the future.' }
     }
     end_date = s.end_date
   }

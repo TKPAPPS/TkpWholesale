@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
-import { parsePagination } from '@/lib/pagination'
+import { parsePagination, isIsoDate } from '@/lib/pagination'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -15,6 +15,12 @@ export async function GET(req: NextRequest) {
   const { page, perPage, offset } = parsePagination(searchParams, 24)
   const sort = searchParams.get('sort') ?? 'name'
   const createdAfter = searchParams.get('created_after') ?? null   // ISO date string e.g. 2025-05-01
+  // An empty value is treated as absent, not as invalid: `?created_after=` was previously
+  // ignored (the falsy check below skips the domain term), so rejecting it would be a
+  // regression rather than a fix. Same rule as date_from/date_to on the orders route.
+  if (createdAfter !== null && createdAfter !== '' && !isIsoDate(createdAfter)) {
+    return NextResponse.json({ error: 'INVALID_DATE', message: 'created_after must be YYYY-MM-DD.' }, { status: 400 })
+  }
   const lang = searchParams.get('lang') === 'he' ? 'he' : 'en'     // read only the active language
   const inStockOnly = searchParams.get('in_stock_only') === '1'
 

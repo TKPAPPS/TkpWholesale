@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CART } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { readJsonObject } from '@/lib/request-body'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
@@ -50,7 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { lineId: st
   const session = req.cookies.get('session')?.value
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const { packaging_qty } = await req.json()
+  const { packaging_qty } = await readJsonObject(req)
   if (!Number.isInteger(packaging_qty) || packaging_qty <= 0) {
     return NextResponse.json({ error: 'INVALID_QTY' }, { status: 400 })
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_USER } from '@/lib/odoo/mock/data'
 import { signSession } from '@/lib/odoo/session'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
+import { readJsonObject } from '@/lib/request-body'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a few minutes and try again.' }, { status: 429 })
   }
 
-  const { login, password } = await req.json()
+  const { login, password } = await readJsonObject(req)
 
   if (!login || !password) {
     return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Email and password required.' }, { status: 401 })

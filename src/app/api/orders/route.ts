@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_ORDERS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
-import { parsePagination } from '@/lib/pagination'
+import { parsePagination, isIsoDate } from '@/lib/pagination'
 import { orderStateLabel, deliveryStateFromLines, DELIVERY_STATE_LABELS, type DeliveryLine } from '@/lib/order-labels'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
@@ -16,6 +16,11 @@ export async function GET(req: NextRequest) {
   const { page, perPage, offset } = parsePagination(searchParams, 20)
   const dateFrom = searchParams.get('date_from')
   const dateTo = searchParams.get('date_to')
+  for (const [name, value] of [['date_from', dateFrom], ['date_to', dateTo]] as const) {
+    if (value !== null && value !== '' && !isIsoDate(value)) {
+      return NextResponse.json({ error: 'INVALID_DATE', message: `${name} must be YYYY-MM-DD.` }, { status: 400 })
+    }
+  }
 
   if (USE_MOCK) {
     let orders = MOCK_ORDERS

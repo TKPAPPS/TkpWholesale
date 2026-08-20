@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, verifyAdminToken } from '@/lib/supabase'
+import { readJsonObject } from '@/lib/request-body'
 
 const TYPES = ['info', 'warning', 'success'] as const
 type AnnouncementType = (typeof TYPES)[number]
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!await auth(req)) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
-  const { message, type, starts_at, expires_at } = await req.json()
+  const { message, type, starts_at, expires_at } = await readJsonObject(req)
 
   if (!message?.trim()) return NextResponse.json({ error: 'MISSING_MESSAGE' }, { status: 400 })
   const safeType: AnnouncementType = TYPES.includes(type) ? type : 'info'
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   if (!await auth(req)) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
-  const { id, active } = await req.json()
+  const { id, active } = await readJsonObject(req)
 
   if (!Number.isInteger(id) || id <= 0) {
     return NextResponse.json({ error: 'INVALID_ID', message: 'id must be a positive integer.' }, { status: 400 })

@@ -3,6 +3,7 @@ import { parseSession } from '@/lib/odoo/session'
 import { createServerClient } from '@/lib/supabase'
 import { fetchOdooProducts, getPartnerPricelistId, getCustomerHiddenDomain, getPartnerFiscalPositionId } from '@/lib/odoo/odoo-helpers'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
+import { readJsonObject } from '@/lib/request-body'
 
 export async function GET(req: NextRequest) {
   const session = parseSession(req)
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
   const session = parseSession(req)
   if (!session) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
-  const body = await req.json()
+  const body = await readJsonObject(req)
   const template_id = Number(body?.template_id)
   if (!template_id) return NextResponse.json({ error: 'INVALID_TEMPLATE_ID' }, { status: 400 })
 

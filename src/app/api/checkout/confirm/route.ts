@@ -6,6 +6,7 @@ import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 import { stripHtml } from '@/lib/text'
 import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
 import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-orders'
+import { readJsonObject } from '@/lib/request-body'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'RATE_LIMITED', message: 'Too many attempts. Please wait a moment and try again.' }, { status: 429 })
   }
 
-  const { delivery_address_id, note, po_ref, delivery_date, schedule, remove_unavailable } = await req.json()
+  const { delivery_address_id, note, po_ref, delivery_date, schedule, remove_unavailable } = await readJsonObject(req)
 
   if (!Number.isInteger(delivery_address_id) || delivery_address_id <= 0) {
     return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address is required.' }, { status: 400 })
@@ -104,6 +105,17 @@ export async function POST(req: NextRequest) {
     scheduleSpec = normalizeScheduleInput(schedule)
     if (!scheduleSpec.ok) {
       return NextResponse.json({ error: 'INVALID_SCHEDULE', message: scheduleSpec.error }, { status: 400 })
+    }
+    // Same computation createSchedule() does, run BEFORE the order is placed. A schedule
+    // that yields no run date (an end date falling before the first occurrence of the
+    // chosen cadence) would otherwise place the order and then fail with a soft
+    // schedule_error, silently costing the customer the recurrence they asked for.
+    const anchor = todayBkk()
+    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: anchor }, anchor)) {
+      return NextResponse.json(
+        { error: 'INVALID_SCHEDULE', message: 'This schedule would never run. Check the end date.' },
+        { status: 400 },
+      )
     }
   }
 
