@@ -9,6 +9,10 @@ import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-or
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
+// Written to sale.order.origin at confirm time and checked by the Odoo automation rule
+// "Portal: confirm sales order (webhook)". Changing this string means changing that rule too.
+const PORTAL_ORIGIN = 'Wholesale portal'
+
 // Build + persist a schedule from the just-confirmed order. Throws on any problem
 // (Supabase not configured, over the per-customer cap, empty snapshot, or a
 // schedule that would never run) so the caller can flag schedule_error.
@@ -306,6 +310,13 @@ export async function POST(req: NextRequest) {
       partner_shipping_id: delivery_address_id,
       note: cleanNote,
       date_order: nowUtc,
+      // Stamp the order as ours, immediately before confirming it. The Odoo automation that
+      // performs the confirmation checks this, because the obvious marker does not work:
+      // create_uid is NOT reliably the portal's API user. findCart adopts any draft website-3
+      // cart belonging to the customer, including one Odoo's own webshop started (created by
+      // OdooBot), and the portal legitimately finishes carts it did not open. S17430 sat in
+      // draft through six confirm attempts for exactly that reason.
+      origin: PORTAL_ORIGIN,
     }
     if (typeof po_ref === 'string' && po_ref.trim()) writeVals.client_order_ref = po_ref.trim()
     if (commitmentDate) writeVals.commitment_date = commitmentDate
