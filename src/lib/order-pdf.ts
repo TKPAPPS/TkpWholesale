@@ -80,10 +80,45 @@ const SHORT_BG = rgb(0.992, 0.961, 0.969)   // brand-50
 // real gap between them; at the previous 486 the two columns collided and read as "6 THB 3,510".
 const COL = { desc: M, ordered: 348, delivered: 394, amount: A4.w - M }
 
-// Standard PDF fonts are Latin-1. A Thai or Hebrew character in a product name would otherwise
-// throw at draw time and fail the whole download, so anything unrepresentable is dropped.
+// The embedded Roboto subset is Latin-1 here (see the note at the top of the file), so a Thai
+// or Hebrew character would otherwise throw at draw time and fail the whole download. Anything
+// unrepresentable is dropped rather than allowed to break the document.
+//
+// Dropping outright was too blunt. Measured against production on 21/08/2026: of 162 partners
+// on 7,317 company-1 orders, 8 had a field altered and 7 of 6,037 product names did, and MOST
+// of those losses were characters with a perfectly good Latin-1 equivalent - a curly
+// apostrophe ("J Deli's Hummus" became "J Delis Hummus"), a tab that glued two words together
+// ("FRS-0015\tOnion Kg" became "FRS-0015Onion Kg"), or an invisible RTL mark. So fold what can
+// be folded first, and only then strip. Zero-width and bidi control marks are dropped silently
+// because they carry no printed meaning.
+//
+// No partner NAME anywhere in the database is affected; the residual loss is Thai street
+// lines, which is what `usableLine` below exists to handle.
+const FOLD: ReadonlyArray<readonly [RegExp, string]> = [
+  [/[‘’‚‛′]/g, "'"],
+  [/[“”„‟″]/g, '"'],
+  [/[‐-―]/g, '-'],
+  [/…/g, '...'],
+  [/ /g, ' '],
+  [/[\t\r\n]+/g, ' '],
+  [/[​-‏‪-‮⁠﻿]/g, ''],
+]
+
 function safe(s: unknown): string {
-  return String(s ?? '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '').trim()
+  let out = String(s ?? '')
+  for (const [re, to] of FOLD) out = out.replace(re, to)
+  // Collapse the whitespace that stripping leaves behind, so a part-Thai address reads
+  // "9 6 Pa Tong, Kathu District" rather than "9 6   Pa Tong, Kathu District".
+  return out.replace(/[^\x20-\x7E\xA0-\xFF]/g, '').replace(/ {2,}/g, ' ').trim()
+}
+
+// True when a stripped line still says something. A Thai-only address can survive `safe` as
+// "B" or ". .", which on a delivery note is worse than printing nothing: it looks like a
+// corrupted document rather than an absent field, and it pushes the real city and country
+// line down. Requires three alphanumerics, which every genuine address line in the database
+// clears comfortably and neither of the two collapsed ones does.
+function usableLine(s: string): boolean {
+  return (s.match(/[A-Za-z0-9\xC0-\xFF]/g) ?? []).length >= 3
 }
 
 function money(n: number, currency: string): string {
@@ -223,7 +258,10 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   y -= 13
   page.drawText(safe(d.ship_to.name), { x: M, y, size: 11, font: bold, color: INK })
   y -= 12
-  const shipLines = [d.ship_to.street, d.ship_to.city, d.ship_to.country].filter(Boolean).map(safe)
+  // usableLine drops a line that stripping reduced to punctuation, so the city and country
+  // move up rather than sitting under a line of debris.
+  const shipLines = [d.ship_to.street, d.ship_to.city, d.ship_to.country]
+    .filter(Boolean).map(safe).filter(usableLine)
   shipLines.forEach((l) => { page.drawText(l, { x: M, y, size: 8, font: body, color: MUTED }); y -= 10 })
 
   // the one ceremonial mark the brand uses

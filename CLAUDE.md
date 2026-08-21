@@ -377,9 +377,17 @@ clears the `BottomNav` it used to cover.
 ## Auth hardening
 - **Login rate limiting:** both `/api/auth/login` (10/10min per IP) and `/api/admin/auth/login`
   (6/10min) call `checkRateLimit` (`src/lib/rate-limit.ts`) → the Supabase `check_rate_limit`
-  RPC (atomic sliding window in the `rate_limits` table). **Fails open** if Supabase is
-  unconfigured/unreachable, so logins never break on an infra blip (note: locally, with
-  placeholder Supabase, rate limiting is effectively off).
+  RPC (atomic FIXED window in the `rate_limits` table — order confirmation uses it too, at
+  3/min per commercial partner). Atomic, but **not** a sliding window: `reset_at` is stamped
+  when the window opens and the counter resets wholesale once it passes, so up to 2x the max
+  can land in a burst straddling the boundary (verified on production 21/08/2026). **Fails
+  open** if Supabase is unconfigured/unreachable, so logins never break on an infra blip —
+  which also means a Supabase outage removes checkout throttling, not just login throttling.
+  Only a **service-role** key can drive the RPC: `rate_limits` has RLS on with no policies and
+  `check_rate_limit` is SECURITY INVOKER, so a publishable/anon key returns Postgres 42501 on
+  every call and the fail-open path silently disables limiting entirely. `warnIfNotServiceRole`
+  logs loudly if the configured key does not look like service-role; it deliberately does not
+  fail closed. (Note: locally, with placeholder Supabase, rate limiting is effectively off.)
 - **Session revocation:** `/api/auth/me` re-checks the Odoo user's `active` flag via
   `isUidActive(uid)` (cached 5 min, fails open). The customer layout re-polls `/api/auth/me`
   every 5 min and on tab-visible, so deactivating a customer in Odoo cuts their portal access
