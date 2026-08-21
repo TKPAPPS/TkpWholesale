@@ -12,7 +12,7 @@ import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { CartSummary } from '@/components/cart/CartSummary'
 import { Package, AlertTriangle, CheckCircle, Repeat } from 'lucide-react'
 import { WEEKDAY_SHORT_EN, WEEKDAY_SHORT_HE, type ScheduleFrequency } from '@/lib/scheduled-orders'
-import { todayBkk, addDays } from '@/lib/schedule-dates'
+import { todayBkk, addDays, nextRunDate } from '@/lib/schedule-dates'
 import Link from 'next/link'
 import Image from 'next/image'
 
@@ -60,6 +60,30 @@ export default function CheckoutPage() {
   const [scheduleEnd, setScheduleEnd] = useState('')
   const weekdayLabels = lang === 'he' ? WEEKDAY_SHORT_HE : WEEKDAY_SHORT_EN
   const todayStr = todayBkk()
+
+  // The earliest date this cadence can actually deliver on. The end-date picker is floored
+  // here rather than at "tomorrow", because an end date before the first run makes a
+  // schedule that can never fire - which the server now rejects outright rather than
+  // placing the order and silently dropping the recurrence. Weekly every 2 weeks cannot run
+  // for 14 days, so offering tomorrow would hand the customer a checkout they cannot
+  // complete. Same nextRunDate() the server uses, so the two cannot disagree.
+  const firstRunDate = nextRunDate(
+    {
+      frequency,
+      interval_weeks: intervalWeeks,
+      excluded_weekdays: excludedDays,
+      anchor_date: todayStr,
+    },
+    todayStr,
+  )
+
+  // Switching cadence after choosing an end date can strand that date before the new first
+  // run (daily ending in 3 days, then switched to weekly every 2). The min attribute only
+  // constrains the picker, it does not clear a value already chosen, so clear it here and
+  // let the customer pick again rather than letting checkout fail server-side.
+  useEffect(() => {
+    if (scheduleEnd && firstRunDate && scheduleEnd < firstRunDate) setScheduleEnd('')
+  }, [scheduleEnd, firstRunDate])
 
   const toggleExcludedDay = (d: number) =>
     setExcludedDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
@@ -332,7 +356,7 @@ export default function CheckoutPage() {
                   <input
                     type="date"
                     value={scheduleEnd}
-                    min={addDays(todayStr, 1)}
+                    min={firstRunDate ?? addDays(todayStr, 1)}
                     onChange={(e) => setScheduleEnd(e.target.value)}
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20"
                   />

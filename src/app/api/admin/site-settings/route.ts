@@ -3,6 +3,7 @@ import { invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
 import { readSiteSettingsUncached, writeSiteSettings } from '@/lib/odoo/odoo-helpers'
 import { sanitizeSiteSettings } from '@/lib/site-settings'
+import { readJsonObject } from '@/lib/request-body'
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get('admin_session')?.value
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
   }
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
     // Clamp to bounds + fill defaults so a malformed body can never store a value
     // that would break the storefront (e.g. perPage of 0). Returns what was saved.
     const settings = sanitizeSiteSettings(body)

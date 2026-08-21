@@ -4,7 +4,7 @@ import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 import { stripHtml } from '@/lib/text'
-import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
+import { todayBkk, nextRunDate, isIsoDate } from '@/lib/schedule-dates'
 import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-orders'
 import { readJsonObject } from '@/lib/request-body'
 
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   // at 09:00 Bangkok (= 02:00 UTC) so staff see the intended morning slot.
   let commitmentDate: string | null = null
   if (delivery_date !== undefined && delivery_date !== null && delivery_date !== '') {
-    if (typeof delivery_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(delivery_date) || Number.isNaN(Date.parse(delivery_date))) {
+    if (typeof delivery_date !== 'string' || !isIsoDate(delivery_date)) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_DATE', message: 'Delivery date is invalid.' }, { status: 400 })
     }
     if (delivery_date < todayBkk()) {

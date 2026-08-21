@@ -3,6 +3,7 @@ import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
 import { readFeaturedIdsUncached, writeFeaturedIds } from '@/lib/odoo/odoo-helpers'
+import { readJsonObject } from '@/lib/request-body'
 
 async function gate(req: NextRequest) {
   const token = req.cookies.get('admin_session')?.value
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!(await gate(req))) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
     if (!Array.isArray(body?.ids) || body.ids.some((id: unknown) => !Number.isInteger(id) || (id as number) <= 0)) {
       return NextResponse.json({ error: 'INVALID_INPUT', message: 'ids must be an array of positive integers.' }, { status: 400 })
     }

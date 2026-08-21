@@ -3,6 +3,7 @@ import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
 import { readHiddenProductIdsUncached, writeHiddenProductIds, setProductPublished } from '@/lib/odoo/odoo-helpers'
+import { readJsonObject } from '@/lib/request-body'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   if (!(await gate(req))) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
 
   try {
-    const { id, hidden, published } = await req.json()
+    const { id, hidden, published } = await readJsonObject(req)
     if (!Number.isInteger(id) || id <= 0) {
       return NextResponse.json({ error: 'INVALID_ID', message: 'id must be a positive integer.' }, { status: 400 })
     }

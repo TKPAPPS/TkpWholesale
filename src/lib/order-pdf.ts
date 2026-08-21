@@ -104,21 +104,35 @@ const FOLD: ReadonlyArray<readonly [RegExp, string]> = [
   [/[​-‏‪-‮⁠﻿]/g, ''],
 ]
 
-function safe(s: unknown): string {
+// Reports both the rendered text and whether anything was actually lost, which callers need
+// in order to tell "this line is short" from "this line was gutted". `lost` is false when
+// only folding happened, since folding preserves meaning.
+function safeInfo(s: unknown): { text: string; lost: boolean } {
   let out = String(s ?? '')
   for (const [re, to] of FOLD) out = out.replace(re, to)
+  const kept = out.replace(/[^\x20-\x7E\xA0-\xFF]/g, '')
   // Collapse the whitespace that stripping leaves behind, so a part-Thai address reads
   // "9 6 Pa Tong, Kathu District" rather than "9 6   Pa Tong, Kathu District".
-  return out.replace(/[^\x20-\x7E\xA0-\xFF]/g, '').replace(/ {2,}/g, ' ').trim()
+  return { text: kept.replace(/ {2,}/g, ' ').trim(), lost: kept !== out }
 }
 
-// True when a stripped line still says something. A Thai-only address can survive `safe` as
-// "B" or ". .", which on a delivery note is worse than printing nothing: it looks like a
-// corrupted document rather than an absent field, and it pushes the real city and country
-// line down. Requires three alphanumerics, which every genuine address line in the database
-// clears comfortably and neither of the two collapsed ones does.
+function safe(s: unknown): string {
+  return safeInfo(s).text
+}
+
+// Whether a line that LOST characters still says enough to print. A Thai-only address can
+// survive as "B" or ". .", which on a delivery note is worse than printing nothing: it reads
+// as a corrupted document and pushes the real city and country down.
+//
+// Only ever consulted for lines that actually lost characters, so a short but intact value
+// is never at risk.
+//
+// Two alphanumerics is the threshold. It clears the real debris from this database ("B" has
+// one, ". ." has none) while keeping a remnant that still carries information: a Thai street
+// written "9/9 <thai road name>" reduces to "9/9", and a house number plus the city and
+// country below it is more use to a driver than an omitted line.
 function usableLine(s: string): boolean {
-  return (s.match(/[A-Za-z0-9\xC0-\xFF]/g) ?? []).length >= 3
+  return (s.match(/[A-Za-z0-9\xC0-\xFF]/g) ?? []).length >= 2
 }
 
 function money(n: number, currency: string): string {
@@ -258,10 +272,13 @@ export async function buildOrderPdf(d: OrderPdfData): Promise<Uint8Array> {
   y -= 13
   page.drawText(safe(d.ship_to.name), { x: M, y, size: 11, font: bold, color: INK })
   y -= 12
-  // usableLine drops a line that stripping reduced to punctuation, so the city and country
-  // move up rather than sitting under a line of debris.
+  // A line is dropped only if stripping actually gutted it, so the city and country move up
+  // rather than sitting under debris. A short but intact line such as "9/9" is always kept.
   const shipLines = [d.ship_to.street, d.ship_to.city, d.ship_to.country]
-    .filter(Boolean).map(safe).filter(usableLine)
+    .filter(Boolean)
+    .map(safeInfo)
+    .filter(({ text, lost }) => text && (!lost || usableLine(text)))
+    .map(({ text }) => text)
   shipLines.forEach((l) => { page.drawText(l, { x: M, y, size: 8, font: body, color: MUTED }); y -= 10 })
 
   // the one ceremonial mark the brand uses

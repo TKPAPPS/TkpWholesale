@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
-import { parsePagination, isIsoDate } from '@/lib/pagination'
+import { parsePagination } from '@/lib/pagination'
+import { isIsoDate } from '@/lib/schedule-dates'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 

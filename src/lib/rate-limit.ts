@@ -21,6 +21,10 @@ function supabaseConfigured(): boolean {
 let keyWarningIssued = false
 function warnIfNotServiceRole(key: string): void {
   if (keyWarningIssued) return
+  // Latched on the FIRST call, not only when the key is wrong: the JWT branch below decodes
+  // and JSON.parses, and a correct legacy eyJ... key would otherwise pay that on every login
+  // and every checkout for the life of the process.
+  keyWarningIssued = true
   let wrong = key.startsWith('sb_publishable_')
   if (!wrong && key.startsWith('eyJ')) {
     try {
@@ -29,7 +33,6 @@ function warnIfNotServiceRole(key: string): void {
     } catch { /* not a readable JWT; leave it to the RPC to reject */ }
   }
   if (wrong) {
-    keyWarningIssued = true
     console.error(
       'SUPABASE_SERVICE_ROLE_KEY is not a service-role key. Rate limiting is INACTIVE: ' +
       'check_rate_limit runs as the caller against an RLS-protected table and will reject ' +

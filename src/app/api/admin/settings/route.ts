@@ -3,6 +3,7 @@ import { callKw } from '@/lib/odoo/client'
 import { bustHideOosCache, bustWebsiteSettingsCache } from '@/lib/odoo/odoo-helpers'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
+import { readJsonObject } from '@/lib/request-body'
 
 const PARAM_KEY = 'b2b_portal.hide_out_of_stock'
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { hide_out_of_stock } = await req.json()
+    const { hide_out_of_stock } = await readJsonObject(req)
     if (typeof hide_out_of_stock !== 'boolean') {
       return NextResponse.json({ error: 'INVALID_INPUT', message: 'hide_out_of_stock must be a boolean.' }, { status: 400 })
     }

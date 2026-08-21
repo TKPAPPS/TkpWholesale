@@ -9,6 +9,20 @@ const BKK_OFFSET_MS = 7 * 3600 * 1000
 // 0 = Sunday .. 6 = Saturday
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
+// True only for a real calendar date written as 'YYYY-MM-DD'.
+//
+// The obvious idiom, /^\d{4}-\d{2}-\d{2}$/ plus !Number.isNaN(Date.parse(s)), does NOT
+// reject an impossible day: V8 rolls '2025-02-30' forward to 2 March and '2025-04-31' to
+// 1 May, so both parse happily. That matters because these strings are forwarded verbatim
+// into Odoo domain terms and into commitment_date, where a rolled-over date is either a
+// silent wrong answer or a raised error. Round-tripping through UTC is what actually
+// catches it: a date that rolled over no longer formats back to what was supplied.
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const d = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value
+}
+
 // Today's calendar date in Asia/Bangkok, as 'YYYY-MM-DD'.
 export function todayBkk(now: number = Date.now()): string {
   return new Date(now + BKK_OFFSET_MS).toISOString().slice(0, 10)

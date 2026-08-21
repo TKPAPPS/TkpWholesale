@@ -3,6 +3,7 @@ import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
 import { bustCategoriesCache } from '@/lib/odoo/odoo-helpers'
+import { readJsonObject } from '@/lib/request-body'
 
 const WEBSITE_ID = Number(process.env.ODOO_WEBSITE_ID ?? 3)
 const PARAM_KEY = 'b2b_portal.hidden_category_ids'
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
     // Validate: must be an array of positive integers (ids stringified into Odoo).
     if (!Array.isArray(body?.hidden_ids) || body.hidden_ids.some((id: unknown) => !Number.isInteger(id) || (id as number) <= 0)) {
       return NextResponse.json({ error: 'INVALID_INPUT', message: 'hidden_ids must be an array of positive integers.' }, { status: 400 })

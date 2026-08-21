@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { callKw } from '@/lib/odoo/client'
 import { getAdminSession, invalidateAdminSession } from '@/lib/odoo/admin-session'
 import { verifyAdminToken } from '@/lib/supabase'
+import { readJsonObject } from '@/lib/request-body'
 
 const PARAM_KEY = 'b2b_portal.content'
 
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json()
+    const body = await readJsonObject(req)
 
     // Validate shape: a map of slug -> { en: string, he: string }. Reject anything else
     // so we never stringify arbitrary/oversized junk into the Odoo config parameter.
