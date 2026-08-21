@@ -4,6 +4,7 @@ import { scheduleConfigured, updateOwnedSchedule } from '@/lib/scheduled-orders-
 import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
 import { createServerClient } from '@/lib/supabase'
 import type { ScheduledOrderRow } from '@/lib/scheduled-orders-db'
+import { readJsonObject } from '@/lib/request-body'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
   if (!scheduleConfigured()) return NextResponse.json({ error: 'NOT_CONFIGURED' }, { status: 503 })
 
-  const body = await req.json().catch(() => ({}))
+  const body = await readJsonObject(req)
   const action = body.action as string | undefined
 
   try {

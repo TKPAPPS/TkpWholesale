@@ -55,6 +55,14 @@ export async function POST(req: NextRequest) {
 
     // Validate shape: a map of slug -> { en: string, he: string }. Reject anything else
     // so we never stringify arbitrary/oversized junk into the Odoo config parameter.
+    // An empty body is refused rather than obeyed. Object.values({}).every(...) is vacuously
+    // true, so without this an unparseable or truncated request would pass validation and
+    // stringify "{}" over the parameter holding EVERY content page, answering 200. Wiping all
+    // content is not something a body that failed to parse gets to ask for.
+    if (Object.keys(body).length === 0) {
+      return NextResponse.json({ error: 'INVALID_INPUT', message: 'Body must contain at least one content page.' }, { status: 400 })
+    }
+
     const isValidShape = body && typeof body === 'object' && !Array.isArray(body) &&
       Object.values(body).every((v) =>
         v && typeof v === 'object' &&

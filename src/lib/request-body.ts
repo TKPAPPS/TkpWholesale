@@ -8,8 +8,18 @@
 // Returning `{}` rather than a typed error is deliberate. Every caller already validates the
 // individual fields it needs and returns its own specific 400/401, so an unparseable body
 // takes exactly the same path as `{}` and produces the same message the client already
-// handles. That keeps this a pure bug fix: no route changes its response for any body that
-// used to work.
+// handles.
+//
+// HAZARD, and the reason this paragraph exists: that only holds for a route where `{}` fails
+// validation. For a route that treats `{}` as a MEANINGFUL payload, collapsing an unparseable
+// body into it converts a rejected request into an accepted, possibly destructive one. Two
+// routes were exactly that shape and were caught in review: admin/content, where
+// `Object.values({}).every(...)` is vacuously true and so wrote "{}" over every CMS page, and
+// admin/site-settings, where `sanitizeSiteSettings({})` returns the full default set and so
+// reset every configured value. Both previously answered 503 and wrote nothing.
+//
+// So: before using this, check what your route does with `{}`. If the answer is anything
+// other than "rejects it", reject an empty body explicitly first.
 // The value type is `any` deliberately, matching what `req.json()` already returned. Every
 // call site destructures and then validates each field itself, and narrowing to `unknown`
 // here would force a cast at all eight of them without making any of them safer - the

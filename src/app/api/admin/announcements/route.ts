@@ -29,7 +29,11 @@ export async function POST(req: NextRequest) {
   if (!await auth(req)) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
   const { message, type, starts_at, expires_at } = await readJsonObject(req)
 
-  if (!message?.trim()) return NextResponse.json({ error: 'MISSING_MESSAGE' }, { status: 400 })
+  // typeof, not `message?.trim()`: optional chaining guards null/undefined but not a wrong
+  // type, so {"message": 123} threw outside the try and answered 500.
+  if (typeof message !== 'string' || !message.trim()) {
+    return NextResponse.json({ error: 'MISSING_MESSAGE' }, { status: 400 })
+  }
   const safeType: AnnouncementType = TYPES.includes(type) ? type : 'info'
   const starts = normalizeTimestamp(starts_at)
   const expires = normalizeTimestamp(expires_at)

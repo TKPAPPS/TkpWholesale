@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   if (USE_MOCK) {
     // --- MOCK MODE ---
-    if (!login.includes('@')) {
+    if (typeof login !== 'string' || !login.includes('@')) {
       return NextResponse.json({ error: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' }, { status: 401 })
     }
     try {

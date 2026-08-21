@@ -26,6 +26,13 @@ export async function POST(req: NextRequest) {
   }
   try {
     const body = await readJsonObject(req)
+    // Refused rather than obeyed, for the same reason as admin/content: sanitizeSiteSettings
+    // fills every absent key from DEFAULT_SITE_SETTINGS, so an unparseable or truncated
+    // request would silently overwrite the admin's configured values with defaults and answer
+    // 200. A genuine "reset to defaults" posts the full object.
+    if (Object.keys(body).length === 0) {
+      return NextResponse.json({ error: 'INVALID_INPUT', message: 'Body must contain at least one setting.' }, { status: 400 })
+    }
     // Clamp to bounds + fill defaults so a malformed body can never store a value
     // that would break the storefront (e.g. perPage of 0). Returns what was saved.
     const settings = sanitizeSiteSettings(body)
