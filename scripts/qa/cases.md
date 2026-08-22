@@ -111,8 +111,23 @@ actually damages trust: two surfaces that look identical and disagree.
 | H3 | Ship-to lines gutted by stripping are omitted, intact short ones kept | AUTO |
 | H4 | Invoice PDF is fetched from Odoo and is a valid PDF | AUTO |
 
-## Not covered without a write-capable staging Odoo
+## Write-path cases (staging only)
 
-Cart add/update/remove, full checkout, inter-company PO creation, the webhook confirm
-fallback, scheduled-order execution, and the 15-concurrent load test. Production is
-read-only for testing by policy, and the staging branch was torn down.
+These need a write-capable Odoo and must NEVER run against production. Staging was restored
+2026-08-22; credentials live in user memory (`reference_tkp_odoo_staging`). Point a rig at
+staging and run `run-writes.mjs`.
+
+| # | Case | Cover |
+|---|---|---|
+| W1 | Add to cart creates a line with the pricelist price Odoo computes | STAGING |
+| W2 | Adding the same product twice merges rather than duplicating | STAGING |
+| W3 | Adding a second packaging of the same product creates a separate line | STAGING |
+| W4 | Quantity over available stock clamps, and reports adjusted_packs | STAGING |
+| W5 | An allow-OOS product accepts a quantity far above stock, uncapped | STAGING |
+| W6 | Update and remove a cart line | STAGING |
+| W7 | Cart total equals the sum of its line totals | STAGING |
+| W8 | Card price equals the cart price for the same product and customer (closes B6) | STAGING |
+| W9 | Checkout review splits out-of-stock lines | STAGING |
+| W10 | Full checkout confirms and returns an order | STAGING |
+| W11 | A sibling-company customer checks out (the "object is not bound" webhook path) | STAGING |
+| W12 | Concurrent add-to-cart from N customers | STAGING |

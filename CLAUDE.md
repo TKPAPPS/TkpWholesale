@@ -4,6 +4,35 @@
 Next.js 14 App Router B2B ordering portal for TKP Wholesale (kosher food distributor, Thailand).
 Customers log in and place orders. All product/pricing/order data lives in Odoo 18.
 
+## Documentation rule
+
+**Update this file in the SAME commit as every change or fix.** Not only for large features,
+and not only when asked. The highest-value part is **correcting claims a change falsified** —
+a stale CLAUDE.md is worse than a missing one, because it is trusted. Unifying search onto
+`fetchOdooProducts` made two statements here wrong the moment it landed ("Search is still
+list_price-based, a preview", and a note about `SearchHit` carrying stock flags); both had to
+be rewritten, not appended to.
+
+## Testing against Odoo
+
+**Never write to PRODUCTION Odoo for testing.** No creates, no cancels, no "reversible"
+read-modify-restore. Reads against production are fine (counts, schema checks, preflights) and
+the QA suite is deliberately read-only so it can run against a production-backed rig.
+
+**All write tests go to staging.** Branches rotate, so the URL, DB and key change; the current
+set lives in user memory (`reference_tkp_odoo_staging`). As of 2026-08-22 staging authenticates
+as **uid 604** (production `apps@` is uid 688), carries website 3, 2,282 published products and
+558 portal users, and shares template ids with production.
+
+**A dead staging branch looks exactly like a dead API key.** When `staging8` was torn down
+mid-session its DNS resolved to `0.0.0.0` and every call failed in a way that reads as
+"expired key". Check DNS before assuming credentials died.
+
+**Do not run `npx next build` while a `next dev` QA rig is serving from the same checkout.**
+They share `.next`, and the build clobbers the dev server's chunks — which surfaces as a
+spurious HTTP 500 (`MODULE_NOT_FOUND` in `webpack-runtime`) that looks like a product bug. It
+cost a false finding once already.
+
 ## Key architecture rules
 - **Browser never calls Odoo directly.** All Odoo access goes through Next.js API routes (BFF pattern).
 - **Admin API key for all server→Odoo calls.** `getOdooSession()` returns a `"uid:apikey"` token. `callKw()` detects this format and routes to `/jsonrpc` (Odoo external API). Do NOT use `odooAuthenticate()` for server-side Odoo calls — it uses the web session path which rejects API keys on Odoo.com SaaS.
@@ -166,8 +195,24 @@ pricelist, one on the Wholesale pricelist) so two different pricelists are alway
 **Pick a customer with no per-customer hidden products when testing visibility**, or the result
 is meaningless (see below).
 
+`scripts/qa/run-writes.mjs` covers the write path (cases W1-W12) and **refuses to start**
+unless `ODOO_URL` looks like a staging branch — same guard pattern as the tkp-barcode write
+scripts, no override flag. It cleans up every cart line it creates, and does not confirm an
+order unless `--checkout` is passed, because a confirmed order is not reversible even on
+staging.
+
+```
+ODOO_URL=https://...staging...dev.odoo.com SESSION_SECRET=... \
+  QA_CUSTOMER=525:6250 BASE=http://localhost:3202 node scripts/qa/run-writes.mjs
+```
+
+First staging run (2026-08-22): 9 pass, 0 fail. **W8 closes the pricelist bug end to end** —
+the price on the card equals the price Odoo charges in the cart for the same product and
+customer. W5 confirms an allow-OOS product at ZERO stock accepts 500 packs uncapped.
+
 Cart writes, checkout, inter-company PO creation, the webhook confirm fallback and the
-concurrency test cannot be covered without a write-capable staging Odoo.
+concurrency test need a write-capable staging Odoo (see **Testing against Odoo** above).
+Staging was restored on 2026-08-22, so these are now runnable there rather than blocked.
 
 ## Per-customer hidden products are deliberate
 
