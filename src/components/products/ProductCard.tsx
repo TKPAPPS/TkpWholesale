@@ -85,8 +85,16 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
           </div>
         )}
 
-        {/* Low stock badge */}
-        {product.sellable && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
+        {/* Low stock badge.
+            Never shown for a product flagged "Continue Selling if Out of Stock". That flag is
+            the merchant saying this item is not limited by the warehouse figure (made to order,
+            baked to order, replenished on demand), so "Low stock" is both untrue and actively
+            discouraging: it warns a buyer off an item there is no reason not to order. BAK-0225
+            carried the badge while holding 0.325 kg, which is exactly the case the flag exists
+            to cover. The "Only N available" hint below is already suppressed for these, because
+            computeMaxPacks returns undefined when the flag is set. */}
+        {product.sellable && !product.allow_out_of_stock_order
+          && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
           <div className="absolute top-2 start-2">
             <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
               {t(lang, 'products.lowStock')}

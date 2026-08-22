@@ -217,11 +217,31 @@ async function main() {
         `partner ${c.partner}: ${fractional.length} sub-1-stock products, none wrongly sold out`,
         wronglySoldOut.map(p => `${p.sku} qty=${p.qty_available}`).join(', '))
 
+      // C9 how many allow-OOS products sit in the low-stock band. These are precisely the
+      // ones that used to be mislabelled "Low stock" while the merchant had marked them
+      // sell-unlimited. Informational: the badge itself is client-side, so the real guard is
+      // the source assertion in checkLowStockGate() below.
+      const lowStockThreshold = Number(process.env.QA_LOW_STOCK_THRESHOLD || 20)
+      const inBand = items.filter(p => p.allow_out_of_stock_order && p.qty_available > 0 && p.qty_available < lowStockThreshold)
+      if (inBand.length) note("C9", `partner ${c.partner}: ${inBand.length} allow-OOS products in the low-stock band (${inBand.map(p=>p.sku).join(", ")}) - must show no badge`)
+
       // C5 in_stock must agree with the quantity actually reported
       const contradictory = items.filter(p => p.in_stock && p.qty_available === 0 && p.allow_out_of_stock_order === false)
       check('C5', contradictory.length === 0, `partner ${c.partner}: in_stock agrees with qty_available`,
         contradictory.slice(0, 5).map(p => p.sku).join(', '))
     }
+  }
+
+  // C9 (source guard) The low-stock badge must stay gated on allow_out_of_stock_order.
+  // Asserted against the source because the badge is rendered client-side and never appears
+  // in an API payload. A merchant who ticks "Continue Selling if Out of Stock" is saying the
+  // warehouse figure does not limit this item, so a scarcity warning on it is wrong.
+  if (group("C9", "Low-stock badge gate (source)")) {
+    const src = await import("node:fs").then(m => m.readFileSync("src/components/products/ProductCard.tsx", "utf8"))
+    const block = src.slice(src.indexOf("Low stock badge"), src.indexOf("products.lowStock"))
+    check("C9", /!product\.allow_out_of_stock_order/.test(block),
+      "ProductCard low-stock badge is gated on !allow_out_of_stock_order",
+      "the gate was removed; allow-OOS products will show a false scarcity warning")
   }
 
   // ============================================================ D. visibility
