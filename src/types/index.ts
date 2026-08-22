@@ -47,6 +47,12 @@ export interface Product {
   sellable: boolean
   in_stock: boolean
   qty_available: number
+  // The per-website "Continue Selling if Out of Stock" flag, sent explicitly rather than
+  // inferred. The client used to guess it from `!in_stock`, which is only correct when stock
+  // is exactly zero: an allow-OOS product holding 0.325 kg was capped to floor(0.325) = 0 and
+  // rendered SOLD OUT, and one holding 1.205 kg was silently capped at 1 despite the merchant
+  // having explicitly opted it out of any stock limit.
+  allow_out_of_stock_order: boolean
 }
 
 export interface CartLine {

@@ -33,7 +33,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const price = defaultPkg?.price_per_pack_incl_tax ?? 0
   const unitPrice = defaultPkg?.price_per_unit_incl_tax ?? 0
   // Defense-in-depth UX cap - the server always re-validates on add. undefined = unlimited.
-  const maxPacks = defaultPkg ? computeMaxPacks(product.in_stock, product.qty_available, defaultPkg.qty) : undefined
+  const maxPacks = defaultPkg ? computeMaxPacks(product.in_stock, product.qty_available, defaultPkg.qty, product.allow_out_of_stock_order) : undefined
   const soldOut = maxPacks === 0
 
   const addToCart = () => {

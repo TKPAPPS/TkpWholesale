@@ -82,7 +82,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true, qty_available: 50,
+    in_stock: true, qty_available: 50, allow_out_of_stock_order: false,
   },
   {
     id: 11,
@@ -112,7 +112,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true, qty_available: 50,
+    in_stock: true, qty_available: 50, allow_out_of_stock_order: false,
   },
   {
     id: 12,
@@ -142,7 +142,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true, qty_available: 50,
+    in_stock: true, qty_available: 50, allow_out_of_stock_order: false,
   },
   {
     id: 13,
@@ -172,7 +172,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: false,
-    in_stock: false, qty_available: 0,
+    in_stock: false, qty_available: 0, allow_out_of_stock_order: false,
   },
   {
     id: 14,
@@ -202,7 +202,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true, qty_available: 50,
+    in_stock: true, qty_available: 50, allow_out_of_stock_order: false,
   },
   {
     id: 15,
@@ -232,7 +232,7 @@ export const MOCK_PRODUCTS: Product[] = [
     tax_display: 'incl_tax',
     tax_names: ['VAT 5%'],
     sellable: true,
-    in_stock: true, qty_available: 50,
+    in_stock: true, qty_available: 50, allow_out_of_stock_order: false,
   },
 ]
 

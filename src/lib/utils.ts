@@ -53,10 +53,22 @@ export function hasLangCookie(): boolean {
 }
 
 // Client-side mirror of the server's stock cap (defense-in-depth UX only - the server
-// always re-validates on add/update). Returns undefined when unlimited: not stock-backed
-// (allow_out_of_stock_order, i.e. sellable but not in_stock) or a non-storable/untracked
-// consumable (existing Odoo-18 "always in stock" rule - in_stock true but qty_available 0).
-export function computeMaxPacks(inStock: boolean, qtyAvailable: number, packQty: number): number | undefined {
+// always re-validates on add/update). Returns undefined when there is NO limit.
+//
+// `allowOos` is the merchant's explicit "Continue Selling if Out of Stock" tick, and it means
+// UNLIMITED: order any quantity regardless of the real stock level. It must be passed in, not
+// inferred. This function used to derive it from `!inStock`, which is only equivalent when
+// stock is exactly zero, so an allow-OOS product with a little stock got capped by the very
+// stock it was supposed to ignore: 0.325 kg floored to 0 and rendered SOLD OUT, and 1.205 kg
+// silently capped the customer at 1. The 79 such products that behaved correctly did so only
+// because they happened to hold zero.
+export function computeMaxPacks(
+  inStock: boolean,
+  qtyAvailable: number,
+  packQty: number,
+  allowOos = false,
+): number | undefined {
+  if (allowOos) return undefined
   if (!inStock || qtyAvailable <= 0 || packQty <= 0) return undefined
   return Math.floor(qtyAvailable / packQty)
 }

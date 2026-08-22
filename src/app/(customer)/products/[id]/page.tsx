@@ -73,7 +73,7 @@ export default function ProductDetailPage() {
   // Defense-in-depth UX cap - the server always re-validates on add. undefined = unlimited.
   // Recomputed per selected packaging, since switching packaging changes the units-per-pack
   // and therefore how many packs fit within the available stock.
-  const maxPacks = product && selectedPkg ? computeMaxPacks(product.in_stock, product.qty_available, selectedPkg.qty) : undefined
+  const maxPacks = product && selectedPkg ? computeMaxPacks(product.in_stock, product.qty_available, selectedPkg.qty, product.allow_out_of_stock_order) : undefined
   const soldOut = maxPacks === 0
 
   useEffect(() => {

@@ -1226,6 +1226,7 @@ const _fetchProductsCached = unstable_cache(
       sellable,
       in_stock: inStock,
       qty_available: raw.qty_available,
+      allow_out_of_stock_order: allowOos,
     }
   })
 
@@ -1282,8 +1283,14 @@ export async function fetchOdooProducts(
         // Stock unknown (lookup failed) -> keep the cached flags rather than flapping.
         if (inStockIds === null) return p
         const in_stock = inStockIds.has(p.template_id)
-        const sellable = in_stock || (settingsMap.get(p.template_id) ?? false)
-        return in_stock === p.in_stock && sellable === p.sellable ? p : { ...p, in_stock, sellable }
+        const allowOos = settingsMap.get(p.template_id) ?? false
+        const sellable = in_stock || allowOos
+        // allow_out_of_stock_order is re-resolved here too: an admin un-ticking "Continue
+        // Selling if Out of Stock" must reach the storefront on the same ~1 min freshness
+        // window as the stock flags, not wait out the 5 min page cache.
+        return in_stock === p.in_stock && sellable === p.sellable && allowOos === p.allow_out_of_stock_order
+          ? p
+          : { ...p, in_stock, sellable, allow_out_of_stock_order: allowOos }
       })
       // Under hide-out-of-stock, a product that went fully unorderable must disappear
       // entirely (same rule as buildVisibilityDomain). A partially-short page and a
