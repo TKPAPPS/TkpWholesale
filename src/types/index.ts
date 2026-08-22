@@ -74,27 +74,15 @@ export interface CartLine {
   warnings: string[]
 }
 
-// Lightweight result type for the global search overlay.
-// Skips pricelist adjustment, categories, and full tax calculation.
-export interface SearchHit {
-  id: number
-  template_id: number
-  name: string
-  name_he: string
-  sku: string
-  image_url: string
-  currency: string
-  packaging_options: Pick<PackagingOption, 'id' | 'name' | 'qty' | 'price_per_pack_incl_tax' | 'price_per_unit_incl_tax' | 'is_default'>[]
-  sellable: boolean
-  in_stock: boolean
-  qty_available: number
-  // Must stay in step with Product: search results are rendered by the SAME ProductCard, and
-  // /products drops them straight into its Product[] state, so anything the card reads has to
-  // be present here too. Omitting this made an allow-OOS product with fractional stock come
-  // back capped (and its Add button disabled) when found via search, while the same product
-  // added fine from the grid.
-  allow_out_of_stock_order: boolean
-}
+// The global search overlay consumes /api/search, which returns full Product objects: the
+// route hydrates matched ids through fetchOdooProducts, the same pipeline the grid uses.
+//
+// This used to be a separate, lighter shape. That is what produced two customer-visible bugs
+// in a row - a missing allow_out_of_stock_order that disabled Add, and list_price instead of
+// the customer's pricelist - because both surfaces render the identical ProductCard while
+// being fed by different builders. Keep it as an alias: if search ever needs to diverge
+// again, it should be a documented subset of Product, not a parallel definition.
+export type SearchHit = Product
 
 export interface Cart {
   cart_id: number

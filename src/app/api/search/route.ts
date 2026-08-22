@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PRODUCTS } from '@/lib/odoo/mock/data'
 import { parseSession } from '@/lib/odoo/session'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
-import type { SearchHit } from '@/types'
 
 const USE_MOCK = process.env.USE_MOCK_API !== 'false'
 
@@ -29,25 +28,23 @@ export async function GET(req: NextRequest) {
   try {
     const sessionId = await getOdooSession()
     const { searchRead, callKw } = await import('@/lib/odoo/client')
-    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, stockLocationContext, getPartnerFiscalPositionId, getFiscalTaxMap, getWebsiteCompanyId, computeDisplayUnitPrice } = await import('@/lib/odoo/odoo-helpers')
+    const { fetchWebsitePublishedSettings, getHideOutOfStock, getInStockIds, getHiddenProductIds, getHiddenCategoryIds, getCustomerHiddenDomain, buildVisibilityDomain, getPartnerFiscalPositionId, getPartnerPricelistId, fetchOdooProducts } = await import('@/lib/odoo/odoo-helpers')
 
     // Resolve visibility rules first (all cached) so the name/sku search itself
     // is restricted to published + in-stock + not-admin-hidden products - same rules
     // as the listing. Stock is resolved against the cached in-stock id set, not a
     // slow `qty_available` SQL term. locCtx scopes the per-hit qty_available read below
     // to the sellable location (R4/Stock), same as the listing.
-    const [websiteMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds, locCtx, fiscalPositionId, websiteCompanyId] = await Promise.all([
+    // These feed the id-matching domain below. Tax/company/fiscal-map resolution is no longer
+    // done here: hydration goes through fetchOdooProducts, which owns that pipeline.
+    const [websiteMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds, fiscalPositionId] = await Promise.all([
       fetchWebsitePublishedSettings(sessionId),
       getHideOutOfStock(sessionId),
       getInStockIds(),
       getHiddenProductIds(),
       getHiddenCategoryIds(),
-      stockLocationContext(),
       getPartnerFiscalPositionId(parsed.partner_id),
-      getWebsiteCompanyId(),
     ])
-    // Fiscal-position tax map so search prices match the grid (e.g. NO VAT -> ex-VAT price).
-    const fiscalMap = await getFiscalTaxMap(fiscalPositionId)
 
     // Round 1: search EN (name OR sku) + HE (name), both AND-ed with the
     // visibility domain. '|' is a sibling of the two leaves, not nested in an
@@ -77,89 +74,32 @@ export async function GET(req: NextRequest) {
     // Cap to 20 IDs - the overlay shows 6; fetching 100 templates for 6 results wastes bandwidth
     const topIds = allIds.slice(0, 20)
 
-    // Round 2: template details (EN + HE) in parallel - skips pricelist, categories,
-    // hide-OOS, and the full tax pipeline. Price shown is list_price × packaging qty
-    // (a preview, not pricelist-adjusted).
-    const [enTemplates, heTemplates] = await Promise.all([
-      callKw(sessionId, 'product.template', 'read', [topIds],
-        { fields: ['id', 'name', 'default_code', 'list_price', 'packaging_ids', 'qty_available', 'taxes_id'], context: locCtx },
-      ) as Promise<{ id: number; name: string; default_code: string | false; list_price: number; packaging_ids: number[]; qty_available: number; taxes_id: number[] }[]>,
-      callKw(sessionId, 'product.template', 'read', [topIds],
-        { fields: ['id', 'name'], context: { lang: 'he_IL' } },
-      ) as Promise<{ id: number; name: string }[]>,
-    ])
+    // Round 2: hydrate through the SAME pipeline the grid uses, rather than a second
+    // hand-rolled payload builder.
+    //
+    // This route used to read templates itself and price them from list_price, calling the
+    // result "a preview". The card cannot show a preview: /products drops these straight into
+    // its Product[] state and renders them in the identical ProductCard, so a customer whose
+    // pricelist differs from list_price saw one price on the card and another in the cart.
+    // The same divergence had already produced a second bug, where an allow-OOS product came
+    // back without its flag and its Add button was disabled only when reached via search.
+    //
+    // One builder means the two surfaces cannot disagree again: pricelist, fiscal position,
+    // packaging, taxes, categories, stock flags and the freshness overlay are all resolved
+    // exactly once, in fetchOdooProducts. It is also fewer Odoo calls than the four this
+    // route used to make, since that function is cached per (domain, pricelist, lang).
+    const pricelistId = (await getPartnerPricelistId(parsed.partner_id)) ?? parsed.pricelist_id ?? undefined
+    const { products } = await fetchOdooProducts(
+      sessionId, [['id', 'in', topIds]], { limit: topIds.length }, pricelistId,
+      undefined, 'both', false, fiscalPositionId,
+    )
 
-    const heMap = new Map(heTemplates.map(t => [t.id, t.name]))
+    // Re-impose relevance order: fetchOdooProducts sorts by its own default, but the ids came
+    // out of the name/SKU match above and that ordering is what the customer expects.
+    const rank = new Map(topIds.map((id, i) => [id, i]))
+    products.sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9))
 
-    // Round 3: fetch all packagings for the matched templates in one call
-    const packagingIds = Array.from(new Set(enTemplates.flatMap(t => t.packaging_ids)))
-    const packagings = packagingIds.length > 0
-      ? await callKw(sessionId, 'product.packaging', 'read', [packagingIds],
-          { fields: ['id', 'name', 'qty', 'product_id', 'sales'] },
-        ) as { id: number; name: string; qty: number; product_id: [number, string]; sales: boolean }[]
-      : []
-
-    const packMap = new Map(packagings.map(p => [p.id, p]))
-
-    // Taxes for the matched templates → fiscal-position-aware unit price (same helper as the
-    // grid), so a NO-VAT customer sees the ex-VAT price here too. Still list_price-based (not
-    // pricelist-adjusted) - a preview.
-    const allTaxIds = Array.from(new Set(enTemplates.flatMap(t => t.taxes_id)))
-    const taxRows = allTaxIds.length > 0
-      ? await callKw(sessionId, 'account.tax', 'read', [allTaxIds],
-          { fields: ['id', 'name', 'amount', 'price_include', 'company_id'] },
-        ) as { id: number; name: string; amount: number; price_include: boolean; company_id: [number, string] | false }[]
-      : []
-    const taxMap = new Map(taxRows.map(t => [t.id, t]))
-
-    const results: SearchHit[] = enTemplates.map(t => {
-      const salesPkgs = t.packaging_ids
-        .map(id => packMap.get(id))
-        .filter((p): p is NonNullable<typeof p> => !!p && p.sales)
-
-      const productTaxes = t.taxes_id.map(id => taxMap.get(id)).filter((x): x is NonNullable<typeof x> => !!x)
-      const { incl: unitPrice } = computeDisplayUnitPrice(t.list_price, productTaxes, fiscalMap, websiteCompanyId)
-      const packagingOptions = salesPkgs.map((pkg, idx) => ({
-        id: pkg.id,
-        name: pkg.name,
-        qty: pkg.qty,
-        price_per_pack_incl_tax: Math.round(unitPrice * pkg.qty * 100) / 100,
-        price_per_unit_incl_tax: unitPrice,
-        is_default: idx === 0,
-      }))
-
-      if (packagingOptions.length === 0) {
-        packagingOptions.push({ id: 0, name: 'Unit', qty: 1, price_per_pack_incl_tax: unitPrice, price_per_unit_incl_tax: unitPrice, is_default: true })
-      }
-
-      // Stock flags derived the same way as the listing: in_stock from the cached
-      // (location-scoped) in-stock set, sellable also true when the product is flagged
-      // allow_out_of_stock_order. This is what fixes OOS items rendering as in-stock and
-      // in-stock items rendering as OOS on the search-driven surfaces.
-      const in_stock = inStockIds === null ? t.qty_available > 0 : inStockIds.has(t.id)
-      const allowOos = websiteMap.get(t.id) ?? false
-      const sellable = in_stock || allowOos
-
-      return {
-        id: t.id,
-        template_id: t.id,
-        name: t.name,
-        name_he: heMap.get(t.id) ?? t.name,
-        sku: t.default_code || '',
-        // 512 to match the listing grid - search results render in the same
-        // ProductCard cards, so 128 looked noticeably blurry beside listing.
-        image_url: `/api/images/product/${t.id}/512`,
-        currency: 'THB',
-        packaging_options: packagingOptions,
-        sellable,
-        in_stock,
-        qty_available: t.qty_available,
-        // Same flag the listing sends. Without it ProductCard falls back to capping by stock
-        // and disables Add for a product the merchant explicitly uncapped.
-        allow_out_of_stock_order: allowOos,
-      }
-    })
-
+    const results = products
     return NextResponse.json({ results, query: q, total: allIds.length })
   } catch (err) {
     invalidateOdooSession()

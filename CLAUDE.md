@@ -107,9 +107,74 @@ list -> ฿121.50 for NO VAT). `fiscalPositionId` is resolved per-request (`getP
 and threaded into `fetchOdooProducts` (part of the cache key), so it's applied on the listing,
 detail, featured, best-sellers, recently-ordered, favorites, and quick-order. The shared
 `computeDisplayUnitPrice(basePrice, taxes, fiscalMap, websiteCompanyId)` encapsulates the
-company-filter + strip-included-VAT + apply-fiscal-map steps; both the grid and `/api/search`
-call it so they can't drift. (Search is still list_price-based, not pricelist-adjusted — a
-preview — but its VAT/fiscal handling now matches the grid.)
+company-filter + strip-included-VAT + apply-fiscal-map steps. Search no longer calls it
+directly: it hydrates through `fetchOdooProducts`, so it inherits the whole pipeline (see
+**One product payload** below).
+
+## One product payload (do not build a second one)
+
+**Every surface that renders `ProductCard` must be fed by `fetchOdooProducts`.** `/api/products`,
+`/api/products/[id]`, `/api/featured`, `/api/best-sellers`, `/api/recently-ordered`,
+`/api/favorites` and `/api/search` all do. `SearchHit` is now a plain alias of `Product`
+(`src/types/index.ts`), so the compiler rejects any attempt to let them drift.
+
+This rule exists because breaking it produced two customer-visible bugs in two days, both
+reported by the owner:
+
+1. **Add button greyed out only when the product was reached via search.** `/api/search` built
+   its own lighter payload that omitted `allow_out_of_stock_order`. `ProductCard` read it as
+   `undefined`, fell back to capping by stock, computed `floor(0.325 / 0.5) = 0` for a
+   kg-priced product and rendered it sold out. From the grid the same product added fine.
+2. **The card showed a price that was not the customer's price.** The same route priced from
+   `list_price` and called it "a preview". A card cannot show a preview: `/products` drops
+   search results straight into its `Product[]` state through an untyped `fetch`, so the
+   customer saw THB 450 on the card and THB 264.83 (their pricelist) in the cart.
+
+Both were invisible to TypeScript because the payload crossed an untyped `fetch` boundary. The
+structural fix is that search now resolves matching ids and then hydrates them with
+`fetchOdooProducts(sessionId, [['id','in',topIds]], ...)`, re-imposing relevance order
+afterwards. That deleted ~55 lines and one whole parallel builder, and costs fewer Odoo calls
+than the four the old route made, because that function is cached.
+
+**`allow_out_of_stock_order` is SENT to the client, never inferred.** The client used to guess
+it from `!in_stock`, which is only correct at exactly zero stock. Ticking "Continue Selling if
+Out of Stock" in Odoo means UNLIMITED — order any quantity, always visible — so
+`computeMaxPacks(inStock, qty, packQty, allowOos)` short-circuits to `undefined` when the flag
+is set, and `buildVisibilityDomain` shows the product regardless of stock. Perverse symptom of
+the old inference, worth recognising: the product broke *because* it had a little stock; at
+exactly 0 it worked.
+
+## QA suite
+
+`scripts/qa/cases.md` is the checklist (use cases and edge cases, grouped A-H, each marked
+AUTO / LOCAL / MANUAL). `scripts/qa/run.mjs` executes the AUTO ones.
+
+```
+SESSION_SECRET=... BASE=http://localhost:3201 node scripts/qa/run.mjs
+node scripts/qa/run.mjs --only=A,B
+```
+
+**READ ONLY** — it mints session cookies locally and only issues GETs, so it is safe against a
+rig pointed at production. It never adds to a cart and never checks out. Group A is the
+payload-parity regression test for the class of bug above and is the most valuable part: it
+compares every field `ProductCard` reads, including packaging prices, between the grid, search,
+the detail route and the four strip endpoints. It retries 5xx, because an early version
+reported three products "missing from search" that were only transient Odoo blips.
+
+Customers come from `QA_CUSTOMERS="uid:partner,uid:partner"` (default: one on the Public
+pricelist, one on the Wholesale pricelist) so two different pricelists are always compared.
+**Pick a customer with no per-customer hidden products when testing visibility**, or the result
+is meaningless (see below).
+
+Cart writes, checkout, inter-company PO creation, the webhook confirm fallback and the
+concurrency test cannot be covered without a write-capable staging Odoo.
+
+## Per-customer hidden products are deliberate
+
+Fresh bakery is hidden from customers too far away for perishable delivery, via the
+per-customer hidden products/categories on `res.partner`. It presents exactly like a bug: the
+customer cannot see a published, in-stock product, and a direct link 404s because the detail
+route applies `getCustomerHiddenDomain` too. Check this before reporting a visibility defect.
 
 **Stock is scoped to one warehouse location (R4/Stock).** Odoo's `qty_available` is
 global (nets all ~20 companies + every internal location), so it is the wrong number for
@@ -120,10 +185,8 @@ set + `sellable` flag), the per-card read in `_fetchProductsCached` (the low-sto
 the search route's per-hit read, and `findUnorderableTemplateIdsLive` (checkout re-check).
 Odoo's qty_available honours a `location` context and includes child locations, so this one
 id covers "R4/Stock and all child paths". Resolution is cached 1 day; if it fails, reads
-fall back to global (fail open) so a misconfig never empties the catalog. **Search results
-(`SearchHit`) now carry `sellable`/`in_stock`/`qty_available` + a per-unit price** — the
-global search overlay and quick-order previously omitted these, so out-of-stock items
-rendered as in-stock (and in-stock items as OOS) with a ฿0 unit price on those surfaces.
+fall back to global (fail open) so a misconfig never empties the catalog. Search inherits all
+of this by going through `fetchOdooProducts` rather than reading stock itself.
 
 **Checkout stock recheck + out-of-stock separation.** A cart can sit for days, so both the
 checkout review (`/api/checkout/review`) and the final confirm (`/api/checkout/confirm`)
@@ -633,6 +696,34 @@ limit, blocked customer) keep reaching the customer. The webhook always answers
 The real fix belongs in the vendor's module (`... if request else None`). It currently breaks
 EVERY purchase order created outside a browser request, including Odoo's own scheduled actions
 and imports.
+
+## Request parsing conventions
+
+**Never call `await req.json()` directly in a route.** Use `readJsonObject(req)`
+(`src/lib/request-body.ts`). Bare `req.json()` throws on a malformed or empty body and returns
+`null` for a literal `null` body, which then throws on destructuring — seven write routes,
+including both (pre-auth) login endpoints, answered HTTP 500 to a bad request because of this.
+`readJsonObject` returns `{}` instead, so the route falls through to the field validation it
+already has and returns its own 4xx.
+
+**HAZARD, learned the hard way:** that is only safe for a route where `{}` FAILS validation.
+For a route that treats `{}` as meaningful, collapsing an unparseable body into it converts a
+rejected request into an accepted, destructive one. `admin/content` (where
+`Object.values({}).every(...)` is vacuously true) wrote `"{}"` over every CMS page and answered
+200; `admin/site-settings` reset every configured value because `sanitizeSiteSettings({})`
+returns the full defaults. Both now reject an empty body explicitly before writing. **Check
+what your route does with `{}` before using the helper.**
+
+**Validate dates with `isIsoDate` (`src/lib/schedule-dates.ts`), never regex + `Date.parse`.**
+V8 rolls `2025-02-30` forward to 2 March and `2025-04-31` to 1 May, so the obvious idiom accepts
+impossible days. `isIsoDate` round-trips through UTC and rejects anything that does not format
+back to the input. Used by `created_after`, `date_from`/`date_to`, `delivery_date` and the
+schedule `end_date`.
+
+**Unvalidated date params are not cosmetic.** They land in Odoo domain terms, and every list
+route answers a thrown Odoo call with `invalidateOdooSession()` — which drops the admin token
+held in module memory and shared by every user on that instance. One client sending
+`?date_from=x` therefore forced a re-authentication for everyone else on that instance.
 
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
