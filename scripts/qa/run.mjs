@@ -324,9 +324,20 @@ async function main() {
     else {
       const list = he.body.products || []
       check('G1', list.length > 0, 'Hebrew listing returns products')
-      const translated = list.filter(p => p.name_he && p.name_he !== p.name)
-      check('G1', translated.length > 0, `${translated.length}/${list.length} products carry a distinct Hebrew name`,
-        'zero would suggest translations are not being read')
+      // NOT name vs name_he: with lang=he the route reads a SINGLE language, so both fields
+      // carry the same Hebrew string by design. Compare the HE listing against the EN one for
+      // the same product instead, and require the HE name to actually contain Hebrew.
+      const en = await api('/api/products?page=0&per_page=24&lang=en', c.cookie)
+      const enMap = new Map((en.body?.products || []).map(p => [p.template_id, p.name]))
+      const shared = list.filter(p => enMap.has(p.template_id))
+      const localized = shared.filter(p => p.name !== enMap.get(p.template_id))
+      const hebrewScript = list.filter(p => /[\u0590-\u05FF]/.test(p.name || ""))
+      if (shared.length === 0) note('G1', 'no products shared between the EN and HE pages to compare')
+      else check('G1', localized.length > 0,
+        `${localized.length}/${shared.length} products differ between the EN and HE listings`,
+        'zero would mean the lang parameter is not reaching Odoo')
+      check('G1', hebrewScript.length > 0,
+        `${hebrewScript.length}/${list.length} HE names actually contain Hebrew characters`)
       const keyLeak = list.filter(p => /^[a-z]+\.[a-z]/i.test(p.name || ''))
       check('G2', keyLeak.length === 0, 'no product name looks like a raw translation key',
         keyLeak.slice(0, 3).map(p => p.name).join(', '))
