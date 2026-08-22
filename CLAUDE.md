@@ -770,6 +770,43 @@ route answers a thrown Odoo call with `invalidateOdooSession()` — which drops 
 held in module memory and shared by every user on that instance. One client sending
 `?date_from=x` therefore forced a re-authentication for everyone else on that instance.
 
+## Multi-company: "Incompatible companies" blocks add-to-cart (latent)
+
+A portal customer whose **`res.partner.company_id` is a sibling company** cannot create a cart.
+The portal creates the `sale.order` with `company_id = 1`, and Odoo's `_check_company`
+(`base_multi_company/models/base.py`) rejects the mismatch with
+`UserError: Incompatible companies on records`. The route catches it and answers **503
+`ODOO_UNAVAILABLE`**, so the customer is told "Could not reach Odoo" when Odoo is perfectly
+healthy and the real cause is their partner record.
+
+**Production impact today is ZERO, and the raw number is misleading.** 332 of 558 active
+portal users (59%) have `company_id = 15` (Jcafe Sukhumvit) and would hit this — but **0 of
+those 332 have ever placed a wholesale order through any channel**. They are J Cafe *retail*
+customers from website 1 who exist as portal users in the shared database and never touch this
+portal. Do not report 59% as a live outage.
+
+It is still a landmine, for two reasons: a genuine wholesale customer created against company
+15 would silently be unable to order, and the failure is indistinguishable from an Odoo outage
+in both the UI and the logs. Note it is the partner's OWN `company_id` that matters, not
+`commercial_partner_id`: a Jcafe *contact* whose partner is company 1 checks out fine (that is
+what W11 exercises).
+
+Found by the W12 load test, and only because it used 15 DIFFERENT customers. Every earlier
+single-customer test passed straight over it.
+
+## Load testing is unresolved (per-IP 429)
+
+W12 cannot currently produce a valid capacity number. Odoo.sh rate-limits per source IP, so
+driving N concurrent sessions from one machine returns **HTTP 429**, and the latency
+distribution then measures the rate limiter rather than the portal. Two separate attempts hit
+this; the failures are 429s, not saturation.
+
+What the runs DO establish: the 503s under concurrency were functional
+("Incompatible companies") and rate-limiting, never a timeout or a crash, and staging served 6
+concurrent plain requests at ~1.7s. **That is not the same as knowing the portal survives 15
+real shoppers.** Answering it properly needs load generated from multiple IPs, or the staging
+rate limit raised.
+
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
   Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
