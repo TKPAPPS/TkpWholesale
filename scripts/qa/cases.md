@@ -55,9 +55,9 @@ actually damages trust: two surfaces that look identical and disagree.
 | C4 | Weight (kg) products with fractional stock below one pack are not shown sold out | AUTO |
 | C5 | `in_stock` agrees with R4-scoped quantity, not the global `qty_available` | AUTO |
 | C6 | Non-storable consumables count as always in stock | AUTO |
-| C9 | No "Low stock" badge on an allow-OOS product (source-asserted gate) | AUTO |
 | C7 | Quantity cap clamps rather than rejects | LOCAL |
 | C8 | Stock drop between cart-add and checkout is caught | MANUAL |
+| C9 | No "Low stock" badge on an allow-OOS product (source-asserted gate) | AUTO |
 
 ## D. Visibility and access control
 
