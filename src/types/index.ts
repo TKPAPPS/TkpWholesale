@@ -88,6 +88,12 @@ export interface SearchHit {
   sellable: boolean
   in_stock: boolean
   qty_available: number
+  // Must stay in step with Product: search results are rendered by the SAME ProductCard, and
+  // /products drops them straight into its Product[] state, so anything the card reads has to
+  // be present here too. Omitting this made an allow-OOS product with fractional stock come
+  // back capped (and its Add button disabled) when found via search, while the same product
+  // added fine from the grid.
+  allow_out_of_stock_order: boolean
 }
 
 export interface Cart {

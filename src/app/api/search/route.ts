@@ -137,7 +137,8 @@ export async function GET(req: NextRequest) {
       // allow_out_of_stock_order. This is what fixes OOS items rendering as in-stock and
       // in-stock items rendering as OOS on the search-driven surfaces.
       const in_stock = inStockIds === null ? t.qty_available > 0 : inStockIds.has(t.id)
-      const sellable = in_stock || (websiteMap.get(t.id) ?? false)
+      const allowOos = websiteMap.get(t.id) ?? false
+      const sellable = in_stock || allowOos
 
       return {
         id: t.id,
@@ -153,6 +154,9 @@ export async function GET(req: NextRequest) {
         sellable,
         in_stock,
         qty_available: t.qty_available,
+        // Same flag the listing sends. Without it ProductCard falls back to capping by stock
+        // and disables Add for a product the merchant explicitly uncapped.
+        allow_out_of_stock_order: allowOos,
       }
     })
 
