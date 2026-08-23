@@ -841,11 +841,33 @@ production, and all load came from ONE IP whereas real customers arrive from man
 PATTERN is real and architectural, but the absolute failure rate does not transfer to
 production. Do not quote "24% of requests fail" as a production figure.
 
-**Candidate mitigations, none applied yet:** single-flight dedupe so concurrent misses for the
-same cache key collapse into one Odoo fan-out (note: in-process only, so on Vercel it helps
-per instance rather than globally); a longer TTL or stale-while-revalidate so an expiry serves
-stale rather than stampeding; or reducing the per-listing fan-out. Discuss before changing a
-hot path on the live site.
+**Applied: single-flight on the product listing** (`_inflightProducts` in `odoo-helpers.ts`).
+Concurrent identical misses now collapse into one Odoo fan-out instead of N. Measured on the
+same 15-session test:
+
+| | cold non-2xx | cold browse p50 | warm non-2xx | warm wall clock |
+|---|---|---|---|---|
+| before | 18 / 75 | 3246ms | 2 / 75 | 13.0s |
+| after | **8 / 75** | 8902ms | **0 / 75** | **11.3s** |
+
+Browse went from 12/15 to 15/15 on a cold cache, and warm is now clean.
+
+**The cold p50 got WORSE on purpose, and that is the trade.** Single-flight converts fast
+failures into waits: previously three requests failed at ~3s, now all fifteen wait for the one
+in-flight fan-out. On staging that wait is ~9s; production Odoo is faster and less throttled,
+so the real wait is shorter, but the shape is the same. It is a better failure mode than a 503,
+not a free win.
+
+**Value-level stale-while-revalidate was rejected, deliberately.** It would also smooth the
+expiry cliff, but it would hold product data in per-instance memory that
+`revalidateTag('odoo-products')` cannot reach, so an admin publish/hide would keep serving the
+old page on some instances. That trades a rare latency spike for a routine correctness bug.
+Single-flight changes no cache semantics at all.
+
+**The residual 8 failures are search, and dedupe cannot fix them.** They are 429s from search's
+own id-resolution round, and each customer searches a DIFFERENT term, so there is nothing to
+deduplicate. Closing that gap needs less fan-out per search or more rate-limit headroom, not
+more caching.
 
 Reproduce with `scripts/qa/run-load.mjs` (staging-guarded, cleans up its carts).
 

@@ -1242,6 +1242,30 @@ const _fetchProductsCached = unstable_cache(
 // `sessionId` is accepted for backward compatibility but is no longer used here - the
 // cached implementation fetches its own admin session so the rotating token stays out
 // of the cache key.
+// SINGLE-FLIGHT for the product listing.
+//
+// Fixes a measured thundering herd. `unstable_cache` does not deduplicate concurrent misses
+// for the same key: when the 5 minute entry expires, every in-flight request misses and each
+// one runs the FULL Odoo fan-out. Measured 2026-08-23 on a production build with 15 concurrent
+// shoppers, cold: 18 of 75 requests failed, all of them `OdooError: HTTP 429` (Odoo
+// rate-limiting the burst), surfacing to customers as "Could not reach Odoo". Warm, the same
+// page served in 6ms.
+//
+// This collapses N concurrent identical misses into ONE fan-out; the other N-1 callers await
+// the same promise. It deliberately does NOT cache values itself:
+//
+//   Value-level stale-while-revalidate was considered and rejected. It would ALSO smooth the
+//   expiry cliff, but it would hold product data in per-instance memory that
+//   `revalidateTag('odoo-products')` cannot reach. Admin edits (publish, hide, featured) rely
+//   on that tag busting immediately and globally, so SWR would trade a rare latency spike for
+//   a routine correctness bug: an admin unhides a product and some instances keep serving the
+//   old page. Single-flight removes the stampede without touching cache semantics at all.
+//
+// The map only ever holds in-flight promises and each key is deleted when it settles, so it
+// cannot grow unbounded. A rejection is not retained: the entry is cleared on failure too, so
+// the next caller retries rather than inheriting a cached error.
+const _inflightProducts = new Map<string, Promise<{ products: Product[]; total: number }>>()
+
 export async function fetchOdooProducts(
   sessionId: string,
   domain: unknown[],
@@ -1252,15 +1276,32 @@ export async function fetchOdooProducts(
   inStockOnly = false,
   fiscalPositionId?: number | null,
 ): Promise<{ products: Product[]; total: number }> {
-  const { products, total } = await _fetchProductsCached(
-    JSON.stringify(domain),
-    JSON.stringify(opts),
-    pricelistId ?? 0,
-    newArrivalsAfter ?? '',
-    lang,
-    inStockOnly,
-    fiscalPositionId ?? 0,
-  )
+  // Same tuple that forms the unstable_cache key, so two requests dedupe only when they would
+  // genuinely have produced the same page.
+  const domainStr = JSON.stringify(domain)
+  const optsStr = JSON.stringify(opts)
+  const flightKey = JSON.stringify([domainStr, optsStr, pricelistId ?? 0, newArrivalsAfter ?? '', lang, inStockOnly, fiscalPositionId ?? 0])
+
+  let flight = _inflightProducts.get(flightKey)
+  if (!flight) {
+    flight = _fetchProductsCached(
+      domainStr,
+      optsStr,
+      pricelistId ?? 0,
+      newArrivalsAfter ?? '',
+      lang,
+      inStockOnly,
+      fiscalPositionId ?? 0,
+    )
+    _inflightProducts.set(flightKey, flight)
+    // Clear on settle, success or failure. The extra handlers keep a rejection from surfacing
+    // as an unhandled promise rejection on this bookkeeping chain; the real rejection still
+    // reaches every caller awaiting `flight` itself.
+    void flight.then(() => {}, () => {}).finally(() => {
+      if (_inflightProducts.get(flightKey) === flight) _inflightProducts.delete(flightKey)
+    })
+  }
+  const { products, total } = await flight
   if (products.length === 0) return { products, total }
 
   // FRESHNESS OVERLAY. The cached page above froze each product's availability for up to
