@@ -85,8 +85,17 @@ export default function CheckoutPage() {
     if (scheduleEnd && firstRunDate && scheduleEnd < firstRunDate) setScheduleEnd('')
   }, [scheduleEnd, firstRunDate])
 
+  // Excluding all seven days leaves a schedule that can never run. The server rejects that
+  // (normalizeScheduleInput), but only AFTER the customer has filled in checkout, and the
+  // rejection arrives as an untranslated English string. Refuse the seventh exclusion here
+  // instead, so the state the server rejects is simply not reachable from the UI.
+  const EXCLUDABLE_MAX = 6
   const toggleExcludedDay = (d: number) =>
-    setExcludedDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
+    setExcludedDays((prev) => {
+      if (prev.includes(d)) return prev.filter((x) => x !== d)
+      if (prev.length >= EXCLUDABLE_MAX) return prev   // keep at least one delivery day
+      return [...prev, d]
+    })
 
   const fetchReview = async () => {
     setLoading(true)
@@ -343,7 +352,8 @@ export default function CheckoutPage() {
                           type="button"
                           onClick={() => toggleExcludedDay(d)}
                           aria-pressed={excludedDays.includes(d)}
-                          className={`h-9 w-9 rounded-full border text-xs ${excludedDays.includes(d) ? 'border-red-300 bg-red-50 text-red-600 line-through' : 'border-gray-200 text-gray-600'}`}
+                          disabled={!excludedDays.includes(d) && excludedDays.length >= EXCLUDABLE_MAX}
+                          className={`h-9 w-9 rounded-full border text-xs disabled:opacity-40 disabled:cursor-not-allowed ${excludedDays.includes(d) ? 'border-red-300 bg-red-50 text-red-600 line-through' : 'border-gray-200 text-gray-600'}`}
                         >{label}</button>
                       ))}
                     </div>

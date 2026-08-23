@@ -21,6 +21,8 @@ async function createSchedule(args: {
   sessionId: string
   orderId: number
   spec: { frequency: 'daily' | 'weekly'; interval_weeks: number; excluded_weekdays: number[]; end_date: string | null }
+  // Passed in, never recomputed here. See the anchor note at the call site.
+  anchor: string
   partnerId: number
   commercialPartnerId: number
   shippingAddressId: number
@@ -39,7 +41,7 @@ async function createSchedule(args: {
   const items = await readOrderItemsForSchedule(args.sessionId, args.orderId)
   if (items.length === 0) throw new Error('No schedulable items on the order')
 
-  const anchor = todayBkk()
+  const anchor = args.anchor
   const next = nextRunDate({ ...args.spec, anchor_date: anchor }, anchor)
   if (!next) throw new Error('Schedule would never run')
 
@@ -101,6 +103,16 @@ export async function POST(req: NextRequest) {
   // Optional recurrence: validate up-front so a bad schedule is rejected before we
   // place the (non-reversible) order.
   let scheduleSpec: ReturnType<typeof normalizeScheduleInput> | null = null
+  // ONE "today" for the whole request, in Asia/Bangkok.
+  //
+  // todayBkk() used to be called at three separate points: the schedule pre-check, the
+  // delivery-date check, and again inside createSchedule AFTER action_confirm. A checkout
+  // straddling Bangkok midnight could therefore validate against one calendar day and act on
+  // the next. For the schedule that meant a spec which passed validation could still build an
+  // unrunnable one, producing exactly the post-order schedule_error the pre-check exists to
+  // prevent; for delivery_date it meant today's date could be rejected as "in the past".
+  // Both are rare and both are avoidable by reading the clock once.
+  const requestToday = todayBkk()
   if (schedule !== undefined && schedule !== null) {
     scheduleSpec = normalizeScheduleInput(schedule)
     if (!scheduleSpec.ok) {
@@ -110,8 +122,7 @@ export async function POST(req: NextRequest) {
     // that yields no run date (an end date falling before the first occurrence of the
     // chosen cadence) would otherwise place the order and then fail with a soft
     // schedule_error, silently costing the customer the recurrence they asked for.
-    const anchor = todayBkk()
-    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: anchor }, anchor)) {
+    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: requestToday }, requestToday)) {
       return NextResponse.json(
         { error: 'INVALID_SCHEDULE', message: 'This schedule would never run. Check the end date.' },
         { status: 400 },
@@ -146,7 +157,7 @@ export async function POST(req: NextRequest) {
     if (typeof delivery_date !== 'string' || !isIsoDate(delivery_date)) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_DATE', message: 'Delivery date is invalid.' }, { status: 400 })
     }
-    if (delivery_date < todayBkk()) {
+    if (delivery_date < requestToday) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_DATE', message: 'Delivery date cannot be in the past.' }, { status: 400 })
     }
     commitmentDate = `${delivery_date} 02:00:00` // 09:00 Asia/Bangkok expressed in UTC
@@ -409,7 +420,7 @@ export async function POST(req: NextRequest) {
     if (scheduleSpec?.ok) {
       try {
         scheduleId = await createSchedule({
-          sessionId, orderId: cartId, spec: scheduleSpec.value,
+          sessionId, orderId: cartId, spec: scheduleSpec.value, anchor: requestToday,
           partnerId: parsed.partner_id, commercialPartnerId: parsed.commercial_partner_id,
           shippingAddressId: delivery_address_id, poRef: typeof po_ref === 'string' ? po_ref.trim() : '',
           note: cleanNote, lang: parsed.lang,

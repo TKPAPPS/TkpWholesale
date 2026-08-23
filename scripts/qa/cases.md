@@ -92,6 +92,8 @@ actually damages trust: two surfaces that look identical and disagree.
 | F4 | Search: wildcards, SQL-ish input, over-length, emoji, Hebrew | AUTO |
 | F5 | Checkout: address id, note length, PO ref, delivery date, schedule | LOCAL |
 | F6 | A schedule that can never run is rejected before the order is placed | LOCAL |
+| F7 | The UI cannot build an all-seven-weekdays-excluded schedule (source-asserted) | AUTO |
+| F8 | The confirm route reads the Bangkok clock once, so a midnight-straddling checkout cannot fail after the order (source-asserted) | AUTO |
 
 ## G. Internationalisation
 

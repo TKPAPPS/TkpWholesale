@@ -770,6 +770,26 @@ route answers a thrown Odoo call with `invalidateOdooSession()` — which drops 
 held in module memory and shared by every user on that instance. One client sending
 `?date_from=x` therefore forced a re-authentication for everyone else on that instance.
 
+### Schedule edge cases (fixed 2026-08-23)
+
+**The checkout UI cannot exclude all seven weekdays.** `normalizeScheduleInput` has always
+rejected it server-side, but only after the customer had filled in checkout, and the rejection
+arrived as an untranslated English string. The weekday toggles now refuse the seventh exclusion
+(`EXCLUDABLE_MAX = 6`) and disable the remaining button, so the state the server rejects is
+simply not reachable. The server check stays as defence in depth.
+
+**The confirm route reads the Bangkok clock exactly once** (`requestToday`). `todayBkk()` used
+to be called at three points: the schedule pre-check, the `delivery_date` check, and again
+inside `createSchedule` AFTER `action_confirm`. A checkout straddling Bangkok midnight could
+therefore validate against one calendar day and act on the next, so a schedule that passed
+validation could still build an unrunnable one and produce the post-order `schedule_error` the
+pre-check exists to prevent; `delivery_date` could likewise reject today as "in the past".
+`createSchedule` now takes `anchor` as an argument and must never call `todayBkk()` itself.
+
+Both are guarded by QA group S, which asserts the invariants against the SOURCE, because
+neither is reliably provokable through the API: one needs the UI state machine, the other needs
+a request to straddle midnight. Both guards were verified to FAIL when the fixes are reverted.
+
 ## Multi-company: "Incompatible companies" blocks add-to-cart (latent)
 
 A portal customer whose **`res.partner.company_id` is a sibling company** cannot create a cart.

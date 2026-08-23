@@ -387,6 +387,27 @@ async function main() {
     }
   }
 
+  // ============================================================ S. schedule source guards
+  // Both of these are races/edge cases that a black-box API test cannot reliably provoke:
+  // one needs the UI state machine, the other needs the request to straddle Bangkok midnight.
+  // Asserting the invariant in the source is the honest way to keep them fixed.
+  if (group('S', 'Schedule guards (source)')) {
+    const fsx = await import('node:fs')
+
+    const checkout = fsx.readFileSync('src/app/(customer)/checkout/page.tsx', 'utf8')
+    check('S1', /EXCLUDABLE_MAX\s*=\s*6/.test(checkout) && /prev\.length >= EXCLUDABLE_MAX/.test(checkout),
+      'checkout UI cannot exclude all seven weekdays',
+      'without this the customer can build a schedule that can never run, and the server rejection arrives untranslated after checkout is filled in')
+
+    const confirm = fsx.readFileSync('src/app/api/checkout/confirm/route.ts', 'utf8')
+    const calls = (confirm.match(/^\s*(const|let|return|if).*todayBkk\(\)/gm) || []).length
+    check('S2', calls === 1,
+      `confirm route reads the Bangkok clock exactly once (found ${calls})`,
+      'reading it more than once lets a checkout straddling midnight validate against one calendar day and act on the next')
+    check('S2', /anchor: requestToday/.test(confirm) && /const anchor = args\.anchor/.test(confirm),
+      'createSchedule receives the anchor rather than recomputing it')
+  }
+
   // ---------------------------------------------------------------- summary
   console.log(`\n${'='.repeat(64)}`)
   console.log(`PASS ${pass}   FAIL ${fail}   SKIP ${skip}`)
