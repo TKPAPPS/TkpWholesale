@@ -132,5 +132,5 @@ staging and run `run-writes.mjs`.
 | W9 | Checkout review splits out-of-stock lines | STAGING |
 | W10 | Full checkout confirms and returns an order | STAGING |
 | W11 | A sibling-company customer checks out (the "object is not bound" webhook path) | STAGING |
-| W12 | Concurrent add-to-cart from N customers | STAGING (INCONCLUSIVE - per-IP 429) |
+| W12 | 15 concurrent shopping sessions | STAGING (MEASURED: warm fine, cold-cache stampede trips Odoo 429) |
 | W13 | Every test customer can create a cart (catches Incompatible companies) | STAGING |

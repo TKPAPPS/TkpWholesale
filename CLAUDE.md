@@ -814,18 +814,40 @@ what W11 exercises).
 Found by the W12 load test, and only because it used 15 DIFFERENT customers. Every earlier
 single-customer test passed straight over it.
 
-## Load testing is unresolved (per-IP 429)
+## Load: warm is fast, the risk is a cache-expiry stampede
 
-W12 cannot currently produce a valid capacity number. Odoo.sh rate-limits per source IP, so
-driving N concurrent sessions from one machine returns **HTTP 429**, and the latency
-distribution then measures the rate limiter rather than the portal. Two separate attempts hit
-this; the failures are 429s, not saturation.
+Measured 2026-08-23 against a PRODUCTION BUILD (`next start`, not `next dev`) pointed at
+staging, 15 concurrent shopping sessions, ~1.2s think time, using 15 customers each verified
+able to transact (an earlier run was polluted by sibling-company customers who cannot create a
+cart at all, which looked like saturation).
 
-What the runs DO establish: the 503s under concurrency were functional
-("Incompatible companies") and rate-limiting, never a timeout or a crash, and staging served 6
-concurrent plain requests at ~1.7s. **That is not the same as knowing the portal survives 15
-real shoppers.** Answering it properly needs load generated from multiple IPs, or the staging
-rate limit raised.
+| | non-2xx | browse p50 | detail p50 | add-to-cart p50 |
+|---|---|---|---|---|
+| caches COLD | 18 / 75 | 3246ms | 5053ms | 1391ms |
+| caches WARM | 2 / 75 | **6ms** | **7ms** | 863ms |
+
+**Steady state is not the problem.** Warm, a cached listing serves in 6ms and 15 concurrent
+customers finish in 13s wall clock.
+
+**The failure mode is the cold/expired cache.** Every one of the 23 failures was
+`OdooError: HTTP 429` — Odoo rate-limiting. The mechanism: the product cache has a 5 minute
+TTL; when it expires, N concurrent requests all miss, each miss triggers the full Odoo fan-out
+(a listing is several calls), and the combined burst trips the per-IP limit. The route reports
+that as 503 `ODOO_UNAVAILABLE`. Classic thundering herd: `unstable_cache` does not
+single-flight concurrent misses for the same key.
+
+**What this does NOT establish.** Staging is an Odoo.sh branch and throttles harder than
+production, and all load came from ONE IP whereas real customers arrive from many. So the
+PATTERN is real and architectural, but the absolute failure rate does not transfer to
+production. Do not quote "24% of requests fail" as a production figure.
+
+**Candidate mitigations, none applied yet:** single-flight dedupe so concurrent misses for the
+same cache key collapse into one Odoo fan-out (note: in-process only, so on Vercel it helps
+per instance rather than globally); a longer TTL or stale-while-revalidate so an expiry serves
+stale rather than stampeding; or reducing the per-listing fan-out. Discuss before changing a
+hot path on the live site.
+
+Reproduce with `scripts/qa/run-load.mjs` (staging-guarded, cleans up its carts).
 
 ## Known issues / follow-ups
 - **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
