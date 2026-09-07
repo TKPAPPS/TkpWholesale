@@ -26,6 +26,16 @@ import { useState } from 'react'
  * On blur the field is normalised: an empty or below-min value falls back to `min`
  * rather than leaving the customer looking at a blank box.
  *
+ * `onFocus` selects the whole value so tapping the field highlights the number and the
+ * next keystroke replaces it, instead of dropping a caret behind the digit and forcing a
+ * backspace first. This is why the field must be `type="text"` + `inputMode="numeric"` and
+ * NOT `type="number"`: a number input does not support the text-selection API at all
+ * (`selectionStart` reads back `null` and `select()` does nothing), so the caret always
+ * landed behind the number and it could not be highlighted. `inputMode` keeps the numeric
+ * keypad on phones, and switching away from `type="number"` also drops the desktop spinner
+ * arrows and the scroll-wheel-changes-the-value hazard. Validation was never relying on the
+ * number type — the regex below does it.
+ *
  * Deliberately NO upper-bound clamp while typing. An earlier version rejected any
  * keystroke that pushed the value past `max`, which fought the customer mid-type
  * (silently ignoring digits, or snapping back to the cap) and read as a broken
@@ -60,6 +70,13 @@ export function useQuantityInput(value: number, min: number, commit: (n: number)
       // Only push valid quantities up. Typing "0" toward "10" holds locally
       // without committing a zero to the cart.
       if (n >= min) commit(n)
+    },
+
+    onFocus(e: React.FocusEvent<HTMLInputElement>) {
+      // Capture the node synchronously; the timeout is for iOS Safari, which ignores
+      // select() called during the focus event itself.
+      const el = e.currentTarget
+      setTimeout(() => { try { el.select() } catch { /* detached */ } }, 0)
     },
 
     onBlur() {

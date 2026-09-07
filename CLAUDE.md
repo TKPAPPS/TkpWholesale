@@ -430,6 +430,15 @@ draft string so `""` is a legal intermediate state, commits upward only once a v
 parses, and normalises to `min` on blur. The +/- buttons call `clearDraft()` so they win over a
 stale draft. Quick-order needs `QtyCell` because a hook cannot be called inside `rows.map()`.
 
+**Quantity fields are `type="text"` + `inputMode="numeric"`, never `type="number"`.** A number
+input has NO text-selection API — `selectionStart` reads back `null` and `select()` does
+nothing — so the caret always landed behind the digit and the value could not be highlighted
+and overtyped. The customer reported it as "the typing area is behind the number". With a text
+input the hook's `onFocus` selects the whole value, so tapping the field highlights it and the
+next keystroke replaces it. `inputMode="numeric"` keeps the phone number pad, and dropping
+`type="number"` also removes the desktop spinner arrows and the scroll-wheel-changes-the-value
+hazard. Validation never depended on the number type; the regex in the hook does it.
+
 **If you add another quantity field, use the hook.** Binding a number input directly to a
 number looks correct and passes a click-through test, because the bug only shows when the field
 is cleared rather than overtyped. Still no upper-bound clamp while typing — that was removed

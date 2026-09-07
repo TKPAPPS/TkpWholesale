@@ -28,13 +28,16 @@ function QtyCell({ value, onChange }: { value: number; onChange: (n: number) => 
   const qty = useQuantityInput(value, 1, onChange)
   return (
     <input
-      type="number"
+      // text, not number: see useQuantityInput. A number input cannot be
+      // text-selected, so the value could not be highlighted and overtyped.
+      type="text"
       inputMode="numeric"
+      pattern="[0-9]*"
       name="quantity"
       aria-label={t(lang, 'products.quantity')}
-      min={1}
       value={qty.value}
       onChange={qty.onChange}
+      onFocus={qty.onFocus}
       onBlur={qty.onBlur}
       className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-center font-medium focus:outline-none focus:ring-1 focus:ring-brand-700/30"
     />

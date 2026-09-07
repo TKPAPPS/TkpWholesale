@@ -36,21 +36,21 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
         <Minus className={sm ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
       </button>
       <input
-        type="number"
-        // A bare number input with no name and no label: screen readers announced
-        // nothing and Chrome flagged 26 unnamed fields on one products page.
+        // text + inputMode, NOT type="number": a number input has no text-selection
+        // API, so the caret always landed behind the digit and the value could not be
+        // highlighted to overtype. inputMode keeps the numeric keypad on phones.
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        // A bare input with no name and no label: screen readers announced nothing
+        // and Chrome flagged 26 unnamed fields on one products page.
         name="quantity"
         aria-label={t(lang, 'products.quantity')}
-        // inputMode gets phones to open the plain number pad rather than the
-        // full keyboard's numeric pane.
-        inputMode="numeric"
-        // value/onChange/onBlur come from useQuantityInput so the field can be
-        // CLEARED and retyped. Binding straight to `value` made backspace snap
-        // the old digit back, on desktop as well as mobile.
+        // value/onChange/onBlur/onFocus come from useQuantityInput: the field can be
+        // CLEARED and retyped, and focusing selects the value so typing replaces it.
         value={qty.value}
-        min={min}
-        max={max}
         onChange={qty.onChange}
+        onFocus={qty.onFocus}
         onBlur={qty.onBlur}
         className={cn('text-center text-sm font-medium border-0 focus:outline-none bg-transparent', sm ? 'w-full min-w-0 flex-1' : 'w-12')}
       />
