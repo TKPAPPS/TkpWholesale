@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Product, PackagingOption } from '@/types'
 import { useLangStore } from '@/store/langStore'
+import { useQuantityInput } from '@/hooks/useQuantityInput'
 import { t } from '@/lib/i18n/translations'
 import { useCartStore } from '@/store/cartStore'
 import { useToastStore } from '@/store/toastStore'
@@ -14,6 +15,30 @@ interface OrderRow {
   product: Product
   pkg: PackagingOption
   qty: number
+}
+
+// The qty cell needs its own hook instance per row, and hooks cannot be called
+// inside the rows.map() callback, so it lives in its own component. It exists to
+// make the field CLEARABLE: bound straight to a number, backspacing the last digit
+// parsed to NaN and the old value was coerced straight back (here it was
+// `parseInt(...) || 1`, which snapped to 1), so a customer could never select and
+// retype a quantity on mobile OR desktop.
+function QtyCell({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const { lang } = useLangStore()
+  const qty = useQuantityInput(value, 1, onChange)
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      name="quantity"
+      aria-label={t(lang, 'products.quantity')}
+      min={1}
+      value={qty.value}
+      onChange={qty.onChange}
+      onBlur={qty.onBlur}
+      className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-center font-medium focus:outline-none focus:ring-1 focus:ring-brand-700/30"
+    />
+  )
 }
 
 // Parse a pasted list into {sku, qty}. Accepts "SKU 10", "SKU,10", "SKU x 10", or "SKU" (qty 1).
@@ -300,12 +325,9 @@ export default function QuickOrderPage() {
                   </select>
 
                   {/* Qty */}
-                  <input
-                    type="number"
-                    min={1}
+                  <QtyCell
                     value={row.qty}
-                    onChange={(e) => { const v = Math.max(1, parseInt(e.target.value) || 1); updateRow(row.product.template_id, 'qty', v) }}
-                    className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-center font-medium focus:outline-none focus:ring-1 focus:ring-brand-700/30"
+                    onChange={(v) => updateRow(row.product.template_id, 'qty', v)}
                   />
 
                   {/* Subtotal */}

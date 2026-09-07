@@ -410,6 +410,31 @@ anything sensitive.
 `USE_MOCK_API !== 'false'` → all routes return mock data from `src/lib/odoo/mock/data.ts`.
 Mock data is never complete — do not treat mock behaviour as ground truth for real Odoo.
 
+## Quantity fields must stay clearable
+
+Both quantity inputs bound their `value` straight to a number and rejected anything that did
+not parse:
+
+    const v = parseInt(e.target.value)
+    if (isNaN(v) || v < min) return                       // QuantitySelector
+    const v = Math.max(1, parseInt(e.target.value) || 1)  // quick-order
+
+Backspacing the last digit makes `e.target.value` the empty string, which parses to NaN, so the
+handler either bailed or coerced back to 1 — and React re-rendered the OLD number. **The field
+could never be emptied**, so a customer could not select-and-retype a quantity and was stuck
+with the +/- buttons. Reported on mobile (where "tap, backspace, type" is the natural gesture)
+but it behaved identically on desktop.
+
+Both now use `useQuantityInput` (`src/hooks/useQuantityInput.ts`), which holds a transient
+draft string so `""` is a legal intermediate state, commits upward only once a valid number
+parses, and normalises to `min` on blur. The +/- buttons call `clearDraft()` so they win over a
+stale draft. Quick-order needs `QtyCell` because a hook cannot be called inside `rows.map()`.
+
+**If you add another quantity field, use the hook.** Binding a number input directly to a
+number looks correct and passes a click-through test, because the bug only shows when the field
+is cleared rather than overtyped. Still no upper-bound clamp while typing — that was removed
+deliberately once before and must not come back.
+
 ## Cart behaviour (optimistic)
 - **Add to cart is optimistic.** `ProductCard` and the product detail page call
   `addLineOptimistic(product, pkg, qty)` on the `cartStore` to update the local
