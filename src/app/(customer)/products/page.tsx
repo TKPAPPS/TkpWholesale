@@ -168,7 +168,7 @@ function ProductsContent() {
       <div className="flex-1 min-w-0">
         {/* Breadcrumb (when a category is selected and not searching) */}
         {categoryPath.length > 0 && !search && (
-          <nav className="flex items-center flex-wrap gap-1 text-xs text-gray-400 mb-3">
+          <nav className="flex items-center flex-wrap gap-1 text-xs text-gray-500 mb-3">
             <button onClick={() => handleCategorySelect(null)} className="hover:text-brand-700 transition-colors">
               {t(lang, 'products.allCategories')}
             </button>
@@ -200,6 +200,7 @@ function ProductsContent() {
           </form>
           <select
             value={sort}
+            aria-label={t(lang, 'products.sortBy')}
             onChange={(e) => setSort(e.target.value)}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-700/30"
           >
@@ -241,7 +242,7 @@ function ProductsContent() {
         )}
 
         {/* Results count */}
-        {!loading && <p className="text-xs text-gray-400 mb-3">{total} {t(lang, 'products.resultsCount')}</p>}
+        {!loading && <p className="text-xs text-gray-500 mb-3">{total} {t(lang, 'products.resultsCount')}</p>}
 
         {/* Error */}
         {odooError && <OdooUnavailable onRetry={loadProducts} />}
@@ -271,7 +272,7 @@ function ProductsContent() {
 // useSearchParams requires a Suspense boundary at the page level.
 export default function ProductsPage() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-sm text-gray-400">Loading…</div>}>
+    <Suspense fallback={<div className="py-20 text-center text-sm text-gray-500">Loading…</div>}>
       <ProductsContent />
     </Suspense>
   )

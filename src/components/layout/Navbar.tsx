@@ -206,7 +206,8 @@ export function Navbar() {
               >
                 <Link
                   href="/cart"
-                  className="relative flex items-center justify-center h-10 w-10 rounded-lg text-gray-400 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                  aria-label={t(lang, 'nav.cart')}
+                  className="relative flex items-center justify-center h-10 w-10 rounded-lg text-gray-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
                 >
                   <ShoppingCart className="h-5 w-5" />
                   {lineCount > 0 && (
@@ -224,7 +225,7 @@ export function Navbar() {
                     onMouseLeave={closeCartPreview}
                   >
                     <div className="p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
                         {lineCount > 0 ? `${lineCount} ${t(lang, 'nav.itemsInCart')}` : t(lang, 'nav.cartEmpty')}
                       </p>
 
@@ -326,7 +327,7 @@ export function Navbar() {
               ))}
             </div>
             <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{t(lang, 'nav.language')}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t(lang, 'nav.language')}</span>
               <LanguageSwitcher />
             </div>
             <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">

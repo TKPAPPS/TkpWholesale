@@ -118,7 +118,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             {name}
           </Link>
           {product.sku && (
-            <p className="text-xs text-gray-400 mt-1 font-mono">{product.sku}</p>
+            <p className="text-xs text-gray-500 mt-1 font-mono">{product.sku}</p>
           )}
         </div>
 
@@ -130,7 +130,7 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
               <span className="text-gray-500 truncate min-w-0">{defaultPkg.name}</span>
               <span className="font-bold text-gray-900 text-sm whitespace-nowrap ms-auto">{formatCurrency(price, product.currency)}</span>
             </div>
-            <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-gray-400">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-gray-500">
               <span className="truncate min-w-0">{t(lang, 'products.unitPrice')}</span>
               <span className="whitespace-nowrap ms-auto">{formatCurrency(unitPrice, product.currency)}</span>
             </div>
@@ -147,6 +147,8 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             size="sm"
             onClick={addToCart}
             disabled={!product.sellable || soldOut}
+            // Icon-only on every breakpoint, so the label has to come from aria.
+            aria-label={t(lang, 'products.addToCart')}
             className="w-full sm:w-auto sm:shrink-0 sm:min-w-[40px]"
           >
             {added

@@ -51,6 +51,7 @@ const translations = {
     'products.perUnit': 'unit',
     'products.sku': 'SKU',
     'products.quantity': 'Quantity',
+    'products.sortBy': 'Sort products by',
     'products.decreaseQty': 'Decrease quantity',
     'products.increaseQty': 'Increase quantity',
     // Cart
@@ -311,6 +312,7 @@ const translations = {
     'products.perUnit': 'יחידה',
     'products.sku': 'מק"ט',
     'products.quantity': 'כמות',
+    'products.sortBy': 'מיון מוצרים לפי',
     'products.decreaseQty': 'הפחתת כמות',
     'products.increaseQty': 'הגדלת כמות',
     'cart.title': 'עגלת קניות',

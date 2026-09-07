@@ -133,7 +133,7 @@ export default function OrderDetailPage() {
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="min-w-0">
               <Logo className="h-10 w-auto mb-3" />
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t(lang, 'orders.deliverTo')}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{t(lang, 'orders.deliverTo')}</p>
               <p className="text-base font-semibold text-gray-900 mt-1">{order.partner_shipping.name}</p>
               <div className="mt-1 text-xs text-gray-500 leading-relaxed">
                 {[order.partner_shipping.street, order.partner_shipping.city, order.partner_shipping.country]
@@ -173,7 +173,7 @@ export default function OrderDetailPage() {
         {/* Delivery summary. The question a customer opens this page to answer is "did I get
             everything", so it leads rather than sitting under the line items. */}
         <section className="px-6 sm:px-8 py-6">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'orders.deliverySummary')}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">{t(lang, 'orders.deliverySummary')}</p>
           {shortLines.length > 0 ? (
             <>
               <p className={`text-2xl sm:text-3xl font-bold text-brand-700 ${display}`}>
@@ -309,7 +309,7 @@ export default function OrderDetailPage() {
 
         {order.note && (
           <footer className="px-6 sm:px-8 pb-6 pt-2 border-t border-gray-50">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'checkout.orderNote')}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{t(lang, 'checkout.orderNote')}</p>
             <p className="text-sm text-gray-600 break-words">{order.note}</p>
           </footer>
         )}

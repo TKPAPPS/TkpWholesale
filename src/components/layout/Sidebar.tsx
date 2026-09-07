@@ -67,7 +67,7 @@ export function Sidebar({ categories, selectedCategoryId, onSelect }: SidebarPro
   const { lang } = useLangStore()
   return (
     <aside className="w-56 shrink-0 sticky top-8 max-h-[calc(100vh-5rem)] overflow-y-auto">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 px-2 mb-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 px-2 mb-2">
         {t(lang, 'nav.categories')}
       </p>
       <div className="bg-white rounded-2xl border border-gray-100 p-2 space-y-0.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">

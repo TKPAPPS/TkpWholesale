@@ -127,7 +127,7 @@ export default function InvoiceDetailPage() {
               {invoice.is_website_company && <Logo className="h-10 w-auto mb-3" />}
               {invoice.company && (
                 <>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{t(lang, 'invoices.issuedBy')}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">{t(lang, 'invoices.issuedBy')}</p>
                   <p className={`text-base font-semibold text-brand-700 ${display}`}>{invoice.company.name}</p>
                   <div className="mt-1 text-xs text-gray-500 leading-relaxed">
                     {addressLines(invoice.company).map((l) => <p key={l}>{l}</p>)}
@@ -171,7 +171,7 @@ export default function InvoiceDetailPage() {
         {/* Bill to + the signature amount-due panel */}
         <section className="p-6 sm:p-8 grid gap-6 sm:grid-cols-2">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'invoices.billTo')}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">{t(lang, 'invoices.billTo')}</p>
             {invoice.bill_to ? (
               <>
                 <p className="text-sm font-semibold text-gray-900">{invoice.bill_to.name}</p>
@@ -186,7 +186,7 @@ export default function InvoiceDetailPage() {
           </div>
 
           <div className="sm:text-end">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{t(lang, 'invoices.amountDue')}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">{t(lang, 'invoices.amountDue')}</p>
             <p className={`text-2xl sm:text-4xl font-bold tabular-nums ${display} ${paid ? 'text-gray-400' : 'text-brand-700'}`} dir="ltr">
               {money(paid ? 0 : invoice.amount_residual)}
             </p>

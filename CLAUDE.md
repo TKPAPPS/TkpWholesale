@@ -443,9 +443,18 @@ private portal, and Lighthouse scores that as "page is blocked from indexing". D
 Two real failures were fixed in the pre-launch audit and should not regress:
 - **Tap targets need 24px minimum** (WCAG 2.5.8). The login show/hide-password toggle was a bare
   18px icon; it is now an `h-9 w-9` flex box with offsets that keep the icon optically in place.
-- **`text-gray-400` (#9ca3af) fails contrast on the near-white panels** — 2.46:1 against
-  `#fdfbfa`, under the 4.5:1 minimum. The login access-note uses `text-gray-600`. Prefer
-  gray-600 over gray-400/500 for any body text on a white or off-white ground.
+- **`text-gray-400` (#9ca3af) never passes contrast as text.** It is 2.54:1 on white and
+  2.43:1 on the `#fafaf9` page ground, against a 4.5:1 minimum. **`text-gray-500` (#6b7280) is
+  the floor for muted text** — 4.83:1 on white, 4.63:1 on `#fafaf9`. Every muted text class in
+  the customer UI was moved to gray-500 (product SKU and unit-price rows, the results count,
+  breadcrumbs, the `tracking-wider` section labels in Sidebar/Navbar/orders/invoices); the
+  login access-note uses gray-600. gray-400 is still fine for a decorative icon that sits
+  beside a real label, which is why the search glyph keeps it.
+- **Icon-only controls need an `aria-label`.** The product-card add-to-cart button (a bare
+  cart glyph at every breakpoint) and the navbar cart link had no accessible name, and the
+  products sort `<select>` had no label at all. All three now take one from the dictionary
+  (`products.addToCart`, `nav.cart`, the new `products.sortBy`). `Button` spreads its rest
+  props, so `aria-label` passes straight through.
 - **`QuantitySelector` labels every control.** The number input had no `name` and no label, so
   screen readers announced nothing and Chrome reported 26 unnamed fields on a single products
   page; the +/- buttons had no accessible name either. All three now carry `aria-label`s from
