@@ -57,12 +57,36 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `ODOO_WEBSITE_ID` | Odoo website ID (currently `3`) |
 | `ODOO_STOCK_WAREHOUSE_CODE` | FALLBACK warehouse code for stock scoping (default `R4`). The sellable warehouse is normally read from the website record (`website.warehouse_id` = Rama 4), so the portal auto-follows if it changes in Odoo; this code is only used if the website has no warehouse set. The global `qty_available` nets stock across all ~20 companies + internal locations and is wrong; every stock read is scoped to the warehouse's `lot_stock_id` ("R4/Stock") and its children. Resolved to a location id at runtime (`getSellableLocationId`, cached 1 day). If unresolved, reads fall back to the global value (fail open). |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase (favorites, announcements, login rate limiting, scheduled orders). Server uses the service-role key. |
-| `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
+| `SKIP_PORTAL_CHECK` | Dev only — skips the `verifyPortalUser` call on login. **Fatal 500 in production** if set to `true` (guard in the login route). Note what that check actually does: see the warning below the table. |
 | `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
 | `CRON_SECRET` | Bearer token the scheduled-orders cron must send (`Authorization: Bearer <CRON_SECRET>`). Vercel injects this into its cron requests. |
 | `INVOICE_CRON_SECRET` / `INVOICE_EMAIL_START_DATE` | Set in Vercel production+preview for the `/api/cron/invoice-emails` job. Present in the environment but were undocumented here until 2026-09-07. |
 | `ADMIN_PASSWORD` | **Set in production.** When present it is the source of truth for admin login — an allowlisted admin signs in with this fixed value, NOT their Odoo password, and the Odoo/Supabase paths are never reached. Compared in constant time. This is why Odoo credentials fail at `/admin/login`. |
 | `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Both are SET in the Vercel production environment — email is ON.** (Verified 2026-09-07 against the project env list; an earlier note here claiming they were "unset by design" was stale.) The sender domain is `tkp-shop.com`: its DNS carries Resend's DKIM (`resend._domainkey.tkp-shop.com`) and SPF (`send.tkp-shop.com`). Those two records are mail-only and are NOT touched by the A/CNAME cutover — do not delete them. When the vars are unset, `sendEmail` is a quiet no-op and customers fall back to the `/scheduled-orders` status page. |
+
+## `verifyPortalUser` does NOT restrict access to portal users
+
+Despite its name, and despite the login route answering `NOT_PORTAL_USER` /
+"Access restricted to portal users" when it fails, `verifyPortalUser`
+(`src/lib/odoo/client.ts`) checks **only `res.users.active === true`**. It never checks
+`share`, which is the flag that actually marks a portal user. **Any active Odoo user,
+including an internal admin, can log into the customer portal.** Verified on production
+2026-09-07: internal user uid 115 (`Bkkmeat@gmail.com`, Accounting/POS/Expenses
+Administrator) logged in with HTTP 200.
+
+**The damaging part is the pricelist, not the access.** An internal user logs in as their own
+partner and gets that partner's pricelist. uid 115 resolves to partner 3796 on **Public
+Pricelist (THB)**, so they would be shown RETAIL prices in a wholesale portal and could order
+at them. The matching portal account, uid 147 (`bkkmeat@gmail.com`, lowercase), resolves to
+partner 3648 on "New TKP/Wholesale Pricelist (THB)".
+
+Two active users differing only in the case of their login is legal in Odoo and is exactly the
+trap here: one is a portal customer, the other an internal admin. When a customer reports a
+login problem, check the case of the address before anything else.
+
+**This is left as-is pending a decision** — tightening the check to require `share = true`
+would immediately lock out any internal user who is also a customer, so it needs an audit of
+who that affects before it can be changed.
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
