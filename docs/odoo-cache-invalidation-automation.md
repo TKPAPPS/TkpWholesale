@@ -1,8 +1,12 @@
-# Odoo automation rules for instant cache invalidation (ON HOLD)
+# Odoo automation rules for instant cache invalidation (UNBLOCKED)
 
-**Status: ON HOLD.** Deferred 2026-08-05 because the portal domain may change. The webhook
-URL below hardcodes the domain, so setting these rules up before the domain is final would
-mean editing every rule again afterwards. Pick this up once the final domain is live.
+**Status: UNBLOCKED as of 2026-09-07.** The domain question that deferred this is settled:
+the final customer-facing domain is **`tkp-shop.com`**, attached to the Vercel project with
+`www.tkp-shop.com` redirecting to the apex. Use that domain in the webhook URL.
+
+`wholesale.tkpapps.com` is deliberately being kept alive alongside it, so any existing Odoo
+webhook still pointing there keeps working — this is not a launch blocker. Repoint it to
+`tkp-shop.com` so there is one canonical domain, but it can be done after the cutover.
 
 **Nothing is broken while this is on hold.** The endpoint and the freshness overlay are
 already shipped and working; these rules only shorten the reflect-time for one specific
@@ -40,7 +44,7 @@ Odoo: **Settings > Technical > Automation Rules** (developer mode required).
 Both rules use the same action:
 
 - Action: **Send Webhook Notification**
-- URL: `https://<FINAL_DOMAIN>/api/revalidate-products?secret=<CRON_SECRET>`
+- URL: `https://tkp-shop.com/api/revalidate-products?secret=<CRON_SECRET>`
 
 `<CRON_SECRET>` is the value already set in the Vercel project env.
 
@@ -65,6 +69,10 @@ The URL is the only thing that needs updating. If the rules are already in place
 domain changes, edit the URL in each rule; otherwise just use the final domain when
 creating them.
 
+Because `wholesale.tkpapps.com` stays attached to the same Vercel project, a rule pointing at
+the old host keeps resolving to the same app — so a stale URL degrades to "still works",
+never to a broken webhook. Repoint at leisure, then re-run the verify curl below.
+
 ## Verifying
 
 After creating a rule, unpublish a test product in Odoo and confirm it disappears from the
@@ -73,7 +81,7 @@ storefront listing within seconds instead of minutes. The endpoint returns
 can also be checked directly:
 
 ```
-curl "https://<FINAL_DOMAIN>/api/revalidate-products?secret=<CRON_SECRET>"
+curl "https://tkp-shop.com/api/revalidate-products?secret=<CRON_SECRET>"
 ```
 
 ## Security note

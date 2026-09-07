@@ -60,15 +60,23 @@ The `"uid:apikey"` token format is how `admin-session.ts` signals to `callKw()` 
 | `SKIP_PORTAL_CHECK` | Dev only — skips the portal-user check on login. **Fatal 500 in production** if set to `true` (guard in the login route). |
 | `ADMIN_EMAILS` | Comma-separated allowlist of emails permitted to hold an admin session. Falls back to `ODOO_ADMIN_LOGIN` if unset. Both admin login paths (Odoo + Supabase) are gated by this. |
 | `CRON_SECRET` | Bearer token the scheduled-orders cron must send (`Authorization: Bearer <CRON_SECRET>`). Vercel injects this into its cron requests. |
-| `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Currently unset by design — email is off.** When unset, `sendEmail` is a quiet no-op; the feature works and customers rely on the `/scheduled-orders` status page. To enable later: verify a TKP sender domain in Resend, set both vars, redeploy. |
+| `INVOICE_CRON_SECRET` / `INVOICE_EMAIL_START_DATE` | Set in Vercel production+preview for the `/api/cron/invoice-emails` job. Present in the environment but were undocumented here until 2026-09-07. |
+| `ADMIN_PASSWORD` | **Set in production.** When present it is the source of truth for admin login — an allowlisted admin signs in with this fixed value, NOT their Odoo password, and the Odoo/Supabase paths are never reached. Compared in constant time. This is why Odoo credentials fail at `/admin/login`. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Resend transactional email (scheduled-order placed/failed notifications). **Both are SET in the Vercel production environment — email is ON.** (Verified 2026-09-07 against the project env list; an earlier note here claiming they were "unset by design" was stale.) The sender domain is `tkp-shop.com`: its DNS carries Resend's DKIM (`resend._domainkey.tkp-shop.com`) and SPF (`send.tkp-shop.com`). Those two records are mail-only and are NOT touched by the A/CNAME cutover — do not delete them. When the vars are unset, `sendEmail` is a quiet no-op and customers fall back to the `/scheduled-orders` status page. |
 
 ## Deployment
 - **Vercel account**: `tal@kosher-place.com` (TKPAPPS team)
 - **Project**: `tkp-wholesale` — `prj_FhdXBreMoTUpsE5MgE8oxgFuELgo`
 - **Team**: `team_p1fOxoCiPu2Hj4jqkBZu22AT`
-- **Prod domain**: `wholesale.tkpapps.com` (custom, verified) + `tkp-wholesale.vercel.app`
-  (both serve the app, no redirect between them). The app has NO hardcoded base URL —
-  all absolute redirects use `req.url` (host-relative), so it works on any attached domain.
+- **Prod domains** (as of 2026-09-07):
+  - `tkp-shop.com` — the customer-facing domain, attached to the project for the launch.
+  - `www.tkp-shop.com` — 308 redirect to the apex.
+  - `wholesale.tkpapps.com` — still serves the app; deliberately kept working through the
+    cutover so existing bookmarks and the Odoo webhook do not break.
+  - `tkp-wholesale.vercel.app` — 308 redirect to `wholesale.tkpapps.com`.
+  The app has NO hardcoded base URL — all absolute redirects use `req.url` (host-relative)
+  and the session cookie is host-only, so it works on any attached domain and a customer
+  signed in on one host simply signs in again on the other.
 - **Token**: stored in user memory (ask user)
 - **GitHub**: `TKPAPPS/TkpWholesale` — push with the PAT stored in user memory
 - **Region**: `sin1` (Singapore) — set in `vercel.json` and `src/app/layout.tsx`
@@ -922,12 +930,14 @@ more caching.
 Reproduce with `scripts/qa/run-load.mjs` (staging-guarded, cleans up its carts).
 
 ## Known issues / follow-ups
-- **ON HOLD (domain change pending): Odoo automation rules for instant cache invalidation.**
-  Fully specced in `docs/odoo-cache-invalidation-automation.md`. Deferred because the
-  webhook URL hardcodes the portal domain. Nothing is broken meanwhile: stock changes
-  already reflect in ~1 min via the freshness overlay, admin-panel edits bust caches
+- **UNBLOCKED 2026-09-07: Odoo automation rules for instant cache invalidation.**
+  Fully specced in `docs/odoo-cache-invalidation-automation.md`, which was deferred only
+  because the webhook URL hardcodes the portal domain. The domain is now settled
+  (`tkp-shop.com`) and the doc carries the final URL. Still nothing is broken meanwhile:
+  stock changes reflect in ~1 min via the freshness overlay, admin-panel edits bust caches
   immediately, and only direct Odoo-backend edits (unpublish/archive/`sale_ok`) wait out
-  the ~5 min TTL. Revisit once the final domain is live.
+  the ~5 min TTL. Any existing webhook pointing at `wholesale.tkpapps.com` keeps working,
+  because that host stays attached to the same Vercel project.
 - PDF download: `ir.attachment` + `render_qweb_pdf` fallback. Confirmed working end-to-end on production SaaS (order + invoice PDFs verified 2026-07-21).
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
