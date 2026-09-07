@@ -70,7 +70,7 @@ export default function OrderDetailPage() {
   }
 
   if (loading) return <LoadingSpinner />
-  if (notFound || !order) return <EmptyState title="Order not found" action={<Button onClick={() => router.back()} variant="secondary">Go back</Button>} />
+  if (notFound || !order) return <EmptyState title={t(lang, 'orders.notFound')} action={<Button onClick={() => router.back()} variant="secondary">{t(lang, 'common.back')}</Button>} />
 
   // Georgia (font-serif) carries no Hebrew glyphs, so the display face is English only.
   // Money is unaffected: formatCurrency always renders Latin numerals.

@@ -420,6 +420,20 @@ puts it in the mobile menu instead (all five top-bar controls together pushed th
 37px off screen at 360px, making the menu unreachable); `Toast` sits at `bottom-20` so it
 clears the `BottomNav` it used to cover.
 
+## Not-found states must be translated
+
+`/products/[id]` and `/orders/[orderId]` rendered their not-found `EmptyState` with hardcoded
+English ("Product not found" / "Order not found" / "Go back") while the rest of the page was in
+Hebrew and RTL, so the trailing period rendered on the wrong side. Both now use
+`t(lang, 'products.notFound' | 'products.notAvailable' | 'orders.notFound')` and
+`t(lang, 'common.back')`, matching what `/invoices/[id]` already did. When adding a new detail
+page, copy the invoices page, not the products one.
+
+Known and deliberately left: the customer layout's "Loading your portal…" spinner is English
+only. `useLangStore` initialises to `'en'` and only becomes `'he'` when `initLang()` runs in an
+effect, so wrapping that string in `t()` would still paint English on first render. Translating
+it needs the lang cookie read during render, not an effect.
+
 ## Accessibility baseline (verified 2026-09-07)
 
 Lighthouse mobile on `/login`: Accessibility 91, Best Practices 100, SEO 60. The SEO score is

@@ -82,7 +82,7 @@ export default function ProductDetailPage() {
   }, [selectedPkg?.id, maxPacks])
 
   if (loading) return <LoadingSpinner />
-  if (notFound || !product) return <EmptyState title="Product not found" description="This product is not available." action={<Button onClick={() => router.back()} variant="secondary">Go back</Button>} />
+  if (notFound || !product) return <EmptyState title={t(lang, 'products.notFound')} description={t(lang, 'products.notAvailable')} action={<Button onClick={() => router.back()} variant="secondary">{t(lang, 'common.back')}</Button>} />
 
   const name = lang === 'he' ? product.name_he : product.name
   const description = lang === 'he' ? product.description_he : product.description
