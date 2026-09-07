@@ -1,12 +1,26 @@
-# Odoo automation rules for instant cache invalidation (UNBLOCKED)
+# Odoo automation rules for instant cache invalidation (LIVE)
 
-**Status: UNBLOCKED as of 2026-09-07.** The domain question that deferred this is settled:
-the final customer-facing domain is **`tkp-shop.com`**, attached to the Vercel project with
-`www.tkp-shop.com` redirecting to the apex. Use that domain in the webhook URL.
+**Status: CREATED AND LIVE on production Odoo, 2026-09-07.** Both rules below now exist and
+are active, pointing at `https://tkp-shop.com/api/revalidate-products?secret=<CRON_SECRET>`:
 
-`wholesale.tkpapps.com` is deliberately being kept alive alongside it, so any existing Odoo
-webhook still pointing there keeps working — this is not a launch blocker. Repoint it to
-`tkp-shop.com` so there is one canonical domain, but it can be done after the cutover.
+| base.automation | ir.actions.server | Model | Watches |
+|---|---|---|---|
+| id **33** "Portal: flush product cache (publish / OOS flag)" | 1470 | `product.website.settings` (2703) | `is_published`, `allow_out_of_stock_order` |
+| id **34** "Portal: flush product cache (sale_ok / archive)" | 1471 | `product.template` (351) | `sale_ok`, `active` |
+
+Both use trigger `on_create_or_write` with `trigger_field_ids` set, so they fire ONLY when one
+of the named fields is written, not on every product edit. The server actions carry
+`usage='base_automation'` so they stay out of the UI action menu, matching the existing
+"Luandry Phuket Webhook" (rule 28 / action 1458) that was copied as the known-good structure.
+
+Rule 3 below (per-customer hidden products on `res.partner`) was deliberately NOT created.
+
+**Rollback:** archive rules 33 and 34. Nothing else depends on them; the TTLs and the
+freshness overlay resume as before.
+
+**Note on the CRON_SECRET:** it was NOT rotated. The existing production value was read back
+out of the Vercel project env (`GET /v9/projects/{id}/env/{envId}?decrypt=true`) and reused,
+so the Vercel cron jobs that also authenticate with it were never disturbed.
 
 **Nothing is broken while this is on hold.** The endpoint and the freshness overlay are
 already shipped and working; these rules only shorten the reflect-time for one specific

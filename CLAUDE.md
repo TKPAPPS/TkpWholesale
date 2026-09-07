@@ -930,14 +930,17 @@ more caching.
 Reproduce with `scripts/qa/run-load.mjs` (staging-guarded, cleans up its carts).
 
 ## Known issues / follow-ups
-- **UNBLOCKED 2026-09-07: Odoo automation rules for instant cache invalidation.**
-  Fully specced in `docs/odoo-cache-invalidation-automation.md`, which was deferred only
-  because the webhook URL hardcodes the portal domain. The domain is now settled
-  (`tkp-shop.com`) and the doc carries the final URL. Still nothing is broken meanwhile:
-  stock changes reflect in ~1 min via the freshness overlay, admin-panel edits bust caches
-  immediately, and only direct Odoo-backend edits (unpublish/archive/`sale_ok`) wait out
-  the ~5 min TTL. Any existing webhook pointing at `wholesale.tkpapps.com` keeps working,
-  because that host stays attached to the same Vercel project.
+- **DONE 2026-09-07: Odoo automation rules for instant cache invalidation are LIVE.**
+  `base.automation` **33** (`product.website.settings`: `is_published`,
+  `allow_out_of_stock_order`) and **34** (`product.template`: `sale_ok`, `active`), both
+  `on_create_or_write` with `trigger_field_ids` set so they fire only on those fields. They
+  POST to `https://tkp-shop.com/api/revalidate-products?secret=<CRON_SECRET>`, closing the
+  last gap: edits made directly in the Odoo backend now reflect immediately instead of
+  waiting out the ~5 min TTL. See `docs/odoo-cache-invalidation-automation.md` for the
+  rollback (archive both rules).
+  **Caveat to watch:** Odoo logs a failed webhook rather than raising, so a portal outage
+  should not block product edits in Odoo. If product saves ever start failing in a way that
+  points at the webhook, archive rules 33/34 first and investigate second.
 - PDF download: `ir.attachment` + `render_qweb_pdf` fallback. Confirmed working end-to-end on production SaaS (order + invoice PDFs verified 2026-07-21).
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
