@@ -26,15 +26,18 @@ import { useState } from 'react'
  * On blur the field is normalised: an empty or below-min value falls back to `min`
  * rather than leaving the customer looking at a blank box.
  *
- * `onFocus` selects the whole value so tapping the field highlights the number and the
- * next keystroke replaces it, instead of dropping a caret behind the digit and forcing a
- * backspace first. This is why the field must be `type="text"` + `inputMode="numeric"` and
- * NOT `type="number"`: a number input does not support the text-selection API at all
- * (`selectionStart` reads back `null` and `select()` does nothing), so the caret always
- * landed behind the number and it could not be highlighted. `inputMode` keeps the numeric
- * keypad on phones, and switching away from `type="number"` also drops the desktop spinner
- * arrows and the scroll-wheel-changes-the-value hazard. Validation was never relying on the
- * number type — the regex below does it.
+ * `onFocus` puts the caret at the END of the value, immediately after the last digit, so
+ * backspace deletes straight away and extra digits can simply be appended (type "0" to turn
+ * 1 into 10). It deliberately does NOT select-all: highlighting the value forced a full
+ * retype to change 1 into 10, and one stray keystroke wiped the quantity.
+ *
+ * This is why the field must be `type="text"` + `inputMode="numeric"` and NOT
+ * `type="number"`: a number input does not support the text-selection API at all
+ * (`selectionStart` reads back `null`, `setSelectionRange` throws), so the caret landed
+ * wherever the tap happened to be — often mid-number — and could not be positioned.
+ * `inputMode` keeps the numeric keypad on phones, and switching away from `type="number"`
+ * also drops the desktop spinner arrows and the scroll-wheel-changes-the-value hazard.
+ * Validation was never relying on the number type — the regex below does it.
  *
  * Deliberately NO upper-bound clamp while typing. An earlier version rejected any
  * keystroke that pushed the value past `max`, which fought the customer mid-type
@@ -73,10 +76,16 @@ export function useQuantityInput(value: number, min: number, commit: (n: number)
     },
 
     onFocus(e: React.FocusEvent<HTMLInputElement>) {
+      // Caret to the end, so backspace deletes immediately and digits can be appended.
       // Capture the node synchronously; the timeout is for iOS Safari, which ignores
-      // select() called during the focus event itself.
+      // selection changes made during the focus event itself.
       const el = e.currentTarget
-      setTimeout(() => { try { el.select() } catch { /* detached */ } }, 0)
+      setTimeout(() => {
+        try {
+          const end = el.value.length
+          el.setSelectionRange(end, end)
+        } catch { /* detached */ }
+      }, 0)
     },
 
     onBlur() {

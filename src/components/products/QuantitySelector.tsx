@@ -47,7 +47,7 @@ export function QuantitySelector({ value, onChange, min = 1, max = 999, classNam
         name="quantity"
         aria-label={t(lang, 'products.quantity')}
         // value/onChange/onBlur/onFocus come from useQuantityInput: the field can be
-        // CLEARED and retyped, and focusing selects the value so typing replaces it.
+        // CLEARED and retyped, and focusing drops the caret after the last digit.
         value={qty.value}
         onChange={qty.onChange}
         onFocus={qty.onFocus}
