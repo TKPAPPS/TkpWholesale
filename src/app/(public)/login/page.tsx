@@ -121,7 +121,9 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? t(lang, 'auth.hidePassword') : t(lang, 'auth.showPassword')}
-                className="absolute end-3 top-[38px] text-gray-400 hover:text-gray-600"
+                // h-9 w-9 flex box, not a bare 18px icon: WCAG 2.5.8 wants a 24px
+                // minimum target. The offsets keep the icon optically where it was.
+                className="absolute end-[3px] top-[29px] flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:text-gray-700"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -142,7 +144,8 @@ export default function LoginPage() {
             <LanguageSwitcher />
           </div>
 
-          <p className="text-center text-xs text-gray-400 leading-relaxed">
+          {/* gray-600, not gray-400: #9ca3af on this near-white panel is 2.46:1, under the 4.5:1 minimum. */}
+          <p className="text-center text-xs text-gray-600 leading-relaxed">
             {t(lang, 'auth.accessNote')}
             <br />
             <Link href="/contact" className="text-brand-700 hover:underline">

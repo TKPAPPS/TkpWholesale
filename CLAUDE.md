@@ -420,6 +420,24 @@ puts it in the mobile menu instead (all five top-bar controls together pushed th
 37px off screen at 360px, making the menu unreachable); `Toast` sits at `bottom-20` so it
 clears the `BottomNav` it used to cover.
 
+## Accessibility baseline (verified 2026-09-07)
+
+Lighthouse mobile on `/login`: Accessibility 91, Best Practices 100, SEO 60. The SEO score is
+**expected and correct** — the root layout sets `robots: 'noindex, nofollow'` because this is a
+private portal, and Lighthouse scores that as "page is blocked from indexing". Do not "fix" it.
+
+Two real failures were fixed in the pre-launch audit and should not regress:
+- **Tap targets need 24px minimum** (WCAG 2.5.8). The login show/hide-password toggle was a bare
+  18px icon; it is now an `h-9 w-9` flex box with offsets that keep the icon optically in place.
+- **`text-gray-400` (#9ca3af) fails contrast on the near-white panels** — 2.46:1 against
+  `#fdfbfa`, under the 4.5:1 minimum. The login access-note uses `text-gray-600`. Prefer
+  gray-600 over gray-400/500 for any body text on a white or off-white ground.
+- **`QuantitySelector` labels every control.** The number input had no `name` and no label, so
+  screen readers announced nothing and Chrome reported 26 unnamed fields on a single products
+  page; the +/- buttons had no accessible name either. All three now carry `aria-label`s from
+  the translation dictionary (`products.quantity` / `decreaseQty` / `increaseQty`), and the
+  buttons carry `type="button"` so they can never submit an enclosing form.
+
 ## Customer navigation & UI
 - **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best
   Sellers · Quick Order · `Orders ▾` (Orders / Recently Ordered / Scheduled / Invoices) ·
