@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_USER } from '@/lib/odoo/mock/data'
-import { signSession } from '@/lib/odoo/session'
+import { signSession, SESSION_IDLE_TTL_SECONDS } from '@/lib/odoo/session'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { readJsonObject } from '@/lib/request-body'
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         partner_id: user.partner_id,
         commercial_partner_id: user.commercial_partner_id,
         odoo_session_id: 'mock',
-      }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 4 * 60 * 60, path: '/' })
+      }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: SESSION_IDLE_TTL_SECONDS, path: '/' })
       return res
     } catch {
       return NextResponse.json({ error: 'SERVER_MISCONFIGURATION', message: 'Server configuration error. Please contact the administrator.' }, { status: 503 })
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       name: user.name,
       email: user.email,
       pricelist_name: user.pricelist_name,
-    }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 4 * 60 * 60, path: '/' })
+    }), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: SESSION_IDLE_TTL_SECONDS, path: '/' })
 
     return res
   } catch (err: unknown) {

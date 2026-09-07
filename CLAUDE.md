@@ -551,7 +551,19 @@ Two real failures were fixed in the pre-launch audit and should not regress:
   within minutes instead of waiting out the session TTL. (Deactivating in Odoo is the
   revocation action — no separate admin UI.) Direct-API access with a still-valid cookie
   persists until the TTL; per-route enforcement would be the next step if needed.
-- **Session TTL is 4 hours** (was 8) for both customer and admin cookies.
+- **Customer sessions are ROLLING: 30-day idle window, 60-day absolute ceiling** (changed
+  2026-09-07; previously a flat 4h, which logged customers out mid-order during a working
+  day). `/api/auth/me` re-issues the cookie on every successful call, and the customer layout
+  already polls it every 5 min and on tab focus, so an active customer is never logged out.
+  `refreshSession` preserves the ORIGINAL `iat` and caps the new `exp` at
+  `iat + SESSION_ABSOLUTE_MAX_SECONDS`, so rolling can never outrun the ceiling — that is what
+  stops a tab left open on a shared counter machine from renewing itself forever.
+  `verifySession` re-checks the ceiling against `iat` independently of `exp`.
+  **`signSession`'s spread order is load-bearing:** it is `{ ...session, iat, exp }`. It used
+  to be `{ iat, exp, ...session }`, which let a caller-supplied `iat`/`exp` win and would have
+  made the refresh a silent no-op.
+- **Admin sessions remain a flat 4 hours** (`ADMIN_TOKEN_TTL_SECONDS`), deliberately: the admin
+  panel is far more sensitive and there is no rolling refresh on that path.
 - **The middleware matcher must not exclude paths containing a dot.** It used to end in
   `|.*\..*` ("skip anything with a file extension"), which also skipped every customer page
   whose path contains a dot: `/orders/1.2` and `/products/1.5` answered 200 with no session
