@@ -1,5 +1,7 @@
 'use client'
 import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
+import { useLangStore } from '@/store/langStore'
+import { t } from '@/lib/i18n/translations'
 
 interface PaginationProps {
   page: number
@@ -25,6 +27,7 @@ function buildWindow(current: number, total: number): (number | '...')[] {
 }
 
 export function Pagination({ page, total, perPage, onChange }: PaginationProps) {
+  const { lang } = useLangStore()
   const totalPages = Math.ceil(total / perPage)
   if (totalPages <= 1) return null
 
@@ -34,6 +37,8 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
   return (
     <div className="flex items-center justify-center gap-1 mt-8 flex-wrap">
       <button
+        type="button"
+        aria-label={t(lang, 'common.previous')}
         onClick={() => go(page - 1)}
         disabled={page === 0}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -49,6 +54,8 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
         ) : (
           <button
             key={item}
+            type="button"
+            aria-current={item === page ? 'page' : undefined}
             onClick={() => go(item as number)}
             className={`flex items-center justify-center h-10 w-10 rounded-lg text-sm font-medium transition-colors ${
               item === page
@@ -62,6 +69,8 @@ export function Pagination({ page, total, perPage, onChange }: PaginationProps) 
       )}
 
       <button
+        type="button"
+        aria-label={t(lang, 'common.next')}
         onClick={() => go(page + 1)}
         disabled={page >= totalPages - 1}
         className="flex items-center justify-center h-10 w-10 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
