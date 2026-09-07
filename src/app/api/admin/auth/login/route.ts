@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { timingSafeEqual } from 'crypto'
-import { signAdminToken, isAdminEmail } from '@/lib/supabase'
+import { signAdminToken, isAdminEmail, ADMIN_TOKEN_TTL_SECONDS } from '@/lib/supabase'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { readJsonObject } from '@/lib/request-body'
 
@@ -18,7 +18,7 @@ function setSessionCookie(res: NextResponse, token: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 4 * 60 * 60,
+    maxAge: ADMIN_TOKEN_TTL_SECONDS,
     path: '/',
   })
 }

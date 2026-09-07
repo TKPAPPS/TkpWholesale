@@ -2,7 +2,17 @@ import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { getSecret } from '@/lib/odoo/session'
 
-const ADMIN_TOKEN_TTL_SECONDS = 4 * 60 * 60
+// Admin sessions last 30 days, matching the customer idle window (changed
+// 2026-09-07, was 4h). Unlike the customer session this is FLAT, not rolling:
+// the admin layout polls no endpoint, so there is no equivalent of
+// /api/auth/me to renew on. An admin therefore re-authenticates at most once
+// every 30 days, which is acceptable for a panel used by one or two people.
+//
+// A long admin TTL is safe here specifically because `verifyAdminToken` re-runs
+// `isAdminEmail()` on EVERY request. Removing someone from ADMIN_EMAILS revokes
+// their session immediately, without waiting out the TTL and without rotating
+// SESSION_SECRET. That allowlist is the kill switch, not the expiry.
+export const ADMIN_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
 
 // Signed admin session token: base64url(JSON{sub,iat,exp}) + '.' + HMAC.
 // Unlike the old static HMAC('admin'), this carries a per-issue expiry and a

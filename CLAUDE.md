@@ -562,8 +562,16 @@ Two real failures were fixed in the pre-launch audit and should not regress:
   **`signSession`'s spread order is load-bearing:** it is `{ ...session, iat, exp }`. It used
   to be `{ iat, exp, ...session }`, which let a caller-supplied `iat`/`exp` win and would have
   made the refresh a silent no-op.
-- **Admin sessions remain a flat 4 hours** (`ADMIN_TOKEN_TTL_SECONDS`), deliberately: the admin
-  panel is far more sensitive and there is no rolling refresh on that path.
+- **Admin sessions are 30 days, FLAT not rolling** (`ADMIN_TOKEN_TTL_SECONDS`, raised from 4h
+  on 2026-09-07). The admin layout polls no endpoint, so there is no equivalent of
+  `/api/auth/me` to renew on; an admin re-authenticates at most once every 30 days. Making it
+  rolling would mean adding an `/api/admin/auth/me` endpoint plus a polling effect in the admin
+  layout — worth doing only if the periodic re-login becomes annoying.
+  **A long admin TTL is safe here because the kill switch is the allowlist, not the expiry:**
+  `verifyAdminToken` re-runs `isAdminEmail()` on EVERY request, so removing someone from
+  `ADMIN_EMAILS` revokes their session immediately, with no TTL wait and no `SESSION_SECRET`
+  rotation. Note this also means admin access cannot be revoked per-person any other way —
+  there is no admin session store to invalidate.
 - **The middleware matcher must not exclude paths containing a dot.** It used to end in
   `|.*\..*` ("skip anything with a file extension"), which also skipped every customer page
   whose path contains a dot: `/orders/1.2` and `/products/1.5` answered 200 with no session
