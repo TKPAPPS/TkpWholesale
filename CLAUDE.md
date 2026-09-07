@@ -503,6 +503,15 @@ clears the `BottomNav` it used to cover.
   revocation action — no separate admin UI.) Direct-API access with a still-valid cookie
   persists until the TTL; per-route enforcement would be the next step if needed.
 - **Session TTL is 4 hours** (was 8) for both customer and admin cookies.
+- **The middleware matcher must not exclude paths containing a dot.** It used to end in
+  `|.*\..*` ("skip anything with a file extension"), which also skipped every customer page
+  whose path contains a dot: `/orders/1.2` and `/products/1.5` answered 200 with no session
+  cookie instead of redirecting to `/login` (found in the 2026-09-07 pre-launch audit). No data
+  leaked — the customer layout is a client component that only renders a spinner until
+  `/api/auth/me` succeeds, and every data route 401s — but the server-side gate was gone and
+  logged-out visitors saw a "Loading your portal…" flash. The exclusion also bought nothing,
+  because `public/` is empty: the only static assets are `_next/static`, `_next/image` and
+  `/icon.svg`, which the matcher names explicitly.
 
 ## Admin panel auth
 - Login at `/admin/login` with Odoo email + Odoo password.

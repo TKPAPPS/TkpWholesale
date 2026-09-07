@@ -47,6 +47,16 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   // Run on all page AND api routes (api needs the mock-mode guard); skip Next
-  // internals and static files (anything with a file extension).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\..*).*)'],
+  // internals and the two static icons.
+  //
+  // Do NOT re-add a blanket `.*\..*` (anything with a dot) exclusion here. It
+  // was excluding every customer page whose path contains a dot, so
+  // `/orders/1.2` and `/products/1.5` answered 200 to a request with no session
+  // cookie instead of redirecting to /login. Nothing leaked — the customer
+  // layout is a client component that renders a spinner and every data route
+  // 401s without a valid cookie — but it removed the server-side gate and
+  // showed logged-out visitors a "Loading your portal…" flash. It also bought
+  // nothing: `public/` is empty, so the only static assets are under
+  // `_next/static` / `_next/image` plus `/icon.svg`, all named explicitly below.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg).*)'],
 }
