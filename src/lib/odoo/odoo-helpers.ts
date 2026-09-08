@@ -536,6 +536,48 @@ export async function stockLocationContext(): Promise<{ location: number } | Rec
   return locationId ? { location: locationId } : {}
 }
 
+// Sellable stock per template, read from `free_qty` (on hand MINUS reserved) rather than
+// `qty_available` (on hand only).
+//
+// Why: `qty_available` does not drop until a delivery is VALIDATED. Between a customer
+// confirming an order and the goods physically leaving R4, those units still read as
+// available and the portal happily sold them to the next customer. Measured on production
+// 2026-09-08: 36 of 400 in-stock products were overstated, and 3 were already fully
+// committed or oversold (BEV-0131 had 36 on hand with all 36 spoken for).
+//
+// `free_qty` is the right signal here because the R4 "Delivery Orders" picking type uses
+// `reservation_method = at_confirm`, so confirming an order reserves its units immediately.
+// Verified against the quants: free_qty == quant.quantity - quant.reserved_quantity exactly,
+// and it honours the same `location` context (BEV-0131 reads 36/free 0 scoped to R4 vs
+// 2031/free 1995 globally, so scoping is essential).
+//
+// Chosen over `virtual_available` (forecast) deliberately: forecast ADDS incoming purchase
+// orders, so a product with 0 on hand and 100 inbound would read as sellable, and it goes
+// negative when oversold. free_qty never promises stock that is not physically in R4.
+//
+// `free_qty` exists on product.product, NOT product.template, hence the variant hop. This
+// catalogue is 1:1 (verified: 5,340 sellable templates, max 1 variant each) but the sum
+// below is defensive in case that ever changes.
+type TemplateStock = { type: string; is_storable: boolean; free_qty: number }
+async function fetchFreeStockByTemplate(
+  sessionId: string,
+  templateIds: number[],
+): Promise<Map<number, TemplateStock>> {
+  const locCtx = await stockLocationContext()
+  const rows = await callKw(sessionId, 'product.product', 'search_read',
+    [[['product_tmpl_id', 'in', templateIds]]],
+    { fields: ['product_tmpl_id', 'type', 'is_storable', 'free_qty'], context: locCtx },
+  ) as { product_tmpl_id: [number, string]; type: string; is_storable: boolean; free_qty: number }[]
+  const byTemplate = new Map<number, TemplateStock>()
+  for (const r of rows) {
+    const tid = Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : Number(r.product_tmpl_id)
+    const prev = byTemplate.get(tid)
+    if (prev) prev.free_qty += r.free_qty
+    else byTemplate.set(tid, { type: r.type, is_storable: r.is_storable, free_qty: r.free_qty })
+  }
+  return byTemplate
+}
+
 // Cache the set of in-stock template ids. Filtering by `qty_available > 0` inline is
 // the single most expensive Odoo query in the product path (~600ms), because
 // qty_available is a NON-STORED computed field, so Odoo recomputes live stock for the
@@ -552,10 +594,15 @@ const _fetchInStockIds = unstable_cache(
     // only when qty_available > 0. (`type in [consu, storable]` was a pre-18 relic -
     // `storable` is no longer a valid type value here.)
     const locCtx = await stockLocationContext()
-    return await callKw(sessionId, 'product.template', 'search',
-      [['&', ['type', '=', 'consu'], '|', ['is_storable', '=', false], ['qty_available', '>', 0]]],
-      { context: locCtx },
-    ) as number[]
+    // free_qty (on hand minus reserved), NOT qty_available - see fetchFreeStockByTemplate.
+    // Searched on product.product because free_qty does not exist on product.template.
+    const rows = await callKw(sessionId, 'product.product', 'search_read',
+      [['&', ['type', '=', 'consu'], '|', ['is_storable', '=', false], ['free_qty', '>', 0]]],
+      { fields: ['product_tmpl_id'], context: locCtx },
+    ) as { product_tmpl_id: [number, string] }[]
+    return Array.from(new Set(rows.map(r =>
+      Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : Number(r.product_tmpl_id),
+    )))
   },
   ['odoo-instock-ids'],
   { revalidate: 60, tags: ['odoo-instock-ids'] },
@@ -593,18 +640,14 @@ export async function findUnorderableTemplateIdsLive(
   const ids = Array.from(new Set(templateIds.filter(Boolean)))
   if (ids.length === 0) return out
   try {
-    const locCtx = await stockLocationContext()
-    const [rows, settingsMap] = await Promise.all([
-      callKw(sessionId, 'product.template', 'read', [ids], {
-        fields: ['id', 'type', 'is_storable', 'qty_available'], context: locCtx,
-      }) as Promise<{ id: number; type: string; is_storable: boolean; qty_available: number }[]>,
+    const [byId, settingsMap] = await Promise.all([
+      fetchFreeStockByTemplate(sessionId, ids),
       fetchWebsitePublishedSettings(sessionId),
     ])
-    const byId = new Map(rows.map(r => [r.id, r]))
     for (const tid of ids) {
       if (settingsMap.get(tid)) continue // allow_out_of_stock_order → always orderable
       const r = byId.get(tid)
-      const inStock = !!r && r.type === 'consu' && (r.is_storable === false || r.qty_available > 0)
+      const inStock = !!r && r.type === 'consu' && (r.is_storable === false || r.free_qty > 0)
       if (!inStock) out.add(tid)
     }
     return out
@@ -630,19 +673,15 @@ export async function getAvailableUnitsForOrdering(
   const ids = Array.from(new Set(templateIds.filter(Boolean)))
   if (ids.length === 0) return out
   try {
-    const locCtx = await stockLocationContext()
-    const [rows, settingsMap] = await Promise.all([
-      callKw(sessionId, 'product.template', 'read', [ids], {
-        fields: ['id', 'type', 'is_storable', 'qty_available'], context: locCtx,
-      }) as Promise<{ id: number; type: string; is_storable: boolean; qty_available: number }[]>,
+    const [byId, settingsMap] = await Promise.all([
+      fetchFreeStockByTemplate(sessionId, ids),
       fetchWebsitePublishedSettings(sessionId),
     ])
-    const byId = new Map(rows.map(r => [r.id, r]))
     for (const tid of ids) {
       if (settingsMap.get(tid)) { out.set(tid, null); continue } // allow_out_of_stock_order - unlimited
       const r = byId.get(tid)
       if (!r || r.is_storable === false) { out.set(tid, null); continue } // untracked -> unlimited
-      out.set(tid, Math.max(0, Math.floor(r.qty_available)))
+      out.set(tid, Math.max(0, Math.floor(r.free_qty)))
     }
     return out
   } catch (err) {
@@ -1149,6 +1188,18 @@ const _fetchProductsCached = unstable_cache(
     const plPriceMap = new Map<number, number>()
     buildPlPriceMap(primaryRaw, rawPlItems, categAncestors).forEach((price, id) => plPriceMap.set(id, price))
 
+    // Sellable stock for the cards. `raw.qty_available` is ON HAND and does not drop until a
+    // delivery is validated, so a fully-reserved product would still show "18 available" and
+    // carry no low-stock badge while the cart refused to add it. Read free_qty so the number
+    // on the card matches what getAvailableUnitsForOrdering will actually allow.
+    // Fails soft: on error the map is empty and each card falls back to raw.qty_available.
+    let freeStock: Map<number, TemplateStock> = new Map()
+    try {
+      freeStock = await fetchFreeStockByTemplate(sessionId, templateIds)
+    } catch (err) {
+      console.warn('free stock lookup failed, cards fall back to on-hand:', err)
+    }
+
     const packMap = new Map(packagings.map(p => [p.id, p]))
     const taxMap = new Map(taxes.map(t => [t.id, t]))
     const primaryCatMap = new Map(primaryCats.map(c => [c.id, c]))
@@ -1196,7 +1247,8 @@ const _fetchProductsCached = unstable_cache(
     // never show a product as "out of stock" that it only displayed because it was considered
     // in stock (and vice-versa). The set already treats non-storable consumables as always
     // available. Fall back to the fresh qty only if the stock lookup failed (set is null).
-    const inStock = inStockIds === null ? raw.qty_available > 0 : inStockIds.has(raw.id)
+    const freeQty = freeStock.get(raw.id)?.free_qty ?? raw.qty_available
+    const inStock = inStockIds === null ? freeQty > 0 : inStockIds.has(raw.id)
     // Use per-website OOS flag from product.website.settings, not the global template flag
     const allowOos = websiteSettingsMap.get(raw.id) ?? false
     const sellable = inStock || allowOos
@@ -1225,7 +1277,10 @@ const _fetchProductsCached = unstable_cache(
       tax_names: taxNames,
       sellable,
       in_stock: inStock,
-      qty_available: raw.qty_available,
+      // Sellable units (on hand minus reserved), not raw on-hand: this drives the
+      // low-stock badge and the "Only N available" hint, which must agree with the
+      // cart-add limit from getAvailableUnitsForOrdering.
+      qty_available: freeQty,
       allow_out_of_stock_order: allowOos,
     }
   })

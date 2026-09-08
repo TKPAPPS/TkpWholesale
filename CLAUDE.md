@@ -112,7 +112,7 @@ who that affects before it can be changed.
 | Admin session token | 30 min | `admin-session.ts` (module memory) |
 | Products (per pricelist+domain+pagination+lang) | 5 min | `odoo-helpers.ts` `_fetchProductsCached` (`unstable_cache` — shared across Vercel instances, survives cold starts) |
 | Website published settings | 5 min | `odoo-helpers.ts` `_fetchWebsiteSettings` (`unstable_cache` — shared across Vercel instances) |
-| In-stock template ids | 2 min | `odoo-helpers.ts` `_fetchInStockIds` (`unstable_cache` — shared) — avoids per-request `qty_available` compute |
+| In-stock template ids | 2 min | `odoo-helpers.ts` `_fetchInStockIds` (`unstable_cache` — shared) — avoids per-request `free_qty` compute (~1070ms cold) |
 | Storefront rules (site_settings) | 5 min | `odoo-helpers.ts` `_fetchSiteSettings` (`unstable_cache` — shared); bust via `bustSiteSettingsCache()` on admin save |
 | Featured template ids | 5 min | `odoo-helpers.ts` `_fetchFeaturedIds` (`unstable_cache`); bust via `bustFeaturedCache()` |
 | Hidden product ids | 5 min | `odoo-helpers.ts` `_fetchHiddenProductIds` (`unstable_cache`); bust via `bustHiddenProductsCache()` |
@@ -143,6 +143,40 @@ product-availability tags now. Auth: `Authorization: Bearer $CRON_SECRET` OR
 `?secret=$CRON_SECRET` (the query-param form exists because Odoo's webhook action cannot
 set custom headers). **Automating this from Odoo is written up and ON HOLD pending a
 possible domain change: see `docs/odoo-cache-invalidation-automation.md`.**
+
+## Stock is `free_qty` (on hand MINUS reserved), never `qty_available`
+
+**Every stock read uses `free_qty`. Do not put `qty_available` back.** `qty_available` is
+Odoo's ON HAND figure and does not drop until a delivery is VALIDATED, so between a customer
+confirming an order and the goods physically leaving R4 those units still read as available
+and the portal sold them again. Measured on production 2026-09-08 before the fix: 36 of 400
+in-stock products overstated their availability and 3 were already fully committed or
+oversold — `BEV-0131` had 36 on hand with all 36 spoken for and was still being offered as
+36 available.
+
+`free_qty` works here because the R4 "Delivery Orders" picking type runs
+`reservation_method = at_confirm`: confirming an order reserves its units immediately.
+Verified against the quants — `free_qty` equals `quant.quantity - quant.reserved_quantity`
+exactly — and it honours the same `location` context (`BEV-0131` reads 36/free 0 scoped to
+R4 vs 2031/free 1995 globally, so the scoping is load-bearing).
+
+**Chosen over `virtual_available` (forecast) deliberately.** Forecast ADDS incoming purchase
+orders, so a product with 0 on hand and 100 inbound would read as sellable, and it goes
+negative when oversold (`DSP-0257` forecast −4). `free_qty` never promises stock that is not
+physically in R4 and floors at 0.
+
+**`free_qty` exists on `product.product`, NOT `product.template`.** `fetchFreeStockByTemplate`
+does the variant hop and is the single helper behind all three ordering enforcement points
+plus the card figure. The catalogue is 1:1 today (5,340 sellable templates, max 1 variant
+each) but the helper sums variants defensively.
+
+Cost: the in-stock search is ~1070ms on `free_qty` vs ~172ms on `qty_available`. That sits
+inside the 60s-cached, single-flighted `_fetchInStockIds`, so it is a cold-window cost only.
+Switching the search moved 9 templates out of the visible set and brought 0 new ones in.
+
+The card's `qty_available` field in the product payload now CARRIES free stock (the field name
+is kept for compatibility), so the low-stock badge and the "Only N available" hint agree with
+the cart-add limit. It falls back to raw on-hand only if the free-stock lookup throws.
 
 **Stock visibility is resolved against a cached id set, never an inline `qty_available`
 filter.** `qty_available` is a non-stored computed field, so a `['qty_available','>',0]`
@@ -668,7 +702,7 @@ Two real failures were fixed in the pre-launch audit and should not regress:
   stored, so it groups by the stored `product_id` (variant) and rolls counts up to templates;
   service lines (Delivery, etc.) rank high but are dropped by storefront visibility. Cached 1h.
   No admin curation (unlike Featured, which stays manual via `b2b_portal.featured_template_ids`).
-- **Low-stock badge rule:** shows when `qty_available > 0 AND qty_available < lowStockThreshold`
+- **Low-stock badge rule:** shows when `qty_available > 0 AND qty_available < lowStockThreshold` (the payload's `qty_available` carries FREE stock, see the free_qty section)
   (default 20, tunable 0-100000 in Admin → Settings → `b2b_portal.site_settings`). Rendered in
   `ProductCard.tsx`. Out-of-stock (qty 0) products show the OOS state, not the low-stock badge.
 
