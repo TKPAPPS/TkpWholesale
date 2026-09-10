@@ -13,7 +13,8 @@ import { FavoriteButton } from '@/components/products/FavoriteButton'
 import { useCartStore } from '@/store/cartStore'
 import { useSiteSettingsStore } from '@/store/siteSettingsStore'
 import { useToastStore } from '@/store/toastStore'
-import { Package, ChevronLeft, ShoppingCart } from 'lucide-react'
+import { Package, ChevronLeft, ShoppingCart, Check } from 'lucide-react'
+import Link from 'next/link'
 import Image from 'next/image'
 
 export default function ProductDetailPage() {
@@ -28,6 +29,8 @@ export default function ProductDetailPage() {
   const [added, setAdded] = useState(false)
   const [favorited, setFavorited] = useState(false)
   const addToCartAndSync = useCartStore((s) => s.addToCartAndSync)
+  // Same persistent in-cart state as the grid card: `added` below is only a 2s tap flash.
+  const cartLines = useCartStore((s) => s.cart?.lines)
   const showToast = useToastStore((s) => s.show)
   const lowStockThreshold = useSiteSettingsStore((s) => s.settings.lowStockThreshold)
   const [imgError, setImgError] = useState(false)
@@ -84,6 +87,9 @@ export default function ProductDetailPage() {
   if (loading) return <LoadingSpinner />
   if (notFound || !product) return <EmptyState title={t(lang, 'products.notFound')} description={t(lang, 'products.notAvailable')} action={<Button onClick={() => router.back()} variant="secondary">{t(lang, 'common.back')}</Button>} />
 
+  const inCartPacks = (cartLines ?? []).reduce(
+    (sum, l) => (l.template_id === product.template_id ? sum + l.packaging_qty : sum), 0,
+  )
   const name = lang === 'he' ? product.name_he : product.name
   const description = lang === 'he' ? product.description_he : product.description
 
@@ -121,6 +127,13 @@ export default function ProductDetailPage() {
             </div>
             <FavoriteButton templateId={product.template_id} initialFavorited={favorited} />
           </div>
+
+          {inCartPacks > 0 && (
+            <Link href="/cart" className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 border border-brand-200 px-3 py-1 text-xs font-semibold text-brand-800 hover:bg-brand-100 transition-colors">
+              <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              {t(lang, 'products.inCart')} · {inCartPacks}
+            </Link>
+          )}
 
           {description && <p className="text-sm text-gray-600">{description}</p>}
 

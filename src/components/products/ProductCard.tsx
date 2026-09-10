@@ -1,11 +1,11 @@
 'use client'
 import { Product } from '@/types'
 import { useLangStore } from '@/store/langStore'
-import { formatCurrency, computeMaxPacks } from '@/lib/utils'
+import { formatCurrency, computeMaxPacks, cn } from '@/lib/utils'
 import { t } from '@/lib/i18n/translations'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, Package } from 'lucide-react'
+import { ShoppingCart, Package, Check } from 'lucide-react'
 import { useState } from 'react'
 import { FavoriteButton } from './FavoriteButton'
 import { QuantitySelector } from './QuantitySelector'
@@ -22,6 +22,14 @@ interface ProductCardProps {
 export function ProductCard({ product, favorited = false }: ProductCardProps) {
   const { lang } = useLangStore()
   const addToCartAndSync = useCartStore((s) => s.addToCartAndSync)
+  // Persistent "already in your cart" state, derived from the cart rather than from the
+  // transient `added` flag below. `added` is a 2s timer for tap feedback; once it lapsed the
+  // card looked identical to a product that had never been added, so customers had no way to
+  // tell what was already in their order without opening the cart.
+  const cartLines = useCartStore((s) => s.cart?.lines)
+  const inCartPacks = (cartLines ?? []).reduce(
+    (sum, l) => (l.template_id === product.template_id ? sum + l.packaging_qty : sum), 0,
+  )
   const showToast = useToastStore((s) => s.show)
   const lowStockThreshold = useSiteSettingsStore((s) => s.settings.lowStockThreshold)
   const [qty, setQty] = useState(1)
@@ -58,7 +66,12 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
   }
 
   return (
-    <div className="group flex flex-col rounded-2xl border border-gray-100 bg-white hover:border-brand-200 hover:shadow-md transition-all duration-200 overflow-hidden">
+    <div className={cn(
+      'group flex flex-col rounded-2xl border bg-white hover:shadow-md transition-all duration-200 overflow-hidden',
+      inCartPacks > 0
+        ? 'border-brand-600 ring-1 ring-brand-600/20'   // already in the cart
+        : 'border-gray-100 hover:border-brand-200',
+    )}>
       {/* Image area */}
       <Link href={`/products/${product.id}`} className="relative aspect-square bg-gray-50 overflow-hidden">
         {!imgError ? (
@@ -93,14 +106,22 @@ export function ProductCard({ product, favorited = false }: ProductCardProps) {
             carried the badge while holding 0.325 kg, which is exactly the case the flag exists
             to cover. The "Only N available" hint below is already suppressed for these, because
             computeMaxPacks returns undefined when the flag is set. */}
-        {product.sellable && !product.allow_out_of_stock_order
-          && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
-          <div className="absolute top-2 start-2">
+        {/* Both badges share one column so an in-cart, low-stock product shows both
+            rather than one covering the other. */}
+        <div className="absolute top-2 start-2 flex flex-col items-start gap-1">
+          {inCartPacks > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-brand-700 text-white px-2 py-0.5 rounded-full shadow-sm">
+              <Check className="h-3 w-3" strokeWidth={3} />
+              {t(lang, 'products.inCart')} · {inCartPacks}
+            </span>
+          )}
+          {product.sellable && !product.allow_out_of_stock_order
+            && product.qty_available > 0 && product.qty_available < lowStockThreshold && (
             <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
               {t(lang, 'products.lowStock')}
             </span>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Favorite button */}
         <div className="absolute top-2 end-2">

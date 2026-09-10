@@ -481,6 +481,29 @@ number looks correct and passes a click-through test, because the bug only shows
 is cleared rather than overtyped. Still no upper-bound clamp while typing — that was removed
 deliberately once before and must not come back.
 
+## "Already in your cart" must come from the cart, not the add-flash
+
+`ProductCard` and the product detail page both keep an `added` flag that flips true for 2s
+after a tap. That is TAP FEEDBACK ONLY. Once it lapsed, a product sitting in the cart looked
+byte-identical to one never added, so customers had no way to see what was already in their
+order without opening the cart — reported from the shop floor on 2026-09-10.
+
+Both surfaces now derive a PERSISTENT indicator from the cart itself:
+
+    const cartLines = useCartStore((s) => s.cart?.lines)
+    const inCartPacks = (cartLines ?? []).reduce(
+      (sum, l) => (l.template_id === product.template_id ? sum + l.packaging_qty : sum), 0)
+
+- Grid card: a `border-brand-600 ring-1` on the card plus a `✓ In cart · N` pill.
+- Detail page: a `✓ In cart · N` pill that links to `/cart`.
+
+It sums `packaging_qty` across lines, so a product added under two different packagings shows
+one combined pack count rather than appearing twice or only counting the first line.
+
+The in-cart pill and the "Low stock" badge share one `flex-col` container at `top-2 start-2`,
+so a product that is both shows both instead of one covering the other. Do not re-add either
+as a standalone absolutely-positioned element.
+
 ## Cart behaviour (optimistic)
 - **Add to cart is optimistic.** `ProductCard` and the product detail page call
   `addLineOptimistic(product, pkg, qty)` on the `cartStore` to update the local
