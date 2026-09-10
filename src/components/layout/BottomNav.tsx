@@ -39,7 +39,9 @@ export function BottomNav() {
               href={href}
               className={cn(
                 'relative flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
-                active ? 'text-brand-700' : 'text-gray-400',
+                // gray-500, not gray-400: the 10px tab labels sit on white and gray-400 is
+                // 2.53:1, under the 4.5:1 minimum. This bar is on every customer page.
+                active ? 'text-brand-700' : 'text-gray-500',
               )}
             >
               <span className="relative">
