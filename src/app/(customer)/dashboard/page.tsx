@@ -75,7 +75,10 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
         </div>
         <div className="flex gap-3">
-          <Link href="/products">
+          {/* inline-flex so the <a> box matches the button it wraps. A bare inline <a>
+              around a block button measures ~0.3px tall, which fails the 24px minimum
+              tap target even though the button looks fine. */}
+          <Link href="/products" className="inline-flex">
             <Button size="sm">
               <Package className="h-4 w-4 me-1.5" /> {t(lang, 'nav.products')}
             </Button>
@@ -93,8 +96,8 @@ export default function DashboardPage() {
         ].map(({ label, value, icon: Icon, href }) => (
           <Link key={label} href={href} className="bg-white rounded-xl border border-gray-100 p-4 hover:border-brand-200 transition-colors">
             <div className="flex items-center gap-2 mb-1">
-              <Icon className="h-4 w-4 text-gray-400" />
-              <p className="text-xs text-gray-400">{label}</p>
+              <Icon className="h-4 w-4 text-gray-500" />
+              <p className="text-xs text-gray-500">{label}</p>
             </div>
             <p className="text-xl font-bold text-gray-900">{value}</p>
           </Link>
@@ -122,7 +125,7 @@ export default function DashboardPage() {
                         {order.state_label}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatDate(order.date_order, lang)} · {order.line_count} {t(lang, 'orders.lines')}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{formatDate(order.date_order, lang)} · {order.line_count} {t(lang, 'orders.lines')}</p>
                     {/* Progress bar */}
                     <div className="flex gap-1 mt-2">
                       {[t(lang, 'orders.stepConfirmed'), t(lang, 'orders.stepProcessing'), t(lang, 'orders.stepShipped'), t(lang, 'orders.stepDelivered')].map((s, i) => (
