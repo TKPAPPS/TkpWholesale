@@ -502,6 +502,29 @@ deliberately once before and must not come back.
   equals the displayed line total and matches the cards + optimistic line. Do not
   rebuild it from `price_unit` (ex-VAT); that made cart math look wrong.
 
+## The cart needs a fixed mobile checkout bar
+
+A 100-line cart renders **~18,600px tall — about 22 phone screens**. `CartSummary` (and with
+it the Checkout button) sits at the very bottom of that column on mobile, because the
+`lg:grid-cols-3` layout stacks to one column, so customers had to scroll the entire order to
+reach it and reported not being able to get there at all.
+
+`/cart` therefore renders a `lg:hidden fixed` bar carrying the total and Checkout, parked
+directly on top of the tab bar. Two things about it are deliberate:
+
+- **The offsets are MEASURED, not hardcoded.** The bar reads the tab bar's real height via
+  `[data-bottom-nav]` and a `ResizeObserver`, and a spacer of the bar's own measured height is
+  appended after `CartSummary`. Hardcoding px would drift: `globals.css` sets
+  `html { font-size: 112.5% }` so every rem-based Tailwind value is 1.125x (`pb-24` computes
+  to **108px**, not 96px), and the tab bar's height already absorbs
+  `env(safe-area-inset-bottom)`, which is 0 in Chrome emulation but ~34px on a real iPhone.
+- **z-20 sits under the tab bar's z-30** so the two stack instead of overlapping. Verified:
+  bar bottom == tab bar top exactly, and the in-flow summary clears the bar by 85px when
+  scrolled to the end.
+
+Do not "simplify" this to `position: sticky` or a fixed pixel offset without re-checking
+both on a real phone.
+
 ## Mobile layout constraints (360px is the design floor)
 Verified in headless Chrome at 360 and 390px; every customer page measures
 `scrollWidth == clientWidth` (no horizontal scroll). Three things make this fragile, so

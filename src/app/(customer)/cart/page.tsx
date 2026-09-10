@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLangStore } from '@/store/langStore'
 import { useCartStore } from '@/store/cartStore'
 import { t } from '@/lib/i18n/translations'
+import { formatCurrency } from '@/lib/utils'
 import { CartItem } from '@/components/cart/CartItem'
 import { CartSummary } from '@/components/cart/CartSummary'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -21,6 +22,29 @@ export default function CartPage() {
   const { cart, isLoading, odooUnavailable, setCart, fetchCart } = useCartStore()
   const [clearing, setClearing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
+  // A 100-line cart renders ~18,500px tall - about 22 phone screens. The summary and its
+  // Checkout button sit at the very bottom of that, so on mobile customers had to scroll
+  // the entire order to reach it and reported not being able to get there at all. The bar
+  // below pins the total + Checkout above the tab bar so it is always one tap away.
+  // Offsets are MEASURED, not hardcoded: the tab bar's height already includes its
+  // safe-area padding, and the root font-size is 112.5% so rem-based guesses drift.
+  const [navH, setNavH] = useState(0)
+  const [barH, setBarH] = useState(0)
+  const barRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const nav = document.querySelector('[data-bottom-nav]')
+    const measure = () => {
+      setNavH(nav ? nav.getBoundingClientRect().height : 0)
+      setBarH(barRef.current ? barRef.current.getBoundingClientRect().height : 0)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (nav) ro.observe(nav)
+    if (barRef.current) ro.observe(barRef.current)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [cart])
 
   // showLoading only here, on the page's own initial load. Background resyncs (after an
   // edit, or from the layout) must not flip the global spinner, or every quantity change
@@ -86,6 +110,30 @@ export default function CartPage() {
           </div>
           <div>
             <CartSummary cart={cart} />
+            {/* Clears the fixed mobile bar so the summary is never sitting underneath it. */}
+            <div className="lg:hidden" style={{ height: barH }} aria-hidden />
+          </div>
+        </div>
+      )}
+
+      {cart && cart.lines.length > 0 && (
+        <div
+          ref={barRef}
+          // z-20 keeps it under the tab bar (z-30); `bottom` is the tab bar's measured
+          // height, so the two stack rather than overlap.
+          className="lg:hidden fixed inset-x-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-2px_10px_0_rgba(0,0,0,0.06)]"
+          style={{ bottom: navH }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] text-gray-500 leading-tight">{t(lang, 'cart.total')}</p>
+              <p className="text-base font-bold text-gray-900 truncate">
+                {formatCurrency(cart.amount_total, cart.currency)}
+              </p>
+            </div>
+            <Link href="/checkout" className="shrink-0">
+              <Button size="md">{t(lang, 'cart.checkout')}</Button>
+            </Link>
           </div>
         </div>
       )}
