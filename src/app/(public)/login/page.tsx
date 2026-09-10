@@ -24,6 +24,21 @@ export default function LoginPage() {
 
   useEffect(() => { initLang() }, [])
 
+  // A customer who still holds a valid session should never be shown the login form.
+  // They land here by stepping Back out of the catalogue (the entry before /products is
+  // /login), and being asked to sign in again while already signed in reads as being
+  // logged out. Bounce them onward instead. `replace` so Back does not ping-pong.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/me')
+      .then((res) => {
+        if (cancelled || !res.ok) return   // 401 = genuinely logged out, show the form
+        router.replace(searchParams.get('redirect') ?? '/dashboard')
+      })
+      .catch(() => { /* offline or blip - show the form */ })
+    return () => { cancelled = true }
+  }, [router, searchParams])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')

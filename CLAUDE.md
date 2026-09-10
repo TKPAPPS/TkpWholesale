@@ -610,6 +610,28 @@ Two real failures were fixed in the pre-launch audit and should not regress:
   the translation dictionary (`products.quantity` / `decreaseQty` / `increaseQty`), and the
   buttons carry `type="button"` so they can never submit an enclosing form.
 
+## Catalogue navigation PUSHES history; grid fetches are sequenced
+
+`/products` keeps page, category, sort and the stock filter in the URL, and `setParams`
+**pushes** by default so each is its own history entry. It used to `replace` unconditionally
+("paging shouldn't spam history"), which meant browsing to page 5 of a category left a SINGLE
+entry — so Back jumped clean out of the catalogue to whatever preceded it, which for a customer
+who had just signed in was the **login page**. Reported 2026-09-10.
+
+`setParams(changes, { replace: true })` is for updates the customer did not deliberately
+navigate to. Only search-as-you-type uses it; pushing there would stack an entry per keystroke.
+
+**Grid fetches are sequenced (`reqSeqRef`).** `loadProducts`/`doSearch` take a ticket and drop
+their response if a newer fetch has started. Without it two in-flight requests race and the
+SLOWER one wins, leaving the grid showing different products than the URL says — reproducible
+by going back from page 1 to page 0 and landing on `/products` still showing page 1's products.
+This was latent before, and only became easy to hit once Back/Forward started working.
+
+**`/login` bounces an already-authenticated customer** to `?redirect=` (or `/dashboard`).
+Stepping Back out of the catalogue lands on `/login`, and being shown a sign-in form while
+still signed in reads as having been logged out. A 401 leaves the form alone, so a genuinely
+logged-out customer is unaffected.
+
 ## Customer navigation & UI
 - **Top nav** (`Navbar.tsx`): desktop (`md+`) = Home · Products · New Arrivals · Best
   Sellers · Quick Order · `Orders ▾` (Orders / Recently Ordered / Scheduled / Invoices) ·

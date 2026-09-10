@@ -52,16 +52,31 @@ function ProductsContent() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Update the URL (replace, so paging doesn't spam history) preserving the other params.
-  // Falsy values (0 / '' / null) drop the param to keep clean default URLs.
-  const setParams = useCallback((changes: Record<string, string | number | null>) => {
+  // Update the URL preserving the other params. Falsy values (0 / '' / null) drop the param
+  // to keep clean default URLs.
+  //
+  // PUSH by default, so every deliberate navigation (page, category, sort, stock filter) gets
+  // its own history entry and the browser Back button steps back through them. This used to
+  // `replace` unconditionally, on the reasoning that paging "shouldn't spam history" - but the
+  // effect was that browsing to page 5 of a category left ONE entry, so Back jumped clean out
+  // of the catalogue to whatever preceded it, which for a customer who had just signed in was
+  // the login page.
+  //
+  // `replace: true` is for updates the customer did not deliberately navigate to - currently
+  // the debounced search-as-you-type reset, which would otherwise push an entry per keystroke.
+  const setParams = useCallback((
+    changes: Record<string, string | number | null>,
+    opts?: { replace?: boolean },
+  ) => {
     const sp = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(changes)) {
       if (v === null || v === '' || v === 0) sp.delete(k)
       else sp.set(k, String(v))
     }
     const qs = sp.toString()
-    router.replace(qs ? `/products?${qs}` : '/products', { scroll: false })
+    const url = qs ? `/products?${qs}` : '/products'
+    if (opts?.replace) router.replace(url, { scroll: false })
+    else router.push(url, { scroll: false })
   }, [router, searchParams])
   const setPage = useCallback((p: number) => setParams({ page: p }), [setParams])
   const setSort = useCallback((s: string) => setParams({ sort: s === 'sku' ? null : s, page: null }), [setParams])
@@ -80,7 +95,17 @@ function ProductsContent() {
       .catch(() => setFeatured([]))
   }, [lang])
 
+  // Every grid fetch takes a ticket; a response is only applied if no newer fetch has
+  // started since. Without this, two in-flight requests race and the SLOWER one wins,
+  // leaving the grid showing a different page than the URL says. It bites hardest on
+  // Back/Forward, where a page change lands while the previous page's request is still
+  // open - observed going back from page 1 to page 0 and being left on page 1's products
+  // with `/products` in the address bar.
+  const reqSeqRef = useRef(0)
+
   const loadProducts = useCallback(async () => {
+    const seq = ++reqSeqRef.current
+    const isCurrent = () => seq === reqSeqRef.current
     setLoading(true)
     setOdooError(false)
     try {
@@ -93,24 +118,30 @@ function ProductsContent() {
       if (selectedCategory) params.set('category_id', String(selectedCategory))
       if (inStockOnly) params.set('in_stock_only', '1')
       const res = await fetch(`/api/products?${params}`)
+      if (!isCurrent()) return
       if (res.status === 503) { setOdooError(true); return }
       const data = await res.json()
+      if (!isCurrent()) return
       setProducts(data.products ?? [])
       setTotal(data.total ?? 0)
-    } catch { setOdooError(true) }
-    finally { setLoading(false) }
+    } catch { if (isCurrent()) setOdooError(true) }
+    finally { if (isCurrent()) setLoading(false) }
   }, [page, sort, selectedCategory, lang, PER_PAGE, inStockOnly])
 
   const doSearch = useCallback(async (q: string) => {
+    const seq = ++reqSeqRef.current
+    const isCurrent = () => seq === reqSeqRef.current
     setLoading(true)
     setOdooError(false)
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&lang=${lang}`)
+      if (!isCurrent()) return
       const data = await res.json()
+      if (!isCurrent()) return
       setProducts(data.results ?? [])
       setTotal(data.total ?? 0)
-    } catch { setOdooError(true) }
-    finally { setLoading(false) }
+    } catch { if (isCurrent()) setOdooError(true) }
+    finally { if (isCurrent()) setLoading(false) }
   }, [lang])
 
   useEffect(() => {
@@ -121,7 +152,7 @@ function ProductsContent() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
-    setPage(0)
+    setParams({ page: null }, { replace: true })
     if (search.trim()) doSearch(search)
     else loadProducts()
   }
@@ -130,7 +161,9 @@ function ProductsContent() {
     setSearch(value)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
     searchDebounceRef.current = setTimeout(() => {
-      setPage(0)
+      // replace, not push: typing is not a navigation, and pushing here would put a
+      // history entry behind every keystroke.
+      setParams({ page: null }, { replace: true })
       if (value.trim()) doSearch(value)
       else loadProducts()
     }, 400)
