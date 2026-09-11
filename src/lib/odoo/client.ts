@@ -208,6 +208,11 @@ export async function callKw(
 }
 
 // search_read shorthand
+// Rows returned when a caller does not pass `limit`. Kept for the many paginated callers
+// that rely on it; see the truncation warning inside searchRead for why an unbounded read
+// must pass `{ limit: 0 }` explicitly.
+const DEFAULT_SEARCH_READ_LIMIT = 100
+
 export async function searchRead(
   sessionId: string,
   model: string,
@@ -215,13 +220,26 @@ export async function searchRead(
   fields: string[],
   opts: { limit?: number; offset?: number; order?: string; context?: Record<string, unknown>; scopeToCompany?: boolean } = {},
 ): Promise<Record<string, unknown>[]> {
-  return callKw(sessionId, model, 'search_read', [domain], {
+  const rows = await callKw(sessionId, model, 'search_read', [domain], {
     fields,
-    limit: opts.limit ?? 100,
+    limit: opts.limit ?? DEFAULT_SEARCH_READ_LIMIT,
     offset: opts.offset ?? 0,
     order: opts.order ?? '',
     context: opts.context ?? {},
-  }, { scopeToCompany: opts.scopeToCompany }) as Promise<Record<string, unknown>[]>
+  }, { scopeToCompany: opts.scopeToCompany }) as Record<string, unknown>[]
+
+  // The default limit is a footgun: a caller that forgets `limit` gets a SILENTLY truncated
+  // result, with no error and no signal. It shipped that way on the cart (`readCartLines`),
+  // where a customer's 100+ line cart simply stopped showing anything past the 100th line
+  // even though Odoo held them all. Landing exactly on the default is the tell-tale, so say
+  // so loudly rather than returning a quietly wrong answer.
+  if (opts.limit === undefined && rows.length === DEFAULT_SEARCH_READ_LIMIT) {
+    console.warn(
+      `[searchRead] ${model} returned exactly the default limit of ${DEFAULT_SEARCH_READ_LIMIT} ` +
+      `rows - the result is probably TRUNCATED. Pass an explicit limit (use { limit: 0 } for all rows).`,
+    )
+  }
+  return rows
 }
 
 // Verify the user is an active Odoo user (portal or internal)

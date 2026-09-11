@@ -1451,11 +1451,14 @@ export async function fetchOdooCategories(sessionId: string) {
 // ─── Cart helpers ─────────────────────────────────────────────────────────────
 
 async function readCartLines(sessionId: string, orderId: number): Promise<CartLine[]> {
+  // limit: 0 = no limit. searchRead DEFAULTS TO 100, which silently dropped every cart line
+  // past the 100th: a customer with a 100+ line cart added a product, saw it land in the Odoo
+  // quotation, and it never appeared in the portal cart. Reported 2026-09-11 on a 99+ cart.
   const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
     'id', 'product_id', 'product_template_id', 'product_packaging_id',
     'product_packaging_qty', 'product_uom_qty', 'price_unit',
     'price_subtotal', 'price_total', 'name', 'display_type',
-  ]) as unknown as (OdooCartLine & { display_type: string | false; product_id: [number, string] | false; product_template_id: [number, string] | false })[]
+  ], { order: 'sequence, id', limit: 0 }) as unknown as (OdooCartLine & { display_type: string | false; product_id: [number, string] | false; product_template_id: [number, string] | false })[]
 
   // Drop section/note lines (display_type set, no product) that staff may add to
   // the draft quotation in the Odoo backoffice - they are not cart items.
@@ -1603,9 +1606,11 @@ export async function getOrCreateCart(
 // Odoo round-trip). Prices are intentionally NOT captured - the executor lets Odoo
 // compute the live pricelist price at placement.
 export async function readOrderItemsForSchedule(sessionId: string, orderId: number): Promise<import('@/lib/scheduled-orders').ScheduledOrderItem[]> {
+  // limit: 0 - a scheduled order built from a 100+ line order would otherwise silently
+  // repeat only the first 100 items, every time it ran.
   const rawLines = await searchRead(sessionId, 'sale.order.line', [['order_id', '=', orderId]], [
     'id', 'product_id', 'product_packaging_id', 'product_packaging_qty', 'product_uom_qty', 'display_type',
-  ]) as unknown as {
+  ], { order: 'sequence, id', limit: 0 }) as unknown as {
     display_type: string | false
     product_id: [number, string] | false
     product_packaging_id: [number, string] | false

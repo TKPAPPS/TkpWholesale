@@ -983,6 +983,35 @@ The real fix belongs in the vendor's module (`... if request else None`). It cur
 EVERY purchase order created outside a browser request, including Odoo's own scheduled actions
 and imports.
 
+## `searchRead` DEFAULTS TO 100 ROWS - pass `{ limit: 0 }` for anything per-order
+
+`searchRead` (`src/lib/odoo/client.ts`) applies `limit: 100` when the caller omits one. It
+does not error and does not signal; it just returns a short list. **Any read whose row count
+is driven by customer data must pass an explicit limit.**
+
+This shipped as a customer-visible bug on 2026-09-11: `readCartLines` omitted the limit, so a
+cart with more than 100 lines simply stopped showing anything past the 100th. Verified on
+production order **S18029** (partner 2334, Koh Phangan): Odoo held **144** lines, `/api/cart`
+returned **100**, and a chicken breast the customer had just added was in the Odoo quotation
+but absent from the portal. The totals made it worse rather than obvious - `amount_total`
+comes from the ORDER HEADER, so the cart showed a correct 472,638.21 total above a line list
+that only added up to part of it.
+
+Four per-order reads were unbounded and are now `{ limit: 0 }`:
+
+| Site | What truncation did |
+|---|---|
+| `readCartLines` | cart silently dropped lines past the 100th |
+| `readOrderItemsForSchedule` | a scheduled order from a 100+ line order repeated only the first 100, every run |
+| `api/checkout/confirm` line read | lines 101+ skipped BOTH the out-of-stock removal and the quantity cap |
+| `api/orders/[id]` line read | order detail page hid lines past the 100th |
+
+`api/invoices/[id]`, `api/orders/[id]/pdf`, `api/orders` and the invoice-email cron already
+passed `limit: 0` - the lesson had been learned on the invoice path and not carried across.
+
+`searchRead` now logs a loud warning when a caller omitted `limit` AND got back exactly 100
+rows, which is the tell-tale of truncation. Treat that warning as a bug in the caller.
+
 ## Request parsing conventions
 
 **Never call `await req.json()` directly in a route.** Use `readJsonObject(req)`

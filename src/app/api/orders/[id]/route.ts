@@ -40,6 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     // Fetch lines
+    // limit: 0 - an order with 100+ lines must show every one of them.
     const lines = await searchRead(sessionId, 'sale.order.line',
       [['order_id', '=', id]],
       ['id', 'product_id', 'product_template_id', 'product_packaging_id',
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         // never ship and would otherwise report a permanent shortfall (356 of 3,000 lines
         // in the last fortnight). Never infer this from the product type.
         'qty_delivered', 'qty_invoiced', 'qty_delivered_method', 'product_uom'],
+      { order: 'sequence, id', limit: 0 },
     ) as {
       id: number; product_id: [number, string]; product_template_id: [number, string];
       product_packaging_id: [number, string] | false; product_packaging_qty: number;

@@ -210,8 +210,12 @@ export async function POST(req: NextRequest) {
     // reaches Odoo as written. Without an explicit acknowledgement we return the offending
     // template ids so the checkout page can show the split and ask the buyer to confirm;
     // with remove_unavailable we unlink/clamp here and place the order with the rest.
+    // limit: 0 is load-bearing here. This read drives the out-of-stock removal and the
+    // quantity cap, so a default-100 truncation would leave lines 101+ UNVALIDATED and
+    // confirm them unchecked.
     const lineRows = await searchRead(sessionId, 'sale.order.line',
       [['order_id', '=', cartId]], ['id', 'product_template_id', 'product_packaging_id', 'product_uom_qty'],
+      { order: 'sequence, id', limit: 0 },
     ) as { id: number; product_template_id: [number, string] | false; product_packaging_id: [number, string] | false; product_uom_qty: number }[]
     const templateIdOf = (r: typeof lineRows[number]) => (Array.isArray(r.product_template_id) ? r.product_template_id[0] : 0)
     const lineTemplateIds = lineRows.map(templateIdOf).filter(Boolean)
