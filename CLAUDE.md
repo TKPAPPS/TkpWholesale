@@ -1212,7 +1212,19 @@ Reproduce with `scripts/qa/run-load.mjs` (staging-guarded, cleans up its carts).
   **Caveat to watch:** Odoo logs a failed webhook rather than raising, so a portal outage
   should not block product edits in Odoo. If product saves ever start failing in a way that
   points at the webhook, archive rules 33/34 first and investigate second.
-- PDF download: `ir.attachment` + `render_qweb_pdf` fallback. Confirmed working end-to-end on production SaaS (order + invoice PDFs verified 2026-07-21).
+- **Invoice PDF: read `invoice_pdf_report_id`, then a chatter copy, then GENERATE via the send
+  wizard.** (`api/invoices/[id]/pdf`, rewritten 2026-09-14.) Odoo 17/18 keeps the invoice PDF
+  as an attachment bound to the field `invoice_pdf_report_file`, and a generic `ir.attachment`
+  search on res_model/res_id **cannot see it** - Odoo silently appends `res_field = False` to
+  any attachment domain that does not mention `res_field`, so that search only ever found older
+  chatter copies left by "Send by email". The old fallback, `render_qweb_pdf`, has been private
+  (`_render_qweb_pdf`) since Odoo 17 and answers "The method does not exist" over RPC. Net
+  effect: any invoice posted but never emailed 503'd (INV/2026/05870). The 2026-07-21 "verified
+  working" note only ever hit invoices that had chatter copies.
+  The generate step is `account.move.send.wizard` created with `sending_methods: ['manual']`
+  then `action_send_and_print` - what the Print button does, sends NO email (verified: 0
+  `mail.mail` rows), and writes the PDF onto the invoice so the next request is a plain read.
+  Order PDFs are unaffected: they are generated in the portal with pdf-lib, not by Odoo.
 - Product list cache is now shared across instances via `unstable_cache` (Data Cache). No explicit pre-warm — the first request per key warms it; add a cron hitting common categories if cold-start latency on rarely-hit keys matters.
 - Production Odoo should be in Singapore (Odoo.sh `asia-southeast1`) to cut ~250ms EU round trip.
 - `findCart` only picks up portal carts ≤7 days old (prevents stale quotation reuse).

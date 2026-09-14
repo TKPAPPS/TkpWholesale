@@ -33,8 +33,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // global company scope, which would become a misleading 503. This yields [] -> clean 404.
     const moves = await searchRead(sessionId, 'account.move',
       [['id', '=', id], ['company_id', '=', COMPANY_ID]],
-      ['id', 'commercial_partner_id', 'state', 'move_type', 'company_id'],
-    ) as unknown as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string; company_id: [number, string] | false }[]
+      ['id', 'commercial_partner_id', 'state', 'move_type', 'company_id', 'invoice_pdf_report_id'],
+    ) as unknown as { id: number; commercial_partner_id: [number, string] | false; state: string; move_type: string; company_id: [number, string] | false; invoice_pdf_report_id: [number, string] | false }[]
 
     const move = moves[0]
     if (!move || move.move_type !== 'out_invoice' || move.state !== 'posted') {
@@ -46,35 +46,53 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'INVOICE_NOT_FOUND' }, { status: 404 })
     }
 
-    // Strategy 1: read existing ir.attachment (Odoo always stores invoice PDFs here
-    // when an invoice is posted/sent; datas is base64 in JSON-RPC → reliable).
-    const attachments = await searchRead(sessionId, 'ir.attachment', [
-      ['res_model', '=', 'account.move'],
-      ['res_id', '=', id],
-      ['mimetype', '=', 'application/pdf'],
-    ], ['id', 'datas', 'name'], { limit: 1, order: 'write_date desc' })
-
-    if (attachments.length > 0 && attachments[0].datas) {
-      const buf = Buffer.from(attachments[0].datas as string, 'base64')
-      if (buf[0] === 0x25) { // starts with '%' → valid PDF
-        return buildPdfResponse(buf, `invoice-${id}.pdf`)
-      }
+    // Where Odoo 17/18 keeps the invoice PDF: `invoice_pdf_report_id`, an attachment bound to
+    // the field `invoice_pdf_report_file`. A generic ir.attachment search on res_model/res_id
+    // CANNOT see it - Odoo silently appends `res_field = False` to any attachment domain that
+    // does not mention res_field, so that query only ever found the older chatter copies left
+    // behind by "Send by email". An invoice that had been posted but never emailed therefore
+    // had no readable PDF at all, and the old fallback below it, `render_qweb_pdf`, has been
+    // private (`_render_qweb_pdf`) since Odoo 17 - "The method does not exist" over RPC. So
+    // INV/2026/05870 answered 503 to the customer. Found 2026-09-14.
+    //
+    // Order of preference: the field attachment, then a chatter copy, then GENERATE it the
+    // way the Print button does (account.move.send.wizard, sending_methods=['manual'] - no
+    // email is sent) and read the field attachment that produces. Generating writes the PDF
+    // onto the invoice in Odoo, which is exactly what a staff member printing it would do,
+    // and means the next request is a plain read.
+    const readAttachment = async (attId: number): Promise<Buffer | null> => {
+      const rows = await callKw(sessionId, 'ir.attachment', 'read', [[attId]], { fields: ['datas'] }) as { datas: string | false }[]
+      const datas = rows[0]?.datas
+      if (!datas) return null
+      const buf = Buffer.from(datas, 'base64')
+      return buf[0] === 0x25 && buf[1] === 0x50 ? buf : null // %P
     }
 
-    // Strategy 2: render via JSON-RPC execute_kw (bypasses HTTP auth).
-    // Odoo may encode returned bytes as base64 or latin-1; detect by PDF magic bytes.
-    const result = await callKw(
-      sessionId,
-      'ir.actions.report',
-      'render_qweb_pdf',
-      ['account.report_invoice_with_payments', [id]],
-      {},
-    ) as [string, string]
+    let pdf: Buffer | null = null
 
-    const pdfBuffer = decodePdf(result[0])
-    if (!pdfBuffer) throw new Error('render_qweb_pdf returned unreadable data')
+    // 1. The field attachment Odoo itself maintains.
+    if (move.invoice_pdf_report_id) pdf = await readAttachment(move.invoice_pdf_report_id[0])
 
-    return buildPdfResponse(pdfBuffer, `invoice-${id}.pdf`)
+    // 2. A chatter copy (invoices emailed before Odoo 17 keep theirs here).
+    if (!pdf) {
+      const chatter = await searchRead(sessionId, 'ir.attachment', [
+        ['res_model', '=', 'account.move'], ['res_id', '=', id], ['mimetype', '=', 'application/pdf'],
+      ], ['id'], { limit: 1, order: 'write_date desc' }) as unknown as { id: number }[]
+      if (chatter[0]) pdf = await readAttachment(chatter[0].id)
+    }
+
+    // 3. Never printed or sent: have Odoo generate it, then read the field attachment.
+    if (!pdf) {
+      const wizardId = await callKw(sessionId, 'account.move.send.wizard', 'create',
+        [{ move_id: id, sending_methods: ['manual'] }], {}) as number
+      await callKw(sessionId, 'account.move.send.wizard', 'action_send_and_print', [[wizardId]], {})
+      const fresh = await callKw(sessionId, 'account.move', 'read', [[id]], { fields: ['invoice_pdf_report_id'] }) as { invoice_pdf_report_id: [number, string] | false }[]
+      const attId = fresh[0]?.invoice_pdf_report_id
+      if (attId) pdf = await readAttachment(attId[0])
+    }
+
+    if (!pdf) throw new Error('No invoice PDF could be read or generated')
+    return buildPdfResponse(pdf, `invoice-${id}.pdf`)
   } catch (err) {
     invalidateOdooSession()
     console.error('invoice PDF error:', err)
@@ -82,13 +100,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-function decodePdf(data: string): Buffer | null {
-  const b64 = Buffer.from(data, 'base64')
-  if (b64[0] === 0x25 && b64[1] === 0x50) return b64 // %P
-  const bin = Buffer.from(data, 'binary')
-  if (bin[0] === 0x25 && bin[1] === 0x50) return bin
-  return null
-}
 
 function buildPdfResponse(buf: Buffer, filename: string) {
   return new NextResponse(buf, {
