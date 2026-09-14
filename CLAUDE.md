@@ -775,25 +775,63 @@ logged-out customer is unaffected.
   `ProductCard.tsx`. Out-of-stock (qty 0) products show the OOS state, not the low-stock badge.
 
 ## Scheduled / repeating orders
+
+**Upcoming scheduled orders exist in Odoo AHEAD of time, as draft quotations** (since
+2026-09-14). The original design created each order only on the morning it was due, so nothing
+was visible in Odoo until it landed: the office could not see what was coming, the warehouse
+could not plan, and a customer's immediate checkout order plus the scheduler's first run
+produced duplicates on day one (School: S18088 for 15/09 AND a scheduled 15/09). All the logic
+lives in `src/lib/odoo/scheduled-drafts.ts`; the staging write test is
+`scripts/qa/staging-scheduled-drafts.mts` (20 checks, refuses to run against a non-staging DB).
+
 - **Data:** Supabase `scheduled_orders` (service-role, RLS-off) + `claim_scheduled_order(id, today)`
   RPC. `items` is a JSONB snapshot `[{product_id,name,name_he,sku,uom_qty,packaging_id,packaging_qty}]` —
-  never prices (Odoo computes the live pricelist price at placement). All dates are **Asia/Bangkok**
-  calendar dates; date math lives in `src/lib/schedule-dates.ts` (`todayBkk`, `addDays`, `nextRunDate`),
-  which is also used by the Part-A timezone fixes.
-- **Creation:** `POST /api/checkout/confirm` accepts an optional `schedule` object; after `action_confirm`
-  it snapshots the confirmed order's lines (`readOrderItemsForSchedule`) and inserts the row. Best-effort:
-  a failure returns `schedule_error` (order still placed), surfaced on the confirmation page.
-- **Executor:** `/api/cron/scheduled-orders` (Vercel cron `30 23 * * *` = 06:30 Bangkok, `maxDuration=300`),
-  authed by `Authorization: Bearer $CRON_SECRET`. Per due schedule, sequentially: claim RPC → Odoo-side
-  `client_order_ref` recovery check → address re-validate (fallback to the commercial partner's own
-  address) → create `sale.order` (**NO `pricelist_id`, NO `website_id`** — else `findCart` adopts it as a
-  cart) → create all lines in one call (no `price_unit`) → `action_confirm` → advance `next_run_date` →
-  Resend email. On failure: don't advance, increment `consecutive_failures`, email, auto-pause after 3.
-- **Idempotency (both required):** the claim RPC stamps `last_run_date` before any Odoo call (a mid-run
-  timeout can't double-place same day); the deterministic `client_order_ref` recovers a crash-after-confirm.
-- **Management:** `GET /api/scheduled-orders`, `PATCH|DELETE /api/scheduled-orders/[id]` (ownership via
-  `commercial_partner_id` in the query), page at `/scheduled-orders`, linked from the Orders dropdown +
-  mobile nav.
+  never prices. All dates are **Asia/Bangkok** calendar dates; date math lives in
+  `src/lib/schedule-dates.ts`. The Supabase row is the source of truth; the Odoo drafts are a
+  projection of it that the executor reconciles every morning.
+- **Drafts, not confirmed orders — this is load-bearing.** R4 reserves at confirm
+  (`reservation_method = at_confirm`). Confirming a fortnight of daily bread today would reserve
+  all of it now, `free_qty` would collapse, and the portal would hide the product from every
+  other customer. A draft reserves nothing.
+- **Rolling horizon, `SCHED_HORIZON_DAYS = 14`.** "End date (optional)" means a schedule can be
+  open-ended, so there is no last order to create. Drafts are topped up to the horizon at
+  creation, on resume, and by the executor after each successful run.
+- **findCart cannot adopt a draft:** it filters on `website_id = WEBSITE_ID` and the drafts are
+  created without one (same reason the executor never set it). Verified on staging.
+- **Deterministic ref per run:** `client_order_ref = AUTO:<schedule id[:8]>:<YYYY-MM-DD>`, with
+  the customer's `po_ref` appended in brackets. Unchanged from the old executor, so its
+  crash-after-confirm recovery keeps working. `origin = Portal scheduled order <id[:8]>`.
+- **Creation:** `POST /api/checkout/confirm` accepts an optional `schedule`; after
+  `action_confirm` it snapshots the lines (`readOrderItemsForSchedule`), inserts the row, then
+  `topUpScheduledDrafts`. **The first run is seeded strictly after the LATER of today and the
+  immediate order's delivery date** (`firstDeliveryDate`), which is what stops the day-one
+  duplicate; the pre-check uses the same start point. Draft creation is best effort — a failure
+  logs and the schedule is still created, the executor tops up anyway.
+- **Executor:** `/api/cron/scheduled-orders` (Vercel cron `30 23 * * *` = 06:30 Bangkok,
+  `maxDuration=300`), authed by `Authorization: Bearer $CRON_SECRET`. Per due schedule: claim RPC
+  → `findScheduledOrder` on the run ref → **confirmed/done: recovery, just advance; draft: the
+  normal path — `refreshDraftLines` (lines are re-created so Odoo prices them at TODAY's
+  pricelist, not the draft's), then confirm; none/cancelled: create (or `action_draft` a cancelled
+  one) then confirm** → `alignPickingDates` → advance `next_run_date` → `topUpScheduledDrafts` →
+  Resend email. Address re-validated first, falling back to the commercial partner's own. On
+  failure: don't advance, increment `consecutive_failures`, email, auto-pause after 3. A schedule
+  created before the draft design has no drafts yet; it self-migrates on its next run.
+- **Management:** `PATCH|DELETE /api/scheduled-orders/[id]` mirror every state change into Odoo:
+  pause/end/delete → `cancelScheduledDrafts` (only still-draft future orders; confirmed ones are
+  real orders and are left alone), resume → recompute `next_run_date` from today and
+  `topUpScheduledDrafts`. Best effort; the executor reconciles regardless.
+- **Idempotency (both required):** the claim RPC stamps `last_run_date` before any Odoo call (a
+  mid-run timeout can't double-place same day); the deterministic ref recovers a crash-after-confirm
+  and makes draft creation/cancellation re-runnable.
+
+**The picking's `scheduled_date` must be aligned to the delivery date after EVERY confirm.**
+Odoo copies `commitment_date` into the picking's `date_deadline` but leaves its `scheduled_date`
+at the order time, and `scheduled_date` is the prominent field the warehouse works from.
+S18090 was for delivery 17/09 and R4 shipped it at 11:30 on 14/09 because R4/OUT/16460 showed
+"Scheduled Date 14/09 11:14". `alignPickingDates` writes `scheduled_date = commitment_date` on
+every open picking of the order (Odoo propagates it to the moves); the checkout route calls it
+after the immediate order's confirm and the executor after each scheduled confirm. Verified on
+staging through the real checkout route: R4/OUT/14866 for a 17/09 delivery is scheduled 17/09.
 
 ## Session tokens carry expiry
 - Both the customer `session` cookie (`signSession` in `src/lib/odoo/session.ts`) and the admin token

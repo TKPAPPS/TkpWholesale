@@ -5,6 +5,10 @@ import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
 import { AUTO_PAUSE_AFTER_FAILURES } from '@/lib/scheduled-orders'
 import { sendEmail, scheduledPlacedEmail, scheduledFailedEmail } from '@/lib/email'
 import type { ScheduledOrderRow } from '@/lib/scheduled-orders-db'
+import {
+  scheduleRunRef, findScheduledOrder, createScheduledDraft, refreshDraftLines,
+  alignPickingDates, topUpScheduledDrafts,
+} from '@/lib/odoo/scheduled-drafts'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -67,15 +71,17 @@ export async function GET(req: NextRequest) {
     }
 
     const runDate = s.next_run_date
-    const idKey = `AUTO:${s.id.slice(0, 8)}:${runDate}`
+    const idKey = scheduleRunRef(s.id, runDate)
 
     try {
-      // Recovery: if a prior run crashed after action_confirm but before updating
-      // the row, the order already exists under this deterministic ref - don't
-      // place it again, just advance.
-      const existing = await callKw(sessionId, 'sale.order', 'search_count',
-        [[['client_order_ref', 'like', idKey], ['company_id', '=', COMPANY_ID]]], {}) as number
-      if (existing > 0) {
+      // The order for today normally ALREADY EXISTS as a draft: drafts are created ahead
+      // of time (see scheduled-drafts.ts) so upcoming orders are visible in Odoo. Three
+      // cases on the deterministic ref:
+      //   confirmed/done  -> a prior run crashed after confirm; just advance (recovery)
+      //   draft           -> the normal path: refresh lines for live pricing, confirm
+      //   nothing         -> pre-draft schedule or a failed top-up; create then confirm
+      const existing = await findScheduledOrder(sessionId, s.id, runDate)
+      if (existing && existing.state !== 'draft' && existing.state !== 'cancel') {
         await advanceSchedule(supabase, s, runDate)
         summary.skipped++
         continue
@@ -93,31 +99,25 @@ export async function GET(req: NextRequest) {
         addressSubstituted = true
       }
 
-      // Create the order. NO pricelist_id (Odoo derives it), NO website_id (else
-      // findCart would adopt it as the customer's cart before confirm).
-      const nowUtc = new Date().toISOString().slice(0, 19).replace('T', ' ')
-      const clientRef = s.po_ref ? `${idKey} (${s.po_ref})` : idKey
-      const orderId = await callKw(sessionId, 'sale.order', 'create', [{
-        partner_id: s.partner_id,
-        // Explicit: this create has no website_id either (deliberate, so findCart won't
-        // adopt it as a cart), so nothing else would tie it to the right company.
-        company_id: COMPANY_ID,
-        partner_shipping_id: shippingId,
-        client_order_ref: clientRef,
-        origin: `Portal scheduled order ${s.id.slice(0, 8)}`,
-        note: s.note || '',
-        date_order: nowUtc,
-        commitment_date: `${runDate} 02:00:00`, // 09:00 Bangkok in UTC
-      }], {}) as number
-
-      // All lines in one create call. No price_unit - Odoo computes pricelist price.
-      const lineVals = s.items.map(i => ({
-        order_id: orderId,
-        product_id: i.product_id,
-        product_uom_qty: i.uom_qty,
-        ...(i.packaging_id ? { product_packaging_id: i.packaging_id, product_packaging_qty: i.packaging_qty } : {}),
-      }))
-      await callKw(sessionId, 'sale.order.line', 'create', [lineVals], {})
+      let orderId: number
+      if (existing && existing.state === 'draft') {
+        orderId = existing.id
+        if (addressSubstituted) {
+          await callKw(sessionId, 'sale.order', 'write', [[orderId], { partner_shipping_id: shippingId }], {})
+        }
+        // Re-create the lines so Odoo prices them at TODAY's pricelist, not the draft's.
+        await refreshDraftLines(sessionId, orderId, s.items)
+      } else {
+        // A cancelled draft (customer paused, then resumed) or no draft at all.
+        const made = await createScheduledDraft(sessionId, s, runDate, shippingId)
+        orderId = made.id
+        if (!made.created) {
+          // The only way createScheduledDraft returns an existing id here is a cancelled
+          // order under this ref: revive it rather than leave a cancelled ghost.
+          await callKw(sessionId, 'sale.order', 'action_draft', [[orderId]], {})
+          await refreshDraftLines(sessionId, orderId, s.items)
+        }
+      }
 
       // Unscoped for the same reason as the checkout route: a customer that resolves to a
       // sister company makes Odoo raise an inter-company purchase order in that company, which
@@ -125,6 +125,11 @@ export async function GET(req: NextRequest) {
       // scheduled order must not fail for the six branches the way a manual checkout did.
       const { confirmSaleOrder } = await import('@/lib/odoo/confirm-order')
       await confirmSaleOrder(sessionId, orderId)
+
+      // The warehouse works from the picking's scheduled_date, which Odoo leaves at the
+      // order time; align it to the delivery date so this ships on the right day.
+      await alignPickingDates(sessionId, orderId).catch(err =>
+        console.warn(`cron: picking alignment failed for ${idKey} (order still confirmed):`, err))
 
       const confirmed = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
         fields: ['id', 'name', 'amount_total', 'currency_id'],
@@ -136,6 +141,12 @@ export async function GET(req: NextRequest) {
         last_status: 'success', consecutive_failures: 0, last_error: null,
       })
       summary.placed++
+
+      // Keep upcoming drafts topped up to the horizon. Best effort.
+      if (next) {
+        await topUpScheduledDrafts(sessionId, s, next, today, shippingId).catch(err =>
+          console.warn(`cron: draft top-up failed for ${s.id.slice(0, 8)}:`, err))
+      }
 
       // Best-effort notification.
       const email = await partnerEmail(sessionId, s.partner_id, callKw)

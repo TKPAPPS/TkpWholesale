@@ -5,6 +5,22 @@ import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
 import { createServerClient } from '@/lib/supabase'
 import type { ScheduledOrderRow } from '@/lib/scheduled-orders-db'
 import { readJsonObject } from '@/lib/request-body'
+import { getOdooSession } from '@/lib/odoo/admin-session'
+import { cancelScheduledDrafts, topUpScheduledDrafts } from '@/lib/odoo/scheduled-drafts'
+
+// Upcoming orders live in Odoo as drafts ahead of time (scheduled-drafts.ts), so every
+// state change here has to be mirrored there: pausing/ending/deleting cancels the
+// outstanding drafts, resuming re-creates them. Best effort - the schedule row is the
+// source of truth and the executor reconciles drafts each morning regardless.
+async function withdrawDrafts(scheduleId: string) {
+  try {
+    const sessionId = await getOdooSession()
+    const n = await cancelScheduledDrafts(sessionId, scheduleId, todayBkk())
+    if (n) console.log(`scheduled-orders: cancelled ${n} upcoming draft(s) for ${scheduleId.slice(0, 8)}`)
+  } catch (err) {
+    console.error('withdrawDrafts failed (schedule state still updated):', err)
+  }
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         status: 'paused', paused_reason: 'user',
       })
       if (!ok) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+      await withdrawDrafts(params.id)
       return NextResponse.json({ ok: true })
     }
 
@@ -48,11 +65,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }, today)
       if (!next) {
         await updateOwnedSchedule(params.id, parsed.commercial_partner_id, { status: 'ended', paused_reason: null })
+        await withdrawDrafts(params.id)
         return NextResponse.json({ ok: true, status: 'ended' })
       }
       await updateOwnedSchedule(params.id, parsed.commercial_partner_id, {
         status: 'active', paused_reason: null, consecutive_failures: 0, next_run_date: next,
       })
+      try {
+        const sessionId = await getOdooSession()
+        await topUpScheduledDrafts(sessionId, row, next, today, row.shipping_address_id)
+      } catch (err) {
+        console.error('resume: draft top-up failed (schedule still active):', err)
+      }
       return NextResponse.json({ ok: true, status: 'active', next_run_date: next })
     }
 
@@ -71,6 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   try {
     const ok = await updateOwnedSchedule(params.id, parsed.commercial_partner_id, { status: 'cancelled' })
     if (!ok) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+    await withdrawDrafts(params.id)
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('scheduled-order DELETE error:', err)

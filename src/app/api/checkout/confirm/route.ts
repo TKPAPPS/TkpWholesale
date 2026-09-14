@@ -4,7 +4,7 @@ import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 import { stripHtml } from '@/lib/text'
-import { todayBkk, nextRunDate, isIsoDate } from '@/lib/schedule-dates'
+import { todayBkk, nextRunDate, isIsoDate, isAfter } from '@/lib/schedule-dates'
 import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-orders'
 import { readJsonObject } from '@/lib/request-body'
 
@@ -23,6 +23,9 @@ async function createSchedule(args: {
   spec: { frequency: 'daily' | 'weekly'; interval_weeks: number; excluded_weekdays: number[]; end_date: string | null }
   // Passed in, never recomputed here. See the anchor note at the call site.
   anchor: string
+  // The delivery date of the order being placed right now, if the customer chose one.
+  // The schedule must start AFTER it, or the scheduler's first run duplicates this order.
+  firstDeliveryDate: string | null
   partnerId: number
   commercialPartnerId: number
   shippingAddressId: number
@@ -42,10 +45,17 @@ async function createSchedule(args: {
   if (items.length === 0) throw new Error('No schedulable items on the order')
 
   const anchor = args.anchor
-  const next = nextRunDate({ ...args.spec, anchor_date: anchor }, anchor)
+  // Start strictly after whichever is later: today, or the delivery date of the order the
+  // customer is placing right now. Seeding from today alone put the first scheduled run on
+  // the same day as that order's delivery (S18088 for 15/09 plus a scheduled 15/09), and
+  // the executor's idempotency only guards against itself, not against a manual order.
+  const startAfter = args.firstDeliveryDate && isAfter(args.firstDeliveryDate, anchor)
+    ? args.firstDeliveryDate
+    : anchor
+  const next = nextRunDate({ ...args.spec, anchor_date: anchor }, startAfter)
   if (!next) throw new Error('Schedule would never run')
 
-  return insertSchedule({
+  const scheduleId = await insertSchedule({
     partner_id: args.partnerId,
     commercial_partner_id: args.commercialPartnerId,
     shipping_address_id: args.shippingAddressId,
@@ -61,6 +71,22 @@ async function createSchedule(args: {
     next_run_date: next,
     status: 'active',
   })
+
+  // Put the upcoming orders into Odoo now, as drafts, so they are visible ahead of time.
+  // Best effort: the schedule row is the source of truth and the executor tops up anyway.
+  try {
+    const { topUpScheduledDrafts } = await import('@/lib/odoo/scheduled-drafts')
+    await topUpScheduledDrafts(args.sessionId, {
+      id: scheduleId, partner_id: args.partnerId, commercial_partner_id: args.commercialPartnerId,
+      shipping_address_id: args.shippingAddressId, po_ref: args.poRef, note: args.note, items,
+      frequency: args.spec.frequency, interval_weeks: args.spec.interval_weeks,
+      excluded_weekdays: args.spec.excluded_weekdays, anchor_date: anchor, end_date: args.spec.end_date,
+    }, next, anchor, args.shippingAddressId)
+  } catch (err) {
+    console.error('upfront scheduled drafts failed (schedule still created):', err)
+  }
+
+  return scheduleId
 }
 
 // Odoo business rejections (UserError: credit limit, blocked customer, etc.) are
@@ -122,7 +148,12 @@ export async function POST(req: NextRequest) {
     // that yields no run date (an end date falling before the first occurrence of the
     // chosen cadence) would otherwise place the order and then fail with a soft
     // schedule_error, silently costing the customer the recurrence they asked for.
-    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: requestToday }, requestToday)) {
+    // Same start point createSchedule() uses: after the delivery date if one was chosen.
+    // delivery_date is validated further down; an invalid value is caught there, so here
+    // it only needs to be a well-formed future date to move the start point.
+    const preStartAfter = typeof delivery_date === 'string' && isIsoDate(delivery_date) && isAfter(delivery_date, requestToday)
+      ? delivery_date : requestToday
+    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: requestToday }, preStartAfter)) {
       return NextResponse.json(
         { error: 'INVALID_SCHEDULE', message: 'This schedule would never run. Check the end date.' },
         { status: 400 },
@@ -365,6 +396,17 @@ export async function POST(req: NextRequest) {
       // confirmation succeeds when staff or the Odoo webshop do it.
       const { confirmSaleOrder } = await import('@/lib/odoo/confirm-order')
       await confirmSaleOrder(sessionId, cartId)
+      // Odoo leaves the picking's scheduled_date at the order time even when a delivery
+      // date is set (it only copies it into date_deadline), and scheduled_date is what
+      // the warehouse works from - so a 17/09 order shipped on 14/09. Best effort.
+      if (commitmentDate) {
+        try {
+          const { alignPickingDates } = await import('@/lib/odoo/scheduled-drafts')
+          await alignPickingDates(sessionId, cartId)
+        } catch (alignErr) {
+          console.error('picking date alignment failed (order still confirmed):', alignErr)
+        }
+      }
     } catch (confirmErr) {
       if (confirmErr instanceof OdooError && confirmErr.code === 'ODOO_ERROR') {
         // Log it. This branch returns the reason to the customer but recorded nothing, so a
@@ -425,6 +467,7 @@ export async function POST(req: NextRequest) {
       try {
         scheduleId = await createSchedule({
           sessionId, orderId: cartId, spec: scheduleSpec.value, anchor: requestToday,
+          firstDeliveryDate: commitmentDate ? commitmentDate.slice(0, 10) : null,
           partnerId: parsed.partner_id, commercialPartnerId: parsed.commercial_partner_id,
           shippingAddressId: delivery_address_id, poRef: typeof po_ref === 'string' ? po_ref.trim() : '',
           note: cleanNote, lang: parsed.lang,
