@@ -1050,6 +1050,27 @@ passed `limit: 0` - the lesson had been learned on the invoice path and not carr
 `searchRead` now logs a loud warning when a caller omitted `limit` AND got back exactly 100
 rows, which is the tell-tale of truncation. Treat that warning as a bug in the caller.
 
+## Every Supabase request bypasses the Next.js Data Cache
+
+`createServerClient()` (and the two other `createClient` calls) inject `global.fetch` that
+forces `cache: 'no-store'`. **Do not remove it and do not construct a Supabase client without
+it.**
+
+supabase-js uses the global `fetch`, which Next.js patches and caches in the Data Cache -
+keyed on URL + options, no TTL, persisting across deployments. Any GET whose query is stable
+(this customer's schedules, their favorites, the announcements, the active-schedule count)
+was served from cache on every request after the first. `export const dynamic =
+'force-dynamic'` on the route did NOT prevent it.
+
+Found 2026-09-14: a schedule's `next_run_date` was updated in the database and
+`/api/scheduled-orders` kept returning the old value on every call. The Supabase edge logs
+were the proof - the app's POSTs that created the rows were there, and then **zero GET
+requests** for any of the subsequent API calls. The rows were being read from Vercel, not
+from Postgres.
+
+The crons were only safe by accident (their due-date query changes daily, and RPCs/updates
+are POST/PATCH which are never cached). Favorites and announcements were not safe at all.
+
 ## Request parsing conventions
 
 **Never call `await req.json()` directly in a route.** Use `readJsonObject(req)`

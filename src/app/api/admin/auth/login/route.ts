@@ -84,7 +84,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const supabase = createClient(url, anonKey, { auth: { persistSession: false } })
+  const supabase = createClient(url, anonKey, {
+    auth: { persistSession: false },
+    // See createServerClient: Next caches the global fetch, so force no-store.
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
+  })
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error || !data.session) {

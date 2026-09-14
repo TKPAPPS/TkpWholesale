@@ -68,11 +68,21 @@ export function isAdminEmail(email: string): boolean {
 
 // Server-side client using the service role key - never imported in client components.
 // Use this in route handlers and server-side helpers only.
+// supabase-js goes through the global fetch, which Next.js patches and CACHES in the Data
+// Cache - keyed on URL + options, with no TTL, persisting across deployments. A GET whose
+// query does not change (list this customer's schedules, list favorites, read the
+// announcements) was therefore served from cache on every request after the first, and
+// `export const dynamic = 'force-dynamic'` on the route did NOT prevent it. Found 2026-09-14:
+// a schedule's next_run_date was updated in the database, the API kept returning the old
+// value indefinitely, and the Supabase edge logs showed zero requests from the app for
+// those calls. Force every Supabase request to bypass the cache.
+const uncachedFetch: typeof fetch = (input, init) => fetch(input, { ...init, cache: 'no-store' })
+
 export function createServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('Supabase env vars not configured (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)')
-  return createClient(url, key, { auth: { persistSession: false } })
+  return createClient(url, key, { auth: { persistSession: false }, global: { fetch: uncachedFetch } })
 }
 
 // Verify a Supabase access token from the admin_session cookie.
@@ -95,7 +105,7 @@ export async function verifyAdminToken(token: string): Promise<{ email: string }
   if (isSupabaseConfigured()) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-    const supabase = createClient(url!, key!, { auth: { persistSession: false } })
+    const supabase = createClient(url!, key!, { auth: { persistSession: false }, global: { fetch: uncachedFetch } })
     const { data: { user }, error } = await supabase.auth.getUser(token)
     if (!error && user?.email && isAdminEmail(user.email)) return { email: user.email }
   }
