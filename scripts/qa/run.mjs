@@ -395,17 +395,26 @@ async function main() {
     const fsx = await import('node:fs')
 
     const checkout = fsx.readFileSync('src/app/(customer)/checkout/page.tsx', 'utf8')
-    check('S1', /EXCLUDABLE_MAX\s*=\s*6/.test(checkout) && /prev\.length >= EXCLUDABLE_MAX/.test(checkout),
-      'checkout UI cannot exclude all seven weekdays',
-      'without this the customer can build a schedule that can never run, and the server rejection arrives untranslated after checkout is filled in')
+    // A repeating order must be gated on a valid selection, and the button must say what it
+    // does (it sets up a schedule, it does not place an order today).
+    check('S1', /disabled=\{[^}]*repeat && !scheduleReady/.test(checkout) && /setUpRepeatingOrder/.test(checkout),
+      'repeat: submit is gated on a ready schedule and labelled "set up", not "place order"',
+      'the button must not place a normal order when repeat is ticked')
 
     const confirm = fsx.readFileSync('src/app/api/checkout/confirm/route.ts', 'utf8')
     const calls = (confirm.match(/^\s*(const|let|return|if).*todayBkk\(\)/gm) || []).length
     check('S2', calls === 1,
       `confirm route reads the Bangkok clock exactly once (found ${calls})`,
       'reading it more than once lets a checkout straddling midnight validate against one calendar day and act on the next')
-    check('S2', /anchor: requestToday/.test(confirm) && /const anchor = args\.anchor/.test(confirm),
-      'createSchedule receives the anchor rather than recomputing it')
+    // The repeat path must NOT confirm the cart as a normal order: it builds the window and
+    // then cancels the cart. Guard against a regression that re-adds a same-day order.
+    check('S2', /scheduled: true/.test(confirm) && /createRepeatingOrder/.test(confirm) && /action_cancel', \[\[cartId\]\]/.test(confirm),
+      'repeat path builds the window and cancels the cart (never places a same-day order)')
+
+    // The wording customers rely on lives in one place; if these helpers vanish, screens drift.
+    const sched = fsx.readFileSync('src/lib/scheduled-orders.ts', 'utf8')
+    check('S3', /export function cadenceLabel/.test(sched) && /export function windowSentence/.test(sched) && /export const SCHED_WINDOW_DAYS/.test(sched),
+      'shared cadence/window wording helpers exist (single source across every screen)')
   }
 
   // ---------------------------------------------------------------- summary
