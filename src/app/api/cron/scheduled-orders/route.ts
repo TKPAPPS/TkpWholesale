@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { todayBkk, nextRunDate } from '@/lib/schedule-dates'
-import { AUTO_PAUSE_AFTER_FAILURES } from '@/lib/scheduled-orders'
+import { AUTO_PAUSE_AFTER_FAILURES, cadenceLabel, humanDate } from '@/lib/scheduled-orders'
 import { sendEmail, scheduledPlacedEmail, scheduledFailedEmail } from '@/lib/email'
 import type { ScheduledOrderRow } from '@/lib/scheduled-orders-db'
-import {
-  scheduleRunRef, findScheduledOrder, createScheduledDraft, refreshDraftLines,
-  alignPickingDates, topUpScheduledDrafts,
-} from '@/lib/odoo/scheduled-drafts'
+import { fillScheduleWindow, type ScheduleLike } from '@/lib/odoo/scheduled-window'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -33,20 +30,22 @@ export async function GET(req: NextRequest) {
   await supabase.from('scheduled_orders').update({ status: 'ended' })
     .eq('status', 'active').lt('end_date', today).not('end_date', 'is', null)
 
+  // Every active schedule is processed each morning, not only the ones "due today": the job
+  // keeps each schedule's rolling window of confirmed orders topped up. Order idempotency is
+  // by deterministic client_order_ref, so re-processing a schedule places nothing new.
   const { data, error } = await supabase
     .from('scheduled_orders')
     .select('*')
     .eq('status', 'active')
-    .lte('next_run_date', today)
     .order('next_run_date', { ascending: true })
     .limit(MAX_PER_RUN)
 
   if (error) {
-    console.error('cron: due query failed:', error.message)
+    console.error('cron: active query failed:', error.message)
     return NextResponse.json({ error: 'QUERY_FAILED' }, { status: 503 })
   }
 
-  const due = (data ?? []) as ScheduledOrderRow[]
+  const active = (data ?? []) as ScheduledOrderRow[]
   const summary = { processed: 0, placed: 0, failed: 0, skipped: 0 }
 
   let sessionId: string
@@ -60,35 +59,18 @@ export async function GET(req: NextRequest) {
   const { callKw, searchRead, COMPANY_ID } = await import('@/lib/odoo/client')
   const { fetchDeliveryAddresses } = await import('@/lib/odoo/odoo-helpers')
 
-  for (const s of due) {
+  for (const s of active) {
     summary.processed++
 
-    // Atomic claim - stamps last_run_date=today. Empty result = already claimed.
-    const { data: claimed } = await supabase.rpc('claim_scheduled_order', { p_id: s.id, p_today: today })
+    // Once-per-day guard: stamp last_run_date. Empty result = another run today already did.
+    const { data: claimed } = await supabase.rpc('touch_scheduled_order_run', { p_id: s.id, p_today: today })
     if (!claimed || (Array.isArray(claimed) && claimed.length === 0)) {
       summary.skipped++
       continue
     }
 
-    const runDate = s.next_run_date
-    const idKey = scheduleRunRef(s.id, runDate)
-
     try {
-      // The order for today normally ALREADY EXISTS as a draft: drafts are created ahead
-      // of time (see scheduled-drafts.ts) so upcoming orders are visible in Odoo. Three
-      // cases on the deterministic ref:
-      //   confirmed/done  -> a prior run crashed after confirm; just advance (recovery)
-      //   draft           -> the normal path: refresh lines for live pricing, confirm
-      //   nothing         -> pre-draft schedule or a failed top-up; create then confirm
-      const existing = await findScheduledOrder(sessionId, s.id, runDate)
-      if (existing && existing.state !== 'draft' && existing.state !== 'cancel') {
-        await advanceSchedule(supabase, s, runDate)
-        summary.skipped++
-        continue
-      }
-
-      // Re-validate the delivery address (it may have been archived). Fall back to
-      // the commercial partner's own address, which is always in the list.
+      // Re-validate the delivery address; fall back to the commercial partner's own.
       const addresses = await fetchDeliveryAddresses(sessionId, s.commercial_partner_id)
       let shippingId = s.shipping_address_id
       let addressSubstituted = false
@@ -99,72 +81,57 @@ export async function GET(req: NextRequest) {
         addressSubstituted = true
       }
 
-      let orderId: number
-      if (existing && existing.state === 'draft') {
-        orderId = existing.id
-        if (addressSubstituted) {
-          await callKw(sessionId, 'sale.order', 'write', [[orderId], { partner_shipping_id: shippingId }], {})
-        }
-        // Re-create the lines so Odoo prices them at TODAY's pricelist, not the draft's.
-        await refreshDraftLines(sessionId, orderId, s.items)
-      } else {
-        // A cancelled draft (customer paused, then resumed) or no draft at all.
-        const made = await createScheduledDraft(sessionId, s, runDate, shippingId)
-        orderId = made.id
-        if (!made.created) {
-          // The only way createScheduledDraft returns an existing id here is a cancelled
-          // order under this ref: revive it rather than leave a cancelled ghost.
-          await callKw(sessionId, 'sale.order', 'action_draft', [[orderId]], {})
-          await refreshDraftLines(sessionId, orderId, s.items)
-        }
+      const schedLike: ScheduleLike = {
+        id: s.id, partner_id: s.partner_id, commercial_partner_id: s.commercial_partner_id,
+        shipping_address_id: shippingId, po_ref: s.po_ref, note: s.note, items: s.items,
+        frequency: s.frequency, interval_weeks: s.interval_weeks, weekday: s.weekday,
+        excluded_weekdays: s.excluded_weekdays, anchor_date: s.anchor_date, end_date: s.end_date,
       }
 
-      // Unscoped for the same reason as the checkout route: a customer that resolves to a
-      // sister company makes Odoo raise an inter-company purchase order in that company, which
-      // a context pinned to allowed_company_ids [1] cannot do ("object is not bound"). A
-      // scheduled order must not fail for the six branches the way a manual checkout did.
-      const { confirmSaleOrder } = await import('@/lib/odoo/confirm-order')
-      await confirmSaleOrder(sessionId, orderId)
+      // Fill the window from whichever is later: today+1, or next_run_date. Orders whose day
+      // has passed are simply no longer in the window (they were placed on a prior run and
+      // have shipped or are in the warehouse), so next_run_date is advanced to the first
+      // window date so the schedule row keeps tracking "the next order".
+      const result = await fillScheduleWindow(sessionId, schedLike, today, s.next_run_date, shippingId)
 
-      // The warehouse works from the picking's scheduled_date, which Odoo leaves at the
-      // order time; align it to the delivery date so this ships on the right day.
-      await alignPickingDates(sessionId, orderId).catch(err =>
-        console.warn(`cron: picking alignment failed for ${idKey} (order still confirmed):`, err))
+      // Advance next_run_date to the earliest order still in the window (or, if the window is
+      // empty because the schedule has ended, end it).
+      const earliest = [...result.placed, ...result.existing]
+        .map(o => o.date).sort()[0] ?? null
+      const nextRun = earliest ?? nextRunDate({
+        frequency: s.frequency, interval_weeks: s.interval_weeks,
+        excluded_weekdays: s.excluded_weekdays, anchor_date: s.anchor_date, end_date: s.end_date,
+      }, today)
 
-      const confirmed = await callKw(sessionId, 'sale.order', 'read', [[orderId]], {
-        fields: ['id', 'name', 'amount_total', 'currency_id'],
-      }) as { id: number; name: string; amount_total: number; currency_id: [number, string] }[]
-      const co = confirmed[0]
+      await supabase.from('scheduled_orders').update({
+        ...(nextRun ? { next_run_date: nextRun } : { status: 'ended' }),
+        last_run_at: new Date().toISOString(),
+        last_status: 'success',
+        consecutive_failures: 0,
+        last_error: null,
+        ...(result.placed.length ? { last_order_name: result.placed[result.placed.length - 1].name, last_order_id: result.placed[result.placed.length - 1].id } : {}),
+      }).eq('id', s.id)
 
-      const next = await advanceSchedule(supabase, s, runDate, {
-        last_order_id: orderId, last_order_name: co?.name ?? null,
-        last_status: 'success', consecutive_failures: 0, last_error: null,
-      })
-      summary.placed++
+      if (result.failed.length) summary.failed += result.failed.length
+      summary.placed += result.placed.length
 
-      // Keep upcoming drafts topped up to the horizon. Best effort.
-      if (next) {
-        await topUpScheduledDrafts(sessionId, s, next, today, shippingId).catch(err =>
-          console.warn(`cron: draft top-up failed for ${s.id.slice(0, 8)}:`, err))
-      }
-
-      // Best-effort notification.
-      const email = await partnerEmail(sessionId, s.partner_id, callKw)
-      if (email) {
-        const currency = co?.currency_id?.[1] ?? 'THB'
-        const total = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(co?.amount_total ?? 0)
-        const { subject, html } = scheduledPlacedEmail({
-          lang: s.lang, orderName: co?.name ?? idKey, runDate,
-          items: s.items.map(i => ({ label: s.lang === 'he' ? i.name_he : i.name, qty: i.packaging_qty || i.uom_qty })),
-          total, nextRunDate: next, orderId, addressSubstituted,
-        })
-        await sendEmail({ to: email, subject, html })
+      // Email only when at least one NEW order was placed this morning (the day's fresh one).
+      if (result.placed.length) {
+        const email = await partnerEmail(sessionId, s.partner_id, callKw)
+        if (email) {
+          const newest = result.placed.sort((a, b) => a.date.localeCompare(b.date))[0]
+          const { subject, html } = scheduledPlacedEmail({
+            lang: s.lang, orderName: newest.name, runDate: newest.date,
+            items: s.items.map(i => ({ label: s.lang === 'he' ? i.name_he : i.name, qty: i.packaging_qty || i.uom_qty })),
+            total: '', nextRunDate: nextRun, orderId: newest.id, addressSubstituted,
+          })
+          await sendEmail({ to: email, subject, html })
+        }
       }
     } catch (err) {
       summary.failed++
       const reason = err instanceof Error ? err.message : 'Unknown error'
       console.error(`cron: schedule ${s.id} failed:`, reason)
-      // Do NOT advance next_run_date - the claim guard resets tomorrow (last_run_date < today).
       const failures = s.consecutive_failures + 1
       const paused = failures >= AUTO_PAUSE_AFTER_FAILURES
       await supabase.from('scheduled_orders').update({
@@ -177,7 +144,7 @@ export async function GET(req: NextRequest) {
 
       const email = await partnerEmail(sessionId, s.partner_id, callKw).catch(() => null)
       if (email) {
-        const { subject, html } = scheduledFailedEmail({ lang: s.lang, runDate, reason: 'A problem occurred while placing your order.', paused })
+        const { subject, html } = scheduledFailedEmail({ lang: s.lang, runDate: today, reason: 'A problem occurred while placing your order.', paused })
         await sendEmail({ to: email, subject, html })
       }
       if (reason.toLowerCase().includes('session') || reason.toLowerCase().includes('auth')) invalidateOdooSession()
@@ -185,26 +152,6 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(summary)
-}
-
-// Advance next_run_date (or end the schedule) after a successful/recovered run.
-// Returns the new next_run_date (or null if ended).
-async function advanceSchedule(
-  supabase: ReturnType<typeof createServerClient>,
-  s: ScheduledOrderRow,
-  runDate: string,
-  extra: Record<string, unknown> = {},
-): Promise<string | null> {
-  const next = nextRunDate({
-    frequency: s.frequency, interval_weeks: s.interval_weeks,
-    excluded_weekdays: s.excluded_weekdays, anchor_date: s.anchor_date, end_date: s.end_date,
-  }, runDate)
-  await supabase.from('scheduled_orders').update({
-    ...(next ? { next_run_date: next } : { status: 'ended' }),
-    last_run_at: new Date().toISOString(),
-    ...extra,
-  }).eq('id', s.id)
-  return next
 }
 
 async function partnerEmail(

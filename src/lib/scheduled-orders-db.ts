@@ -13,6 +13,7 @@ export interface ScheduledOrderRow {
   items: ScheduledOrderItem[]
   frequency: 'daily' | 'weekly'
   interval_weeks: number
+  weekday: number | null        // weekly only: 0=Sun..6=Sat, the day the order is placed on
   excluded_weekdays: number[]
   anchor_date: string
   end_date: string | null
@@ -86,6 +87,7 @@ function toView(r: ScheduledOrderRow): ScheduledOrderView {
     id: r.id,
     frequency: r.frequency,
     interval_weeks: r.interval_weeks,
+    weekday: r.weekday ?? null,
     excluded_weekdays: r.excluded_weekdays,
     anchor_date: r.anchor_date,
     end_date: r.end_date,

@@ -776,62 +776,55 @@ logged-out customer is unaffected.
 
 ## Scheduled / repeating orders
 
-**Upcoming scheduled orders exist in Odoo AHEAD of time, as draft quotations** (since
-2026-09-14). The original design created each order only on the morning it was due, so nothing
-was visible in Odoo until it landed: the office could not see what was coming, the warehouse
-could not plan, and a customer's immediate checkout order plus the scheduler's first run
-produced duplicates on day one (School: S18088 for 15/09 AND a scheduled 15/09). All the logic
-lives in `src/lib/odoo/scheduled-drafts.ts`; the staging write test is
-`scripts/qa/staging-scheduled-drafts.mts` (20 checks, refuses to run against a non-staging DB).
+**A repeating order keeps a rolling window of CONFIRMED sale orders in Odoo (7 days), and
+places NOTHING on the day it is set up.** Rewritten 2026-09-14 after the first live use
+produced (a) an order on a day the customer had excluded, (b) a day-one duplicate, and (c)
+draft quotations the warehouse could not see. The window logic is in
+`src/lib/odoo/scheduled-window.ts`; the staging write test is
+`scripts/qa/staging-repeating-orders.mts` (23 checks, refuses a non-staging DB, PASS 23/0 on
+2026-09-14).
 
-- **Data:** Supabase `scheduled_orders` (service-role, RLS-off) + `claim_scheduled_order(id, today)`
-  RPC. `items` is a JSONB snapshot `[{product_id,name,name_he,sku,uom_qty,packaging_id,packaging_qty}]` —
-  never prices. All dates are **Asia/Bangkok** calendar dates; date math lives in
-  `src/lib/schedule-dates.ts`. The Supabase row is the source of truth; the Odoo drafts are a
-  projection of it that the executor reconciles every morning.
-- **Drafts, not confirmed orders — this is load-bearing.** R4 reserves at confirm
-  (`reservation_method = at_confirm`). Confirming a fortnight of daily bread today would reserve
-  all of it now, `free_qty` would collapse, and the portal would hide the product from every
-  other customer. A draft reserves nothing.
-- **Rolling horizon, `SCHED_HORIZON_DAYS = 14`.** "End date (optional)" means a schedule can be
-  open-ended, so there is no last order to create. Drafts are topped up to the horizon at
-  creation, on resume, and by the executor after each successful run.
-- **findCart cannot adopt a draft:** it filters on `website_id = WEBSITE_ID` and the drafts are
-  created without one (same reason the executor never set it). Verified on staging.
-- **Deterministic ref per run:** `client_order_ref = AUTO:<schedule id[:8]>:<YYYY-MM-DD>`, with
-  the customer's `po_ref` appended in brackets. Unchanged from the old executor, so its
-  crash-after-confirm recovery keeps working. `origin = Portal scheduled order <id[:8]>`.
-- **Creation:** `POST /api/checkout/confirm` accepts an optional `schedule`; after
-  `action_confirm` it snapshots the lines (`readOrderItemsForSchedule`), inserts the row, then
-  `topUpScheduledDrafts`. **The first run is seeded strictly after the LATER of today and the
-  immediate order's delivery date** (`firstDeliveryDate`), which is what stops the day-one
-  duplicate; the pre-check uses the same start point. Draft creation is best effort — a failure
-  logs and the schedule is still created, the executor tops up anyway.
-- **Executor:** `/api/cron/scheduled-orders` (Vercel cron `30 23 * * *` = 06:30 Bangkok,
-  `maxDuration=300`), authed by `Authorization: Bearer $CRON_SECRET`. Per due schedule: claim RPC
-  → `findScheduledOrder` on the run ref → **confirmed/done: recovery, just advance; draft: the
-  normal path — `refreshDraftLines` (lines are re-created so Odoo prices them at TODAY's
-  pricelist, not the draft's), then confirm; none/cancelled: create (or `action_draft` a cancelled
-  one) then confirm** → `alignPickingDates` → advance `next_run_date` → `topUpScheduledDrafts` →
-  Resend email. Address re-validated first, falling back to the commercial partner's own. On
-  failure: don't advance, increment `consecutive_failures`, email, auto-pause after 3. A schedule
-  created before the draft design has no drafts yet; it self-migrates on its next run.
-- **Management:** `PATCH|DELETE /api/scheduled-orders/[id]` mirror every state change into Odoo:
-  pause/end/delete → `cancelScheduledDrafts` (only still-draft future orders; confirmed ones are
-  real orders and are left alone), resume → recompute `next_run_date` from today and
-  `topUpScheduledDrafts`. Best effort; the executor reconciles regardless.
-- **Idempotency (both required):** the claim RPC stamps `last_run_date` before any Odoo call (a
-  mid-run timeout can't double-place same day); the deterministic ref recovers a crash-after-confirm
-  and makes draft creation/cancellation re-runnable.
+**Design, in the words used on every screen:** "Nothing is ordered today. The next
+`SCHED_WINDOW_DAYS` (7) days of orders are already in the system as confirmed orders. Each
+morning at 06:30 the following day's order is added." `cadenceLabel()`, `humanDate()`,
+`windowSentence()` in `src/lib/scheduled-orders.ts` are the single source of that wording -
+checkout preview, Scheduled Orders card, Odoo `origin`/`note`, and emails all call them, so no
+two screens can drift.
+
+- **CONFIRMED, not drafts.** A draft creates no picking and the warehouse plans from pickings;
+  drafts (the 2026-09-14 morning version) fixed office visibility but left R4 blind. Each order
+  is confirmed and its picking `scheduled_date` aligned to the delivery day (see the picking
+  note below). Bounded to a 7-day window because Odoo reserves stock at confirm and a schedule
+  can be open-ended.
+- **Nothing today.** At checkout, ticking repeat makes the cart BECOME the schedule: lines are
+  snapshotted, the window is placed, and the cart order is cancelled so the cart empties. The
+  old "place now AND repeat" produced S18107 (a Monday order for a Tue/Wed/Thu schedule).
+- **Explicit weekday for weekly.** `weekday` (0=Sun..6=Sat) is required and named on every
+  screen; "Weekly" used to silently mean "every <the day you checked out on>". New Supabase
+  column `weekday` (migration `repeating_orders_weekday_and_daily_touch`).
+- **Positive day picker.** Daily shows "Order on these days" (the days you WANT); the server
+  still stores `excluded_weekdays`, computed as the complement.
+- **Deterministic ref** `AUTO:<id[:8]>:<YYYY-MM-DD>`, `origin` = "Repeating order: every ...",
+  and a `note` telling staff what it is and that cancelling it skips that day. No `website_id`,
+  so `findCart` never adopts one.
+- **Human override:** cancelling one of these orders in Odoo means "skip that day" - the fill
+  never recreates it. Pause cancels the window and tags refs " (paused)"; Resume revives ONLY
+  the paused ones (not days a person cancelled) and clears the tag. Delete/end cancel the window.
+- **Executor** (`/api/cron/scheduled-orders`, 06:30 Bangkok): processes EVERY active schedule
+  (not only "due" ones) via `touch_scheduled_order_run` (once-per-day guard, no next_run_date
+  condition), tops up its window with `fillScheduleWindow`, advances `next_run_date` to the
+  earliest order still in the window, emails only when a NEW order was placed.
+
+**Confirmed sale orders auto-lock in this Odoo.** `action_cancel`/`action_draft` on a locked
+order raise "You cannot cancel a locked order." `scheduled-window.ts` writes `locked:false`
+(then tries `action_unlock`) before any cancel or draft. A staff member cancelling one by hand
+in the Odoo UI must click Unlock first - Odoo shows the button.
 
 **The picking's `scheduled_date` must be aligned to the delivery date after EVERY confirm.**
-Odoo copies `commitment_date` into the picking's `date_deadline` but leaves its `scheduled_date`
-at the order time, and `scheduled_date` is the prominent field the warehouse works from.
-S18090 was for delivery 17/09 and R4 shipped it at 11:30 on 14/09 because R4/OUT/16460 showed
-"Scheduled Date 14/09 11:14". `alignPickingDates` writes `scheduled_date = commitment_date` on
-every open picking of the order (Odoo propagates it to the moves); the checkout route calls it
-after the immediate order's confirm and the executor after each scheduled confirm. Verified on
-staging through the real checkout route: R4/OUT/14866 for a 17/09 delivery is scheduled 17/09.
+Odoo copies `commitment_date` into `date_deadline` but leaves `scheduled_date` at the order
+time, and `scheduled_date` is the prominent field the warehouse works from (S18090: due 17/09,
+shipped 14/09). `alignPickingDates` writes it on every open picking; both the checkout route
+(for a one-off delivery date) and the window helper call it.
 
 ## Session tokens carry expiry
 - Both the customer `session` cookie (`signSession` in `src/lib/odoo/session.ts`) and the admin token

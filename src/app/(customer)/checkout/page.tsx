@@ -11,8 +11,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { OdooUnavailable } from '@/components/ui/OdooUnavailable'
 import { CartSummary } from '@/components/cart/CartSummary'
 import { Package, AlertTriangle, CheckCircle, Repeat } from 'lucide-react'
-import { WEEKDAY_SHORT_EN, WEEKDAY_SHORT_HE, type ScheduleFrequency } from '@/lib/scheduled-orders'
-import { todayBkk, addDays, nextRunDate } from '@/lib/schedule-dates'
+import { WEEKDAY_SHORT_EN, WEEKDAY_SHORT_HE, WEEKDAY_LONG_EN, WEEKDAY_LONG_HE, humanDate, cadenceLabel, windowSentence, SCHED_WINDOW_DAYS, type ScheduleFrequency } from '@/lib/scheduled-orders'
+import { todayBkk, addDays, nextRunDate, weekdayOf } from '@/lib/schedule-dates'
 import Link from 'next/link'
 import Image from 'next/image'
 
@@ -56,10 +56,17 @@ export default function CheckoutPage() {
   const [repeat, setRepeat] = useState(false)
   const [frequency, setFrequency] = useState<ScheduleFrequency>('weekly')
   const [intervalWeeks, setIntervalWeeks] = useState(1)
-  const [excludedDays, setExcludedDays] = useState<number[]>([])
+  // Positive model: the days the customer WANTS. Mon..Sun display order; stored as 0=Sun..6=Sat.
+  const [orderDays, setOrderDays] = useState<number[]>([])            // daily
+  const [weeklyDay, setWeeklyDay] = useState<number | null>(null)     // weekly
   const [scheduleEnd, setScheduleEnd] = useState('')
-  const weekdayLabels = lang === 'he' ? WEEKDAY_SHORT_HE : WEEKDAY_SHORT_EN
   const todayStr = todayBkk()
+  const dayOrder = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
+  const shortLabels = lang === 'he' ? WEEKDAY_SHORT_HE : WEEKDAY_SHORT_EN
+  const longLabels = lang === 'he' ? WEEKDAY_LONG_HE : WEEKDAY_LONG_EN
+  const excludedDays = frequency === 'daily'
+    ? [0, 1, 2, 3, 4, 5, 6].filter((d) => !orderDays.includes(d))
+    : []
 
   // The earliest date this cadence can actually deliver on. The end-date picker is floored
   // here rather than at "tomorrow", because an end date before the first run makes a
@@ -67,35 +74,42 @@ export default function CheckoutPage() {
   // placing the order and silently dropping the recurrence. Weekly every 2 weeks cannot run
   // for 14 days, so offering tomorrow would hand the customer a checkout they cannot
   // complete. Same nextRunDate() the server uses, so the two cannot disagree.
-  const firstRunDate = nextRunDate(
-    {
-      frequency,
-      interval_weeks: intervalWeeks,
-      excluded_weekdays: excludedDays,
-      anchor_date: todayStr,
-    },
-    todayStr,
-  )
+  // The anchor the server uses: for weekly, the first occurrence of the chosen weekday
+  // strictly after today; for daily, today. Kept in lockstep with createRepeatingOrder.
+  const weeklyAnchor = (() => {
+    if (frequency !== 'weekly' || weeklyDay === null) return todayStr
+    let d = addDays(todayStr, 1), guard = 0
+    while (weekdayOf(d) !== weeklyDay && ++guard < 8) d = addDays(d, 1)
+    return d
+  })()
+  const scheduleReady = frequency === 'daily' ? orderDays.length > 0 : weeklyDay !== null
+  const specForPreview = {
+    frequency, interval_weeks: intervalWeeks,
+    excluded_weekdays: excludedDays, weekday: weeklyDay, anchor_date: weeklyAnchor,
+  }
+  const firstRunDate = scheduleReady ? nextRunDate(specForPreview, todayStr) : null
 
-  // Switching cadence after choosing an end date can strand that date before the new first
-  // run (daily ending in 3 days, then switched to weekly every 2). The min attribute only
-  // constrains the picker, it does not clear a value already chosen, so clear it here and
-  // let the customer pick again rather than letting checkout fail server-side.
+  // The actual dates that will be in Odoo after checkout: every run date inside the window.
+  const previewDates: string[] = (() => {
+    if (!scheduleReady) return []
+    const out: string[] = []
+    const until = addDays(todayStr, SCHED_WINDOW_DAYS)
+    let d = firstRunDate
+    let guard = 0
+    while (d && d <= until && guard < 20) {
+      out.push(d)
+      d = nextRunDate(specForPreview, d)
+      guard++
+    }
+    return out
+  })()
+
   useEffect(() => {
     if (scheduleEnd && firstRunDate && scheduleEnd < firstRunDate) setScheduleEnd('')
   }, [scheduleEnd, firstRunDate])
 
-  // Excluding all seven days leaves a schedule that can never run. The server rejects that
-  // (normalizeScheduleInput), but only AFTER the customer has filled in checkout, and the
-  // rejection arrives as an untranslated English string. Refuse the seventh exclusion here
-  // instead, so the state the server rejects is simply not reachable from the UI.
-  const EXCLUDABLE_MAX = 6
-  const toggleExcludedDay = (d: number) =>
-    setExcludedDays((prev) => {
-      if (prev.includes(d)) return prev.filter((x) => x !== d)
-      if (prev.length >= EXCLUDABLE_MAX) return prev   // keep at least one delivery day
-      return [...prev, d]
-    })
+  const toggleOrderDay = (d: number) =>
+    setOrderDays((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])
 
   const fetchReview = async () => {
     setLoading(true)
@@ -126,7 +140,9 @@ export default function CheckoutPage() {
       const schedule = repeat
         ? {
             frequency,
-            ...(frequency === 'weekly' ? { interval_weeks: intervalWeeks } : { excluded_weekdays: excludedDays }),
+            ...(frequency === 'weekly'
+              ? { interval_weeks: intervalWeeks, weekday: weeklyDay }
+              : { excluded_weekdays: excludedDays }),
             end_date: scheduleEnd || null,
           }
         : undefined
@@ -152,8 +168,14 @@ export default function CheckoutPage() {
         setConfirmError(data.message ?? 'Could not confirm order.')
         return
       }
+      // Repeating order: nothing was placed today, so there is no order to land on. Go to the
+      // schedules page, which now shows the just-created schedule and its upcoming dates.
+      if (data.scheduled) {
+        const p = new URLSearchParams({ created: '1', first: data.first_run_date ?? '', count: String(data.placed_count ?? 0) })
+        router.push(`/scheduled-orders?${p.toString()}`)
+        return
+      }
       const params = new URLSearchParams({ name: data.order_name ?? '' })
-      if (data.schedule_id) params.set('scheduled', '1')
       if (data.schedule_error) params.set('schedule_error', '1')
       if (data.removed_count) params.set('removed', String(data.removed_count))
       if (data.adjusted_count) params.set('adjusted', String(data.adjusted_count))
@@ -306,12 +328,17 @@ export default function CheckoutPage() {
                 <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
                   <Repeat className="h-4 w-4 text-brand-700" /> {t(lang, 'checkout.repeatOrder')}
                 </span>
-                <p className="text-xs text-gray-400 mt-0.5">{t(lang, 'checkout.repeatOrderHint')}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{t(lang, 'checkout.repeatOrderHint')}</p>
               </div>
             </label>
 
             {repeat && (
               <div className="mt-4 space-y-4 ps-1">
+                {/* Nothing-today notice: the single most important thing to be clear about. */}
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                  {t(lang, 'checkout.repeatNothingToday')}
+                </div>
+
                 {/* Frequency */}
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -326,43 +353,64 @@ export default function CheckoutPage() {
                   >{t(lang, 'checkout.freqWeekly')}</button>
                 </div>
 
-                {/* Weekly interval */}
-                {frequency === 'weekly' && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>{t(lang, 'checkout.everyNWeeks')}</span>
-                    <select
-                      value={intervalWeeks}
-                      onChange={(e) => setIntervalWeeks(Number(e.target.value))}
-                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
-                    >
-                      {[1, 2, 3, 4, 6, 8].map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <span>{t(lang, 'checkout.weeks')}</span>
+                {/* Daily: pick the days you WANT (positive) */}
+                {frequency === 'daily' && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-700 mb-2">{t(lang, 'checkout.orderOnDays')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {dayOrder.map((d) => {
+                        const on = orderDays.includes(d)
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => toggleOrderDay(d)}
+                            aria-pressed={on}
+                            className={`h-10 w-10 rounded-full border text-xs font-medium transition-colors ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600 hover:border-brand-300'}`}
+                          >{shortLabels[d]}</button>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
 
-                {/* Daily excluded weekdays */}
-                {frequency === 'daily' && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">{t(lang, 'checkout.excludeDays')}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {weekdayLabels.map((label, d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => toggleExcludedDay(d)}
-                          aria-pressed={excludedDays.includes(d)}
-                          disabled={!excludedDays.includes(d) && excludedDays.length >= EXCLUDABLE_MAX}
-                          className={`h-9 w-9 rounded-full border text-xs disabled:opacity-40 disabled:cursor-not-allowed ${excludedDays.includes(d) ? 'border-red-300 bg-red-50 text-red-600 line-through' : 'border-gray-200 text-gray-600'}`}
-                        >{label}</button>
-                      ))}
+                {/* Weekly: interval + EXPLICIT weekday */}
+                {frequency === 'weekly' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-700">
+                      <span>{t(lang, 'checkout.everyNWeeks')}</span>
+                      <select
+                        value={intervalWeeks}
+                        onChange={(e) => setIntervalWeeks(Number(e.target.value))}
+                        className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
+                      >
+                        {[1, 2, 3, 4, 6, 8].map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <span>{t(lang, 'checkout.weeks')}</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-700 mb-2">{t(lang, 'checkout.onWhichDay')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {dayOrder.map((d) => {
+                          const on = weeklyDay === d
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setWeeklyDay(d)}
+                              aria-pressed={on}
+                              className={`h-10 w-10 rounded-full border text-xs font-medium transition-colors ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-200 text-gray-600 hover:border-brand-300'}`}
+                            >{shortLabels[d]}</button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* End date */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">{t(lang, 'checkout.endDate')}</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">{t(lang, 'checkout.endDate')}</label>
                   <input
                     type="date"
                     value={scheduleEnd}
@@ -371,6 +419,27 @@ export default function CheckoutPage() {
                     className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700/20"
                   />
                 </div>
+
+                {/* Live preview: the real dates. This is what removes all guesswork. */}
+                {scheduleReady && previewDates.length > 0 ? (
+                  <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3">
+                    <p className="text-xs font-semibold text-brand-800 mb-1">{t(lang, 'checkout.repeatSummaryTitle')}</p>
+                    <p className="text-sm font-medium text-gray-900">{cadenceLabel({ frequency, interval_weeks: intervalWeeks, excluded_weekdays: excludedDays, weekday: weeklyDay }, lang)}</p>
+                    <p className="text-xs text-gray-700 mt-2">{t(lang, 'checkout.repeatFirstOrders')}</p>
+                    <ul className="mt-1 space-y-0.5">
+                      {previewDates.map((d, i) => (
+                        <li key={d} className="text-sm text-gray-900 flex items-center gap-2">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-600" />
+                          {humanDate(d, lang)}{i === 0 ? <span className="text-xs text-brand-700 font-medium">· {t(lang, 'checkout.repeatFirst')}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-gray-600 mt-2 leading-relaxed">{windowSentence(lang)}</p>
+                    {scheduleEnd ? <p className="text-[11px] text-gray-600 mt-1">{t(lang, 'checkout.repeatEndsOn')} {humanDate(scheduleEnd, lang)}</p> : null}
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-700">{frequency === 'daily' ? t(lang, 'checkout.pickAtLeastOneDay') : t(lang, 'checkout.pickWeeklyDay')}</p>
+                )}
               </div>
             )}
           </div>
@@ -385,13 +454,14 @@ export default function CheckoutPage() {
               {t(lang, 'checkout.allOutOfStock')}
             </div>
           )}
-          <p className="text-xs text-gray-400 text-center">{t(lang, 'checkout.confirmWarning')}</p>
-          <Button onClick={() => confirm(needsAdjustment)} loading={confirming} disabled={!selectedAddress || orderableLines.length === 0} className="w-full" size="lg">
-            <CheckCircle className="h-4 w-4 me-2" />
-            {hasOos && hasQtyExceeded ? t(lang, 'checkout.adjustAndPlaceOrder')
-              : hasOos ? t(lang, 'checkout.removeAndPlaceOrder')
-              : hasQtyExceeded ? t(lang, 'checkout.reduceQtyAndPlaceOrder')
-              : t(lang, 'checkout.confirmOrder')}
+          {!repeat && <p className="text-xs text-gray-500 text-center">{t(lang, 'checkout.confirmWarning')}</p>}
+          <Button onClick={() => confirm(needsAdjustment)} loading={confirming} disabled={!selectedAddress || orderableLines.length === 0 || (repeat && !scheduleReady)} className="w-full" size="lg">
+            {repeat ? <><Repeat className="h-4 w-4 me-2" />{t(lang, 'checkout.setUpRepeatingOrder')}</>
+              : <><CheckCircle className="h-4 w-4 me-2" />
+                {hasOos && hasQtyExceeded ? t(lang, 'checkout.adjustAndPlaceOrder')
+                  : hasOos ? t(lang, 'checkout.removeAndPlaceOrder')
+                  : hasQtyExceeded ? t(lang, 'checkout.reduceQtyAndPlaceOrder')
+                  : t(lang, 'checkout.confirmOrder')}</>}
           </Button>
           <div className="text-center">
             <Link href="/cart" className="text-sm text-brand-700 hover:underline">{t(lang, 'common.back')} to cart</Link>

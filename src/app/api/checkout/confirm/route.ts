@@ -4,7 +4,7 @@ import { getOdooSession, invalidateOdooSession } from '@/lib/odoo/admin-session'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { DEFAULT_SITE_SETTINGS } from '@/lib/site-settings'
 import { stripHtml } from '@/lib/text'
-import { todayBkk, nextRunDate, isIsoDate, isAfter } from '@/lib/schedule-dates'
+import { todayBkk, nextRunDate, isIsoDate, addDays } from '@/lib/schedule-dates'
 import { normalizeScheduleInput, MAX_ACTIVE_SCHEDULES } from '@/lib/scheduled-orders'
 import { readJsonObject } from '@/lib/request-body'
 
@@ -17,43 +17,52 @@ const PORTAL_ORIGIN = 'Wholesale portal'
 // Build + persist a schedule from the just-confirmed order. Throws on any problem
 // (Supabase not configured, over the per-customer cap, empty snapshot, or a
 // schedule that would never run) so the caller can flag schedule_error.
-async function createSchedule(args: {
+// Turn the customer's cart into a repeating order.
+//
+// Nothing is ordered today. The cart's lines are snapshotted, the schedule row is written,
+// and the next SCHED_WINDOW_DAYS of orders are created AND CONFIRMED in Odoo right now, each
+// dated for its delivery day. The cart order itself is then cancelled so the customer's cart
+// is empty. This replaced "place the cart now AND repeat it", which produced an order on a
+// day the customer had explicitly excluded (S18107: a Monday order for a Tue/Wed/Thu
+// schedule) and a duplicate on the first scheduled day.
+async function createRepeatingOrder(args: {
   sessionId: string
-  orderId: number
-  spec: { frequency: 'daily' | 'weekly'; interval_weeks: number; excluded_weekdays: number[]; end_date: string | null }
-  // Passed in, never recomputed here. See the anchor note at the call site.
-  anchor: string
-  // The delivery date of the order being placed right now, if the customer chose one.
-  // The schedule must start AFTER it, or the scheduler's first run duplicates this order.
-  firstDeliveryDate: string | null
+  cartId: number
+  spec: { frequency: 'daily' | 'weekly'; interval_weeks: number; weekday: number | null; excluded_weekdays: number[]; end_date: string | null }
+  today: string
   partnerId: number
   commercialPartnerId: number
   shippingAddressId: number
   poRef: string
   note: string
   lang: 'en' | 'he'
-}): Promise<string> {
+}): Promise<{ scheduleId: string; firstRunDate: string; window: import('@/lib/odoo/scheduled-window').WindowResult; cadence: string }> {
   const { readOrderItemsForSchedule } = await import('@/lib/odoo/odoo-helpers')
   const { scheduleConfigured, countActiveSchedules, insertSchedule } = await import('@/lib/scheduled-orders-db')
+  const { fillScheduleWindow } = await import('@/lib/odoo/scheduled-window')
+  const { cadenceLabel } = await import('@/lib/scheduled-orders')
+  const { weekdayOf, addDays } = await import('@/lib/schedule-dates')
 
   if (!scheduleConfigured()) throw new Error('Scheduling backend not configured')
-
   const active = await countActiveSchedules(args.commercialPartnerId)
   if (active >= MAX_ACTIVE_SCHEDULES) throw new Error('Too many active schedules')
 
-  const items = await readOrderItemsForSchedule(args.sessionId, args.orderId)
+  const items = await readOrderItemsForSchedule(args.sessionId, args.cartId)
   if (items.length === 0) throw new Error('No schedulable items on the order')
 
-  const anchor = args.anchor
-  // Start strictly after whichever is later: today, or the delivery date of the order the
-  // customer is placing right now. Seeding from today alone put the first scheduled run on
-  // the same day as that order's delivery (S18088 for 15/09 plus a scheduled 15/09), and
-  // the executor's idempotency only guards against itself, not against a manual order.
-  const startAfter = args.firstDeliveryDate && isAfter(args.firstDeliveryDate, anchor)
-    ? args.firstDeliveryDate
-    : anchor
-  const next = nextRunDate({ ...args.spec, anchor_date: anchor }, startAfter)
-  if (!next) throw new Error('Schedule would never run')
+  // Anchor: for weekly, the first occurrence of the chosen weekday STRICTLY after today, so
+  // the cadence is pinned to the day the customer picked, not the day they checked out.
+  // For daily, today (the excluded-days list is the whole definition).
+  let anchor = args.today
+  if (args.spec.frequency === 'weekly' && args.spec.weekday !== null) {
+    let d = addDays(args.today, 1)
+    let guard = 0
+    while (weekdayOf(d) !== args.spec.weekday && ++guard < 8) d = addDays(d, 1)
+    anchor = d
+  }
+  const specFull = { ...args.spec, anchor_date: anchor }
+  const first = nextRunDate(specFull, args.today)
+  if (!first) throw new Error('Schedule would never run')
 
   const scheduleId = await insertSchedule({
     partner_id: args.partnerId,
@@ -65,28 +74,23 @@ async function createSchedule(args: {
     items,
     frequency: args.spec.frequency,
     interval_weeks: args.spec.interval_weeks,
+    weekday: args.spec.weekday,
     excluded_weekdays: args.spec.excluded_weekdays,
     anchor_date: anchor,
     end_date: args.spec.end_date,
-    next_run_date: next,
+    next_run_date: first,
     status: 'active',
   })
 
-  // Put the upcoming orders into Odoo now, as drafts, so they are visible ahead of time.
-  // Best effort: the schedule row is the source of truth and the executor tops up anyway.
-  try {
-    const { topUpScheduledDrafts } = await import('@/lib/odoo/scheduled-drafts')
-    await topUpScheduledDrafts(args.sessionId, {
-      id: scheduleId, partner_id: args.partnerId, commercial_partner_id: args.commercialPartnerId,
-      shipping_address_id: args.shippingAddressId, po_ref: args.poRef, note: args.note, items,
-      frequency: args.spec.frequency, interval_weeks: args.spec.interval_weeks,
-      excluded_weekdays: args.spec.excluded_weekdays, anchor_date: anchor, end_date: args.spec.end_date,
-    }, next, anchor, args.shippingAddressId)
-  } catch (err) {
-    console.error('upfront scheduled drafts failed (schedule still created):', err)
+  const schedLike = {
+    id: scheduleId, partner_id: args.partnerId, commercial_partner_id: args.commercialPartnerId,
+    shipping_address_id: args.shippingAddressId, po_ref: args.poRef, note: args.note, items,
+    frequency: args.spec.frequency, interval_weeks: args.spec.interval_weeks, weekday: args.spec.weekday,
+    excluded_weekdays: args.spec.excluded_weekdays, anchor_date: anchor, end_date: args.spec.end_date,
   }
+  const window = await fillScheduleWindow(args.sessionId, schedLike, args.today, first, args.shippingAddressId)
 
-  return scheduleId
+  return { scheduleId, firstRunDate: first, window, cadence: cadenceLabel(specFull, args.lang) }
 }
 
 // Odoo business rejections (UserError: credit limit, blocked customer, etc.) are
@@ -148,12 +152,17 @@ export async function POST(req: NextRequest) {
     // that yields no run date (an end date falling before the first occurrence of the
     // chosen cadence) would otherwise place the order and then fail with a soft
     // schedule_error, silently costing the customer the recurrence they asked for.
-    // Same start point createSchedule() uses: after the delivery date if one was chosen.
-    // delivery_date is validated further down; an invalid value is caught there, so here
-    // it only needs to be a well-formed future date to move the start point.
-    const preStartAfter = typeof delivery_date === 'string' && isIsoDate(delivery_date) && isAfter(delivery_date, requestToday)
-      ? delivery_date : requestToday
-    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: requestToday }, preStartAfter)) {
+    // Same anchor createRepeatingOrder() will use, so a schedule that can never run is
+    // rejected before anything is written.
+    let preAnchor = requestToday
+    if (scheduleSpec.value.frequency === 'weekly' && scheduleSpec.value.weekday !== null) {
+      const { weekdayOf } = await import('@/lib/schedule-dates')
+      let d = addDays(requestToday, 1)
+      let guard = 0
+      while (weekdayOf(d) !== scheduleSpec.value.weekday && ++guard < 8) d = addDays(d, 1)
+      preAnchor = d
+    }
+    if (!nextRunDate({ ...scheduleSpec.value, anchor_date: preAnchor }, requestToday)) {
       return NextResponse.json(
         { error: 'INVALID_SCHEDULE', message: 'This schedule would never run. Check the end date.' },
         { status: 400 },
@@ -361,6 +370,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_DELIVERY_ADDRESS', message: 'Delivery address not valid.' }, { status: 400 })
     }
 
+    // ---- Repeating order: the cart becomes the schedule. Nothing is ordered today. ----
+    if (scheduleSpec?.ok) {
+      let result: Awaited<ReturnType<typeof createRepeatingOrder>>
+      try {
+        result = await createRepeatingOrder({
+          sessionId, cartId, spec: scheduleSpec.value, today: requestToday,
+          partnerId: parsed.partner_id, commercialPartnerId: parsed.commercial_partner_id,
+          shippingAddressId: delivery_address_id, poRef: typeof po_ref === 'string' ? po_ref.trim() : '',
+          note: cleanNote, lang: parsed.lang,
+        })
+      } catch (schedErr) {
+        // The cart is untouched, so the customer can simply try again.
+        console.error('repeating order setup failed (cart left intact):', schedErr)
+        const msg = schedErr instanceof Error ? schedErr.message : ''
+        return NextResponse.json({
+          error: 'SCHEDULE_FAILED',
+          message: msg === 'Too many active schedules'
+            ? 'You already have the maximum number of repeating orders.'
+            : 'Could not set up the repeating order. Nothing was ordered. Please try again.',
+        }, { status: 503 })
+      }
+      // The schedule exists and its window is placed. Retire the cart so it is empty; a
+      // cancelled order with website_id is not picked up by findCart (state must be draft).
+      try {
+        await callKw(sessionId, 'sale.order', 'action_cancel', [[cartId]], { context: { disable_cancel_warning: true } })
+      } catch (cancelErr) {
+        console.error('could not cancel the cart after scheduling (schedule still created):', cancelErr)
+      }
+      return NextResponse.json({
+        scheduled: true,
+        schedule_id: result.scheduleId,
+        first_run_date: result.firstRunDate,
+        cadence: result.cadence,
+        placed: result.window.placed,
+        placed_count: result.window.placed.length,
+        failed_count: result.window.failed.length,
+        removed_count: removedCount || undefined,
+        adjusted_count: adjustedCount || undefined,
+      })
+    }
+
     // Write delivery address, note, optional PO ref + requested delivery date, and stamp
     // date_order to now (prevents stale draft dates).
     const nowUtc = new Date().toISOString().slice(0, 19).replace('T', ' ')
@@ -401,7 +451,7 @@ export async function POST(req: NextRequest) {
       // the warehouse works from - so a 17/09 order shipped on 14/09. Best effort.
       if (commitmentDate) {
         try {
-          const { alignPickingDates } = await import('@/lib/odoo/scheduled-drafts')
+          const { alignPickingDates } = await import('@/lib/odoo/scheduled-window')
           await alignPickingDates(sessionId, cartId)
         } catch (alignErr) {
           console.error('picking date alignment failed (order still confirmed):', alignErr)
@@ -457,27 +507,6 @@ export async function POST(req: NextRequest) {
       console.error('order attribution note failed (order still confirmed):', noteErr)
     }
 
-    // The order is confirmed. If a recurrence was requested, snapshot the just-
-    // confirmed order's lines and create the schedule. This is best-effort: if it
-    // fails, the order is still placed and the client shows a warning (schedule_error)
-    // rather than treating the whole checkout as failed.
-    let scheduleId: string | undefined
-    let scheduleError = false
-    if (scheduleSpec?.ok) {
-      try {
-        scheduleId = await createSchedule({
-          sessionId, orderId: cartId, spec: scheduleSpec.value, anchor: requestToday,
-          firstDeliveryDate: commitmentDate ? commitmentDate.slice(0, 10) : null,
-          partnerId: parsed.partner_id, commercialPartnerId: parsed.commercial_partner_id,
-          shippingAddressId: delivery_address_id, poRef: typeof po_ref === 'string' ? po_ref.trim() : '',
-          note: cleanNote, lang: parsed.lang,
-        })
-      } catch (schedErr) {
-        console.error('schedule creation failed (order still placed):', schedErr)
-        scheduleError = true
-      }
-    }
-
     // The order is now confirmed in Odoo. If the read-back fails transiently, the
     // order still exists - return a success shape (using the pre-confirm read)
     // rather than a 503, so the client never re-submits and duplicates the order.
@@ -493,8 +522,6 @@ export async function POST(req: NextRequest) {
         amount_total: co.amount_total,
         currency: co.currency_id[1] ?? 'THB',
         already_confirmed: false,
-        schedule_id: scheduleId,
-        schedule_error: scheduleError || undefined,
         removed_count: removedCount || undefined,
         adjusted_count: adjustedCount || undefined,
       })
@@ -507,8 +534,6 @@ export async function POST(req: NextRequest) {
         amount_total: order.amount_total,
         currency: order.currency_id[1] ?? 'THB',
         already_confirmed: false,
-        schedule_id: scheduleId,
-        schedule_error: scheduleError || undefined,
         removed_count: removedCount || undefined,
         adjusted_count: adjustedCount || undefined,
       })

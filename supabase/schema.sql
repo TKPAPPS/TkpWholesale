@@ -118,3 +118,25 @@ as $$
      and (last_run_date is null or last_run_date < p_today)
   returning *;
 $$;
+
+
+-- 2026-09-14: repeating orders keep a rolling window of CONFIRMED orders in Odoo.
+-- Weekly schedules now carry an explicit weekday (the day the order is placed on) instead
+-- of inheriting the checkout weekday silently.
+alter table scheduled_orders add column if not exists weekday smallint
+  check (weekday is null or (weekday >= 0 and weekday <= 6));
+
+-- Once-per-day claim WITHOUT the next_run_date condition: every active schedule is processed
+-- each morning to top up its window, not only the ones due today. Idempotency of the orders
+-- themselves is by deterministic client_order_ref; this only stops two runs in one day.
+create or replace function touch_scheduled_order_run(p_id uuid, p_today date)
+returns setof scheduled_orders
+language sql
+as $$
+  update scheduled_orders
+     set last_run_date = p_today, last_run_at = now(), updated_at = now()
+   where id = p_id
+     and status = 'active'
+     and (last_run_date is null or last_run_date < p_today)
+  returning *;
+$$;

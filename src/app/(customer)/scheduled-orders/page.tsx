@@ -6,9 +6,11 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useToastStore } from '@/store/toastStore'
-import { WEEKDAY_SHORT_EN, WEEKDAY_SHORT_HE, type ScheduledOrderView } from '@/lib/scheduled-orders'
-import { CalendarClock, Pause, Play, Trash2, AlertTriangle } from 'lucide-react'
+import { cadenceLabel, humanDate, windowSentence, type ScheduledOrderView } from '@/lib/scheduled-orders'
+import { nextRunDate, addDays } from '@/lib/schedule-dates'
+import { CalendarClock, Pause, Play, Trash2, AlertTriangle, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function ScheduledOrdersPage() {
   const { lang } = useLangStore()
@@ -30,14 +32,24 @@ export default function ScheduledOrdersPage() {
 
   useEffect(() => { load() }, [])
 
-  const frequencyLabel = (s: ScheduledOrderView): string => {
-    if (s.frequency === 'daily') {
-      if (s.excluded_weekdays.length === 0) return t(lang, 'scheduled.daily')
-      const labels = lang === 'he' ? WEEKDAY_SHORT_HE : WEEKDAY_SHORT_EN
-      return `${t(lang, 'scheduled.dailyExcept')} ${s.excluded_weekdays.map((d) => labels[d]).join(', ')}`
+  const searchParams = useSearchParams()
+  const justCreated = searchParams.get('created') === '1'
+
+  const frequencyLabel = (s: ScheduledOrderView): string =>
+    cadenceLabel({ frequency: s.frequency, interval_weeks: s.interval_weeks, excluded_weekdays: s.excluded_weekdays, weekday: s.weekday }, lang)
+
+  // The next few real order dates, from next_run_date forward.
+  const upcomingDates = (s: ScheduledOrderView, count = 4): string[] => {
+    const spec = { frequency: s.frequency, interval_weeks: s.interval_weeks, excluded_weekdays: s.excluded_weekdays, weekday: s.weekday, anchor_date: s.anchor_date, end_date: s.end_date }
+    const out: string[] = []
+    let d: string | null = s.next_run_date
+    let guard = 0
+    while (d && out.length < count && guard < 30) {
+      out.push(d)
+      d = nextRunDate(spec, d)
+      guard++
     }
-    if (s.interval_weeks === 1) return t(lang, 'scheduled.everyWeek')
-    return t(lang, 'scheduled.everyNWeeks').replace('{n}', String(s.interval_weeks))
+    return out
   }
 
   const setStatus = async (id: string, action: 'pause' | 'resume') => {
@@ -78,6 +90,16 @@ export default function ScheduledOrdersPage() {
     <div className="max-w-3xl mx-auto">
       <h1 className="text-xl font-bold text-gray-900 mb-6">{t(lang, 'scheduled.title')}</h1>
 
+      {justCreated && (
+        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+          <CheckCircle className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-green-800">{t(lang, 'scheduled.createdTitle')}</p>
+            <p className="text-xs text-green-700 mt-0.5">{t(lang, 'scheduled.createdBody')}</p>
+          </div>
+        </div>
+      )}
+
       {schedules.length === 0 ? (
         <EmptyState
           icon={<CalendarClock className="h-12 w-12" />}
@@ -95,9 +117,9 @@ export default function ScheduledOrdersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{frequencyLabel(s)}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {t(lang, 'scheduled.nextRun')}: <span className="font-medium">{paused ? '-' : s.next_run_date}</span>
-                      {s.end_date && <> · {t(lang, 'scheduled.ends')} {s.end_date}</>}
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {t(lang, 'scheduled.nextRun')}: <span className="font-medium">{paused ? t(lang, 'scheduled.paused') : humanDate(s.next_run_date, lang)}</span>
+                      {s.end_date && <> · {t(lang, 'scheduled.ends')} {humanDate(s.end_date, lang)}</>}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -116,6 +138,18 @@ export default function ScheduledOrdersPage() {
                     </li>
                   ))}
                 </ul>
+
+                {!paused && (
+                  <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">{t(lang, 'scheduled.upcoming')}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {upcomingDates(s).map((d) => (
+                        <span key={d} className="text-sm text-gray-800">{humanDate(d, lang)}</span>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">{windowSentence(lang)}</p>
+                  </div>
+                )}
 
                 {s.last_order_name && (
                   <p className="text-xs text-gray-400 mt-3">
