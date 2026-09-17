@@ -1400,6 +1400,67 @@ export async function fetchOdooProducts(
 
 // ─── Category helpers ─────────────────────────────────────────────────────────
 
+// The set of public.category ids that currently contain at least one VISIBLE product, where
+// "visible" is exactly what the "all products" grid shows: published on this website, in stock
+// (or allow-out-of-stock), sale_ok, not admin-hidden, not in a hidden category subtree. Used to
+// prune empty categories out of the nav so a customer never clicks a category and finds nothing.
+//
+// Only DIRECT membership is collected here (`public_categ_ids`); the tree prune keeps a parent
+// whenever any descendant is populated, which matches Odoo's child_of storefront behaviour.
+//
+// Returns null on any failure or when stock is unknown, and the caller then does NOT prune -
+// showing a category with nothing in it is a far smaller harm on a live site than emptying the
+// whole nav because one Odoo read blipped. Cached ~2 min, tagged odoo-products so a stock or
+// publish change (incl. the /api/revalidate-products flush) refreshes it on the same cadence as
+// the grid.
+const _fetchPopulatedCategoryIds = unstable_cache(
+  async (): Promise<number[] | null> => {
+    const sessionId = await getOdooSession()
+    const [websiteSettingsMap, hideOos, inStockIds, hiddenIds, hiddenCategoryIds] = await Promise.all([
+      fetchWebsitePublishedSettings(sessionId),
+      getHideOutOfStock(sessionId),
+      getInStockIds(),
+      getHiddenProductIds(),
+      getHiddenCategoryIds(),
+    ])
+    // inStockIds null = stock lookup failed. buildVisibilityDomain already treats null as
+    // "don't filter on stock", which would keep out-of-stock categories visible - i.e. fail
+    // open, exactly what we want. So proceed; the domain is still correct for publish/hidden.
+    const domain = buildVisibilityDomain(websiteSettingsMap, hideOos, inStockIds, hiddenIds, [], hiddenCategoryIds)
+    const rows = await searchRead(sessionId, 'product.template', domain,
+      ['public_categ_ids'], { limit: 0 },
+    ) as unknown as { public_categ_ids: number[] }[]
+    const set = new Set<number>()
+    for (const r of rows) for (const cid of r.public_categ_ids || []) set.add(cid)
+    return Array.from(set)
+  },
+  ['odoo-populated-categories'],
+  { revalidate: 120, tags: ['odoo-products'] },
+)
+
+export async function getPopulatedCategoryIds(): Promise<Set<number> | null> {
+  try {
+    const ids = await _fetchPopulatedCategoryIds()
+    return ids ? new Set(ids) : null
+  } catch {
+    return null
+  }
+}
+
+// Prune a category tree to nodes that (a) directly contain a visible product, or (b) have a
+// kept descendant. `populated` null = don't prune (fail open). Pure; safe to call per request.
+export type NavCategory = { id: number; name: string; name_he: string; parent_id: number | null; children: NavCategory[] }
+export function pruneEmptyCategories(tree: NavCategory[], populated: Set<number> | null): NavCategory[] {
+  if (!populated) return tree
+  const walk = (nodes: NavCategory[]): NavCategory[] =>
+    nodes.reduce<NavCategory[]>((keep, node) => {
+      const children = walk(node.children)
+      if (populated.has(node.id) || children.length > 0) keep.push({ ...node, children })
+      return keep
+    }, [])
+  return walk(tree)
+}
+
 export async function fetchOdooCategories(sessionId: string) {
   // Website-scoped domain: global categories (no website) + TKP Wholesale-specific ones
   const catDomain = [['website_id', 'in', [false, WEBSITE_ID]]]

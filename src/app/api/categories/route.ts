@@ -31,9 +31,17 @@ export async function GET(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 })
 
   try {
-    const categories = await _fetchCategories()
+    // The tree STRUCTURE is cached 5 min (it rarely changes). Emptiness tracks STOCK, which
+    // moves far faster, so the populated-set + prune runs outside that cache (its own ~2 min
+    // cache, busted by stock/publish changes). A category with no currently-visible product -
+    // everything out of stock, unpublished, or hidden - is dropped so customers stop clicking
+    // into empty categories. pruneEmptyCategories fails open: if the populated set is unknown,
+    // the full tree is returned rather than risk emptying the nav.
+    const { getPopulatedCategoryIds, pruneEmptyCategories } = await import('@/lib/odoo/odoo-helpers')
+    const [fullTree, populated] = await Promise.all([_fetchCategories(), getPopulatedCategoryIds()])
+    const categories = pruneEmptyCategories(fullTree, populated)
     return NextResponse.json({ categories }, {
-      headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' },
+      headers: { 'Cache-Control': 'private, max-age=120, stale-while-revalidate=60' },
     })
   } catch (err) {
     invalidateOdooSession()

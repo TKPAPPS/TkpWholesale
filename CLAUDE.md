@@ -759,6 +759,32 @@ logged-out customer is unaffected.
 - `signSession(payload)` in `src/lib/odoo/session.ts` is the only place that should write a customer session cookie value. Only called from `src/app/api/auth/login/route.ts`. Throws if SESSION_SECRET is unavailable in production — the login route's try/catch converts this to a 503 response.
 - Old unsigned (plain JSON) cookies are rejected — users must re-login after this change.
 
+## Empty categories are pruned from the nav
+
+The category nav used to show every public category, including ones where every product is out
+of stock, unpublished, or hidden - so a customer clicked in and found nothing (reported
+2026-09-17: Catering > Meat > Salads and Catering > Dairy > Salads were empty). `/api/categories`
+now prunes them.
+
+- **Structure vs emptiness are cached separately.** The tree STRUCTURE stays in the 5-min
+  `odoo-categories` cache (`_fetchCategories`); emptiness tracks STOCK, which moves faster, so
+  `getPopulatedCategoryIds()` (the set of public categories with >=1 visible product) has its own
+  ~2-min cache tagged `odoo-products`, and the route prunes outside the structural cache. A
+  category reappears/disappears on roughly the same cadence as the grid, and the
+  `/api/revalidate-products` flush refreshes it too.
+- **Populated = the grid's own visibility.** `getPopulatedCategoryIds` reuses
+  `buildVisibilityDomain` (published on website 3, in stock or allow-OOS, `sale_ok`, not
+  admin-hidden, not in a hidden category), reads `public_categ_ids` of the matches, and unions
+  them. `pruneEmptyCategories` keeps a node if it is in that set OR any descendant is (matching
+  Odoo child_of), so a parent with only empty children drops entirely.
+- **Fails OPEN.** If the populated set can't be computed (Odoo blip, stock unknown), the route
+  returns the FULL tree unpruned. Showing an empty category is a far smaller harm than emptying
+  the nav, which is why `getInStockIds()` returning null is treated as "don't prune on stock",
+  not "hide everything".
+- **Scope is GLOBAL, not per-customer.** Pruning uses the shared visibility set so the tree stays
+  cacheable across customers. A category that is empty only because of a per-customer hide is not
+  pruned - a deliberately smaller change on a live site; revisit only if it matters.
+
 ## Storefront strips, price sort & low-stock rule
 - **Sort by price** (`sort=price_asc`/`price_desc`) orders by the customer's *resolved pricelist
   price*, not `list_price` (Odoo can only sort by `list_price`, which looked "mixed"). The route
