@@ -224,31 +224,31 @@ export default function ScheduledOrdersPage() {
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-50">
+                <div className="flex flex-wrap items-center gap-x-1 gap-y-1 mt-4 pt-3 border-t border-gray-50">
                   {paused ? (
                     <button
                       onClick={() => setStatus(s.id, 'resume')}
                       disabled={busyId === s.id}
-                      className="flex items-center gap-1.5 text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      className="flex items-center gap-1.5 whitespace-nowrap text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
                     ><Play className="h-4 w-4" />{t(lang, 'scheduled.resume')}</button>
                   ) : (
                     <>
                     <button
                       onClick={() => startEdit(s)}
                       disabled={busyId === s.id || editId === s.id}
-                      className="flex items-center gap-1.5 text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      className="flex items-center gap-1.5 whitespace-nowrap text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
                     ><Pencil className="h-4 w-4" />{t(lang, 'scheduled.editQty')}</button>
                     <button
                       onClick={() => setStatus(s.id, 'pause')}
                       disabled={busyId === s.id}
-                      className="flex items-center gap-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      className="flex items-center gap-1.5 whitespace-nowrap text-sm text-gray-600 hover:bg-gray-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
                     ><Pause className="h-4 w-4" />{t(lang, 'scheduled.pause')}</button>
                     </>
                   )}
                   <button
                     onClick={() => setCancelId(s.id)}
                     disabled={busyId === s.id}
-                    className="flex items-center gap-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                    className="flex items-center gap-1.5 whitespace-nowrap text-sm text-red-600 hover:bg-red-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
                   ><Trash2 className="h-4 w-4" />{t(lang, 'scheduled.cancel')}</button>
                 </div>
               </div>

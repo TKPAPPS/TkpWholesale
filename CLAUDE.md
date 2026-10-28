@@ -859,7 +859,12 @@ two screens can drift.
   done is left alone and reported (`mosLeft`); the card then tells the customer to contact us.
   Staging test: `scripts/qa/staging-edit-quantities.mts` (66 checks, refuses a non-staging DB, PASS 66/0
   on 2026-10-28; covers increase, decrease to 2 then 1 pack, lock restored, MO totals, idempotent,
-  cut-off day). Not yet browser-tested on the page itself.
+  cut-off day). Browser-tested 2026-10-28 (Playwright, local dev against staging Odoo with a fake
+  Supabase: 0 rejected, 3 saved, persisted after reload, Cancel discards, no page errors, and all
+  7 staging orders had line, moves, MO total and lock correct). Harness and screenshots:
+  `~/Projects/temp-media/b2b-portal/2026-10-28-edit-qty-qa/`. Seed ids must not share the first 8
+  characters, because `findScheduledOrder` matches the ref prefix (a reused prefix finds the
+  earlier run's cancelled orders and places nothing).
 
 **Confirmed sale orders auto-lock in this Odoo.** `action_cancel`/`action_draft` on a locked
 order raise "You cannot cancel a locked order." `scheduled-window.ts` writes `locked:false`
