@@ -251,3 +251,84 @@ export async function restoreScheduleWindow(
   const filled = await fillScheduleWindow(sessionId, s, today, floor, shippingId)
   return { ...filled, revived }
 }
+
+export interface QuantityUpdate {
+  updated: { id: number; name: string; date: string }[]   // confirmed orders now at the new quantity
+  mosUpdated: { order: string; mo: string }[]
+  mosLeft: { order: string; mo: string; state: string }[] // MO already past draft/confirmed: left for staff
+  failed: { id: number; name: string; error: string }[]
+}
+
+// Customer changed the quantities on a repeating order: bring the CONFIRMED orders already in
+// the window (delivery day `from` or later) to the new quantities, and the open manufacturing
+// orders raised by them. `items` carry the final uom_qty per product. Orders are locked after
+// confirm, and Odoo refuses to edit a locked line, so unlock, write, and lock again (only the
+// ones that were locked). A manufacturing order that is already in progress or done is NOT
+// touched and is reported, so staff decide. Best effort per order.
+export async function updateWindowQuantities(
+  sessionId: string, scheduleId: string, items: ScheduledOrderItem[], from: string,
+): Promise<QuantityUpdate> {
+  const res: QuantityUpdate = { updated: [], mosUpdated: [], mosLeft: [], failed: [] }
+  const prefix = `AUTO:${scheduleId.slice(0, 8)}:`
+  const orders = await callKw(sessionId, 'sale.order', 'search_read', [[
+    ['client_order_ref', 'like', prefix],
+    ['company_id', '=', COMPANY_ID],
+    ['state', '=', 'sale'],
+    ['commitment_date', '>=', commitmentUtc(from)],
+  ]], { fields: ['id', 'name', 'locked', 'commitment_date', 'order_line'], limit: 0 }) as
+    { id: number; name: string; locked: boolean; commitment_date: string; order_line: number[] }[]
+
+  const qtyByProduct = new Map(items.map(i => [i.product_id, i.uom_qty]))
+  for (const o of orders) {
+    const wasLocked = o.locked
+    try {
+      const lines = await callKw(sessionId, 'sale.order.line', 'read', [o.order_line], { fields: ['product_id', 'product_uom_qty'] }) as
+        { id: number; product_id: [number, string]; product_uom_qty: number }[]
+      const changes = lines.filter(l => qtyByProduct.has(l.product_id[0]) && qtyByProduct.get(l.product_id[0]) !== l.product_uom_qty)
+      if (!changes.length) continue
+      if (wasLocked) await unlock(sessionId, [o.id])
+      try {
+        for (const l of changes) {
+          await callKw(sessionId, 'sale.order.line', 'write', [[l.id], { product_uom_qty: qtyByProduct.get(l.product_id[0]) }], {})
+        }
+      } finally {
+        if (wasLocked) await callKw(sessionId, 'sale.order', 'write', [[o.id], { locked: true }], {}).catch(() => {})
+      }
+      res.updated.push({ id: o.id, name: o.name, date: o.commitment_date.slice(0, 10) })
+
+      const mos = await callKw(sessionId, 'mrp.production', 'search_read', [[['origin', '=', o.name]]], {
+        fields: ['name', 'product_id', 'product_qty', 'state'],
+      }) as { id: number; name: string; product_id: [number, string]; product_qty: number; state: string }[]
+      // Odoo does not reliably follow a changed line: a decrease leaves the MO as it was, an
+      // increase raises a SECOND MO for the extra units. So compare the TOTAL being made for
+      // the product with the quantity wanted and move the newest still-open MOs by the
+      // difference (an MO that would reach zero is cancelled, and the rest carries on).
+      // Never set each MO to the wanted quantity: that would double-produce.
+      for (const [pid, want] of Array.from(qtyByProduct.entries())) {
+        const live = mos.filter(m => m.product_id[0] === pid && m.state !== 'cancel')
+        if (!live.length) continue
+        let diff = want - live.reduce((n, m) => n + m.product_qty, 0)
+        const open = live.filter(m => m.state === 'draft' || m.state === 'confirmed').sort((x, y) => y.id - x.id)
+        for (const m of open) {
+          if (diff === 0) break
+          if (m.product_qty + diff >= 1) {
+            await callKw(sessionId, 'mrp.production', 'write', [[m.id], { product_qty: m.product_qty + diff }], {})
+            diff = 0
+          } else {
+            await callKw(sessionId, 'mrp.production', 'action_cancel', [[m.id]], {})
+            diff += m.product_qty
+          }
+          res.mosUpdated.push({ order: o.name, mo: m.name })
+        }
+        if (diff !== 0) {
+          const last = live[live.length - 1]
+          res.mosLeft.push({ order: o.name, mo: last.name, state: last.state })
+        }
+      }
+    } catch (err) {
+      res.failed.push({ id: o.id, name: o.name, error: err instanceof Error ? err.message : String(err) })
+      console.warn(`scheduled-window: quantity update ${o.name} failed:`, err)
+    }
+  }
+  return res
+}

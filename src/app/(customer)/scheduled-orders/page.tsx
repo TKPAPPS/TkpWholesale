@@ -6,9 +6,9 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useToastStore } from '@/store/toastStore'
-import { cadenceLabel, humanDate, windowSentence, type ScheduledOrderView } from '@/lib/scheduled-orders'
+import { cadenceLabel, humanDate, windowSentence, MAX_SCHEDULE_QTY, type ScheduledOrderView } from '@/lib/scheduled-orders'
 import { nextRunDate, addDays } from '@/lib/schedule-dates'
-import { CalendarClock, Pause, Play, Trash2, AlertTriangle, CheckCircle } from 'lucide-react'
+import { CalendarClock, Pause, Play, Trash2, AlertTriangle, CheckCircle, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -18,6 +18,10 @@ export default function ScheduledOrdersPage() {
   const [schedules, setSchedules] = useState<ScheduledOrderView[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
+  // Quantity editing: one card at a time, pack counts keyed by product id (as typed, so a
+  // half-typed field is not forced back to a number).
+  const [editId, setEditId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<number, string>>({})
 
   const load = async () => {
     try {
@@ -64,6 +68,38 @@ export default function ScheduledOrdersPage() {
       await load()
     } catch {
       showToast('Could not update the schedule. Please try again.', 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const startEdit = (s: ScheduledOrderView) => {
+    setEditId(s.id)
+    setDraft(Object.fromEntries(s.items.map((i) => [i.product_id, String(i.packaging_qty || i.uom_qty)])))
+  }
+
+  const saveEdit = async (s: ScheduledOrderView) => {
+    const items = s.items.map((i) => ({ product_id: i.product_id, qty: Number(draft[i.product_id]) }))
+    if (items.some((i) => !Number.isInteger(i.qty) || i.qty < 1 || i.qty > MAX_SCHEDULE_QTY)) {
+      showToast(t(lang, 'scheduled.qtyFailed'), 'error')
+      return
+    }
+    setBusyId(s.id)
+    try {
+      const res = await fetch(`/api/scheduled-orders/${s.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_items', items }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      const w = data.window
+      const needsCheck = !w || w.failed.length > 0 || w.mosLeft.length > 0
+      showToast(t(lang, needsCheck ? 'scheduled.qtySavedCheck' : 'scheduled.qtySaved'), needsCheck ? 'error' : 'success')
+      setEditId(null)
+      await load()
+    } catch {
+      showToast(t(lang, 'scheduled.qtyFailed'), 'error')
     } finally {
       setBusyId(null)
     }
@@ -132,12 +168,40 @@ export default function ScheduledOrdersPage() {
                 {/* Items */}
                 <ul className="mt-3 text-sm text-gray-600 space-y-0.5">
                   {s.items.map((i, idx) => (
-                    <li key={idx} className="flex justify-between gap-2">
+                    <li key={idx} className="flex items-center justify-between gap-2">
                       <span className="truncate">{lang === 'he' ? i.name_he : i.name}</span>
-                      <span className="text-gray-400 shrink-0">× {i.packaging_qty || i.uom_qty}</span>
+                      {editId === s.id ? (
+                        <span className="flex items-center gap-1 shrink-0">
+                          <span className="text-gray-400">×</span>
+                          <input
+                            type="number" inputMode="numeric" min={1} max={MAX_SCHEDULE_QTY} step={1}
+                            value={draft[i.product_id] ?? ''}
+                            onChange={(e) => setDraft((d) => ({ ...d, [i.product_id]: e.target.value }))}
+                            aria-label={lang === 'he' ? i.name_he : i.name}
+                            className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900 text-center"
+                          />
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 shrink-0">× {i.packaging_qty || i.uom_qty}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
+                {editId === s.id && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{t(lang, 'scheduled.editNote')}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={() => saveEdit(s)} disabled={busyId === s.id}
+                        className="text-sm font-medium text-white bg-brand-700 hover:bg-brand-800 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      >{busyId === s.id ? t(lang, 'common.working') : t(lang, 'common.save')}</button>
+                      <button
+                        onClick={() => setEditId(null)} disabled={busyId === s.id}
+                        className="text-sm text-gray-600 hover:bg-gray-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                      >{t(lang, 'common.cancel')}</button>
+                    </div>
+                  </div>
+                )}
 
                 {!paused && (
                   <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-3">
@@ -168,11 +232,18 @@ export default function ScheduledOrdersPage() {
                       className="flex items-center gap-1.5 text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
                     ><Play className="h-4 w-4" />{t(lang, 'scheduled.resume')}</button>
                   ) : (
+                    <>
+                    <button
+                      onClick={() => startEdit(s)}
+                      disabled={busyId === s.id || editId === s.id}
+                      className="flex items-center gap-1.5 text-sm text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                    ><Pencil className="h-4 w-4" />{t(lang, 'scheduled.editQty')}</button>
                     <button
                       onClick={() => setStatus(s.id, 'pause')}
                       disabled={busyId === s.id}
                       className="flex items-center gap-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg px-3 py-1.5 disabled:opacity-50"
                     ><Pause className="h-4 w-4" />{t(lang, 'scheduled.pause')}</button>
+                    </>
                   )}
                   <button
                     onClick={() => setCancelId(s.id)}

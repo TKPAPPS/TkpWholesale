@@ -841,6 +841,26 @@ two screens can drift.
   condition), tops up its window with `fillScheduleWindow`, advances `next_run_date` to the
   earliest order still in the window, emails only when a NEW order was placed.
 
+- **Editing quantities (added 2026-10-28).** The card has "Change quantities" (active schedules
+  only; a paused one must be resumed first, because Resume revives its cancelled orders with
+  their old lines). `PATCH /api/scheduled-orders/[id]` `{action:'update_items', items:[{product_id, qty}]}`:
+  `qty` is the pack count the card shows (unit count when the item has no packaging).
+  `applyQuantityEdit` (`scheduled-orders.ts`, pure) derives `uom_qty` from the pack size the item
+  already carries (`uom_qty / packaging_qty`) and rejects anything but a whole number 1-9999, an
+  unknown product, or a missing item: a customer can change HOW MANY only, never add, remove or
+  repack. The schedule row is saved first (the cron builds new orders from it), then
+  `updateWindowQuantities` edits the confirmed orders already in the window from TOMORROW on
+  (today's order is never touched): unlock, write the line, lock again. Odoo moves the delivery
+  moves itself (an increase ADDS a second move for the difference, so check the SUM), but it does
+  NOT reliably move the manufacturing order: a decrease leaves the MO as it was, an increase
+  raises a second MO for the extra units. So MOs are reconciled by TOTAL: the newest open
+  (draft/confirmed) MO moves by the difference, an MO that would reach zero is cancelled.
+  Never set every MO to the new quantity (that double-produces). An MO already in progress or
+  done is left alone and reported (`mosLeft`); the card then tells the customer to contact us.
+  Staging test: `scripts/qa/staging-edit-quantities.mts` (66 checks, refuses a non-staging DB, PASS 66/0
+  on 2026-10-28; covers increase, decrease to 2 then 1 pack, lock restored, MO totals, idempotent,
+  cut-off day). Not yet browser-tested on the page itself.
+
 **Confirmed sale orders auto-lock in this Odoo.** `action_cancel`/`action_draft` on a locked
 order raise "You cannot cancel a locked order." `scheduled-window.ts` writes `locked:false`
 (then tries `action_unlock`) before any cancel or draft. A staff member cancelling one by hand

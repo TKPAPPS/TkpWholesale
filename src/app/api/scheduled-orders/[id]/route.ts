@@ -6,7 +6,8 @@ import { createServerClient } from '@/lib/supabase'
 import type { ScheduledOrderRow } from '@/lib/scheduled-orders-db'
 import { readJsonObject } from '@/lib/request-body'
 import { getOdooSession } from '@/lib/odoo/admin-session'
-import { withdrawScheduleWindow, restoreScheduleWindow, type ScheduleLike } from '@/lib/odoo/scheduled-window'
+import { withdrawScheduleWindow, restoreScheduleWindow, updateWindowQuantities, type ScheduleLike } from '@/lib/odoo/scheduled-window'
+import { applyQuantityEdit } from '@/lib/scheduled-orders'
 import { addDays } from '@/lib/schedule-dates'
 
 // A repeating order keeps a rolling window of CONFIRMED orders in Odoo, so every state
@@ -34,7 +35,7 @@ async function withdrawWindow(scheduleId: string, opts: { paused: boolean }) {
 
 export const dynamic = 'force-dynamic'
 
-// PATCH: pause / resume, or update the end date. DELETE: soft-cancel.
+// PATCH: pause / resume, or change item quantities. DELETE: soft-cancel.
 // Ownership is enforced in the WHERE clause (commercial_partner_id), so a request
 // for another customer's schedule matches 0 rows → 404.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -88,6 +89,35 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         console.error('resume: window restore failed (schedule still active):', err)
       }
       return NextResponse.json({ ok: true, status: 'active', next_run_date: next })
+    }
+
+    if (action === 'update_items') {
+      // Change how many of each item. Schedule row first (the cron builds new orders from it),
+      // then the confirmed orders already in the window from tomorrow on. A paused schedule
+      // cannot be edited: Resume revives its cancelled orders as they were.
+      const supabase = createServerClient()
+      const { data } = await supabase
+        .from('scheduled_orders')
+        .select('*')
+        .eq('id', params.id)
+        .eq('commercial_partner_id', parsed.commercial_partner_id)
+        .single()
+      const row = data as ScheduledOrderRow | null
+      if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+      if (row.status !== 'active') return NextResponse.json({ error: 'NOT_ACTIVE', message: 'Resume the repeating order before changing quantities.' }, { status: 409 })
+
+      const applied = applyQuantityEdit(row.items, body.items)
+      if (!applied.ok) return NextResponse.json({ error: 'INVALID_QTY', message: applied.error }, { status: 400 })
+
+      await updateOwnedSchedule(params.id, parsed.commercial_partner_id, { items: applied.items })
+      let window = null
+      try {
+        const sessionId = await getOdooSession()
+        window = await updateWindowQuantities(sessionId, params.id, applied.items, addDays(todayBkk(), 1))
+      } catch (err) {
+        console.error('update_items: window update failed (schedule row already saved):', err)
+      }
+      return NextResponse.json({ ok: true, items: applied.items, window })
     }
 
     return NextResponse.json({ error: 'INVALID_ACTION' }, { status: 400 })

@@ -156,3 +156,37 @@ export function windowSentence(lang: 'en' | 'he'): string {
     ? `ההזמנות ל-${SCHED_WINDOW_DAYS} הימים הבאים כבר קיימות במערכת כהזמנות מאושרות. בכל בוקר ב-06:30 נוספת ההזמנה של היום הבא.`
     : `The next ${SCHED_WINDOW_DAYS} days of orders are already in the system as confirmed orders. Each morning at 06:30 the following day's order is added.`
 }
+
+export const MAX_SCHEDULE_QTY = 9999
+
+// Apply a customer's quantity edit to a schedule's items. The customer edits what the card
+// shows: the pack count (packaging_qty), or the unit count for an item with no packaging.
+// The unit quantity Odoo gets is derived from the pack size the schedule already carries
+// (uom_qty / packaging_qty), so a customer can never change a pack size, add a product or
+// remove one - only how many. Pure, so the card and the server agree on the result.
+export function applyQuantityEdit(
+  items: ScheduledOrderItem[], edits: unknown,
+): { ok: true; items: ScheduledOrderItem[] } | { ok: false; error: string } {
+  if (!Array.isArray(edits) || edits.length !== items.length) return { ok: false, error: 'Send a quantity for every item.' }
+  const byProduct = new Map<number, number>()
+  for (const e of edits) {
+    const pid = (e as { product_id?: unknown })?.product_id
+    const q = (e as { qty?: unknown })?.qty
+    if (typeof pid !== 'number' || typeof q !== 'number' || !Number.isInteger(q) || q < 1 || q > MAX_SCHEDULE_QTY) {
+      return { ok: false, error: `Quantities must be whole numbers from 1 to ${MAX_SCHEDULE_QTY}.` }
+    }
+    byProduct.set(pid, q)
+  }
+  const out: ScheduledOrderItem[] = []
+  for (const i of items) {
+    const q = byProduct.get(i.product_id)
+    if (q === undefined) return { ok: false, error: 'Unknown item.' }
+    if (i.packaging_id && i.packaging_qty > 0) {
+      const packSize = i.uom_qty / i.packaging_qty
+      out.push({ ...i, packaging_qty: q, uom_qty: Math.round(packSize * q * 1000) / 1000 })
+    } else {
+      out.push({ ...i, uom_qty: q })
+    }
+  }
+  return { ok: true, items: out }
+}

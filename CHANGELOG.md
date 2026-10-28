@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-28 (Repeating orders: customers can change quantities)
+
+- Scheduled Orders card: "Change quantities" edits the pack count of each item. Saves to the
+  schedule and updates the confirmed orders already in the 7-day window from tomorrow on (sale
+  line, delivery, open manufacturing order). New orders use the new quantities.
+- New: `applyQuantityEdit`, `updateWindowQuantities`, PATCH action `update_items`,
+  `scripts/qa/staging-edit-quantities.mts`.
+
 ## 2026-07-15 (Production readiness batch 3: fail-safes + mobile polish)
 
 ### Observability decision
