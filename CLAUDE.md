@@ -683,6 +683,24 @@ logged-out customer is unaffected.
   window `error`/`unhandledrejection` listeners); and reports live only as long as Vercel
   log retention — for longer-term forensics add a durable sink (Supabase table / log drain).
 
+## Logout must wait for in-flight `/api/auth/me` (Safari "cannot log out", fixed 20/11/2026)
+
+`/api/auth/me` ROLLS the session cookie on every 200, and the customer layout fires it on every
+return to the tab (`visibilitychange`). If Log out is tapped while one is in flight, its answer
+lands AFTER the logout's cookie delete and puts the session back; `/login` then sees a signed-in
+user and bounces to `/dashboard`, which sits on the loading spinner. Customers reported it as
+"cannot log out / change user on Safari, not responding": iPhone Safari users return to the tab
+constantly. Reproduced in Playwright WebKit (iPhone 15) against a local prod build behind HTTPS.
+
+`src/lib/auth-client.ts` owns it: every client `/api/auth/me` call goes through `fetchMe()` (which
+tracks in-flight requests); `logout()` sets a flag so no new re-check starts, waits for in-flight
+ones (5 s cap), POSTs logout, CONFIRMS with `/me` and repeats up to 3 times if the cookie came
+back, clears the stored user, then `window.location.replace('/login')`. The full page load is
+deliberate: it drops every in-memory store of the customer who left (cart, favourites), which a
+client `router.push` kept, and matters when a second person signs in on the same phone. Both
+logout buttons show a disabled "Logging out..." state at once. Do not go back to
+`fetch(logout) + router.push`. Test kit: `~/Projects/temp-media/b2b-portal/2026-11-20-safari-logout/`.
+
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
 - **Nav items** (`navItems`): Dashboard · Products · Featured · Settings · Categories · Content

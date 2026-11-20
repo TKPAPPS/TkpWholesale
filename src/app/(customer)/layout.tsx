@@ -11,6 +11,7 @@ import { Navbar } from '@/components/layout/Navbar'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { fetchMe, isLoggingOut } from '@/lib/auth-client'
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -35,7 +36,7 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
     fetchCart()
     hydrateSiteSettings()
     hydrateCategories()
-    fetch('/api/auth/me')
+    fetchMe()
       .then((res) => {
         if (!res.ok) throw new Error('not authenticated')
         return res.json()
@@ -55,8 +56,10 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   // rather than continuing to use a stale tab. /api/auth/me does the active re-check.
   useEffect(() => {
     const revalidate = () => {
-      fetch('/api/auth/me').then((res) => {
-        if (!res.ok) {
+      // Never start a re-check during logout: its answer would re-set the cookie.
+      if (isLoggingOut()) return
+      fetchMe().then((res) => {
+        if (!res.ok && !isLoggingOut()) {
           setUser(null)
           router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))
         }

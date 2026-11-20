@@ -10,6 +10,7 @@ const translations = {
     'nav.orders': 'Orders',
     'nav.cart': 'Cart',
     'nav.logout': 'Logout',
+    'nav.loggingOut': 'Logging out…',
     'nav.menu': 'Menu',
     'nav.language': 'Language',
     // Auth
@@ -292,6 +293,7 @@ const translations = {
     'nav.orders': 'הזמנות',
     'nav.cart': 'עגלה',
     'nav.logout': 'התנתקות',
+    'nav.loggingOut': 'מתנתק…',
     'nav.menu': 'תפריט',
     'nav.language': 'שפה',
     'auth.login': 'כניסה',

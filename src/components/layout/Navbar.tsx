@@ -11,8 +11,9 @@ import { t } from '@/lib/i18n/translations'
 import { formatCurrency } from '@/lib/utils'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { Logo } from './Logo'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { logout } from '@/lib/auth-client'
 import type { SearchHit } from '@/types'
 
 function CartLineImage({ src }: { src: string }) {
@@ -38,12 +39,12 @@ function CartLineImage({ src }: { src: string }) {
 
 export function Navbar() {
   const { lang } = useLangStore()
-  const { user, setUser } = useAuthStore()
+  const { user } = useAuthStore()
   const cart = useCartStore((s) => s.cart)
   const lineCount = useCartStore((s) => s.lineCount())
-  const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -117,10 +118,14 @@ export function Navbar() {
     hoverTimer.current = setTimeout(() => setCartOpen(false), 150)
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    setUser(null)
-    router.push('/login')
+  // logout() waits out any in-flight session re-check, confirms the cookie is gone and
+  // reloads /login (see src/lib/auth-client.ts for the Safari race this closes).
+  // The button shows a busy state at once: on a slow connection logout can take a few seconds,
+  // and a button that does not react is exactly what customers reported as "not responding".
+  const handleLogout = () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    void logout()
   }
 
   // Full flat list used by the mobile hamburger (overflow / long tail).
@@ -284,8 +289,10 @@ export function Navbar() {
                   </div>
                   <button
                     onClick={handleLogout}
-                    title={t(lang, 'nav.logout')}
-                    className="flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    disabled={loggingOut}
+                    aria-busy={loggingOut}
+                    title={t(lang, loggingOut ? 'nav.loggingOut' : 'nav.logout')}
+                    className="flex items-center justify-center h-9 w-9 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:animate-pulse disabled:text-red-600 disabled:cursor-wait"
                   >
                     <LogOut className="h-4 w-4" />
                   </button>
@@ -334,10 +341,12 @@ export function Navbar() {
               {user && <span className="text-sm text-gray-600 truncate max-w-[180px]">{user.name}</span>}
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 text-sm text-red-600 font-medium ms-auto"
+                disabled={loggingOut}
+                aria-busy={loggingOut}
+                className="flex items-center gap-2 text-sm text-red-600 font-medium ms-auto disabled:opacity-60 disabled:cursor-wait"
               >
-                <LogOut className="h-4 w-4" />
-                {t(lang, 'nav.logout')}
+                <LogOut className={cn('h-4 w-4', loggingOut && 'animate-pulse')} />
+                {t(lang, loggingOut ? 'nav.loggingOut' : 'nav.logout')}
               </button>
             </div>
           </div>

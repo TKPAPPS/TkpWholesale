@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-20 (Log out works on Safari)
+
+- Fixed: tapping Log out right after returning to the tab (normal on iPhone Safari) left the
+  customer signed in and stuck on Home. Logout now waits for the background login check, confirms
+  the session is gone and reloads the login page, so the next person starts with a clean cart.
+- Log out buttons show "Logging out..." while it runs.
+
 ## 2026-11-20 (Add to cart: delivery address owned by another company)
 
 - Fixed: a customer whose default delivery address belongs to a sibling company (Jcafe) could
