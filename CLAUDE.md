@@ -701,6 +701,19 @@ client `router.push` kept, and matters when a second person signs in on the same
 logout buttons show a disabled "Logging out..." state at once. Do not go back to
 `fetch(logout) + router.push`. Test kit: `~/Projects/temp-media/b2b-portal/2026-11-20-safari-logout/`.
 
+**The REAL cause of the Safari report was layout, not the race (found the same day).** Production
+request logs showed iPhone Safari never sent a single POST /api/auth/logout, before or after the race
+fix, while the Google app and Android logged out fine. The phone menu is in-flow inside the STICKY
+header, so a menu taller than the screen could not be scrolled: Log out was its last row at y=673-696,
+below the visible area on every Safari-sized screen (548-739px) and under Safari's floating toolbar.
+Taller in-app browsers fit it, hence "only Safari". Fixed: the account row (name + Log out) is now the
+FIRST row of the menu, and the menu is capped to `100dvh - header` with its own scroll plus bottom
+padding so the last row (language) clears the floating toolbar. `reach.mjs` in the kit checks it the
+way a person would (what is under the finger, no auto-scroll); Playwright's normal click auto-scrolls
+an element into view, which is why the first round of tests passed. **Never put a needed control at the
+bottom of a sticky header's in-flow panel.** The customer name uses `dir="auto"` so an English name
+truncates at its end in Hebrew.
+
 ## Admin layout (responsive)
 - `src/app/(admin)/layout.tsx` is the single layout for all `/admin/*` routes.
 - **Nav items** (`navItems`): Dashboard · Products · Featured · Settings · Categories · Content

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-20 (Log out visible on iPhone)
+
+- Fixed: on iPhone Safari the phone menu was taller than the screen and could not scroll, so Log out
+  (its last row) was never visible. Name and Log out are now the first row of the menu, and the menu
+  scrolls inside itself so the language switch is reachable too.
+
 ## 2026-11-20 (Log out works on Safari)
 
 - Fixed: tapping Log out right after returning to the tab (normal on iPhone Safari) left the

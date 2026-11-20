@@ -314,7 +314,26 @@ export function Navbar() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="xl:hidden border-t border-gray-100 bg-white">
+          // The menu lives inside the sticky header, so anything taller than the screen was cut
+          // off and could not be scrolled to: on iPhone Safari that hid Log out entirely
+          // (20/11/2026). Cap it to the visible height (dvh follows Safari's toolbars) and let it
+          // scroll inside itself; the account row sits FIRST so Log out never depends on scrolling.
+          // Bottom padding lets the last row (language) scroll clear of Safari's floating toolbar.
+          <div className="xl:hidden border-t border-gray-100 bg-white max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom)+3.5rem)]">
+            {user && (
+              <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-3">
+                <span dir="auto" className="min-w-0 text-sm font-medium text-gray-700 truncate">{user.name}</span>
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  aria-busy={loggingOut}
+                  className="shrink-0 flex items-center gap-2 min-h-11 px-3 -me-3 rounded-lg text-sm text-red-600 font-medium hover:bg-red-50 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  <LogOut className={cn('h-4 w-4', loggingOut && 'animate-pulse')} />
+                  {t(lang, loggingOut ? 'nav.loggingOut' : 'nav.logout')}
+                </button>
+              </div>
+            )}
             <div className="px-4 py-2 space-y-0.5">
               {navLinks.map(({ href, label, icon: Icon }) => (
                 <Link
@@ -336,18 +355,6 @@ export function Navbar() {
             <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t(lang, 'nav.language')}</span>
               <LanguageSwitcher />
-            </div>
-            <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">
-              {user && <span className="text-sm text-gray-600 truncate max-w-[180px]">{user.name}</span>}
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                aria-busy={loggingOut}
-                className="flex items-center gap-2 text-sm text-red-600 font-medium ms-auto disabled:opacity-60 disabled:cursor-wait"
-              >
-                <LogOut className={cn('h-4 w-4', loggingOut && 'animate-pulse')} />
-                {t(lang, loggingOut ? 'nav.loggingOut' : 'nav.logout')}
-              </button>
             </div>
           </div>
         )}
