@@ -1214,6 +1214,16 @@ companies" (13 attempts on 19-20/11) while the customer saw "Could not reach Odo
   create reproduces the error; EVEN CHEN's cart gets shipping 6232 / invoice 99; a normal
   customer's addresses equal Odoo's default; picker shows [99, 6232] without 6441. Harness:
   `~/Projects/temp-media/b2b-portal/2026-11-20-cart-address-company/`.
+- Adversarial suite `edge.mjs` there: 64/0 over 12 synthetic layouts (Jcafe/Samui delivery,
+  Jcafe invoice, archived good address, login as contact person, nested address, everything
+  foreign), 5 parallel first-adds (one cart, 5 lines), and a checkout aimed at a hidden address
+  (400, nothing confirmed). EVEN CHEN full checkout confirmed on staging then cancelled.
+  QA suites: read-only 53/0 and writes 9/0, identical to main. Production census (read only):
+  the fix changes exactly ONE of 564 portal customers, partner 99.
+- **Test-fixture trap:** Odoo IGNORES `company_id` on `res.partner` create through this API
+  user and stamps company 1. Write it AFTER create (that is also how production got there), and
+  assert it stuck, or every "foreign" fixture is silently a company-1 one and tests pass/fail
+  for the wrong reason (cost one false 18-failure run).
 
 ## Load: warm is fast, the risk is a cache-expiry stampede
 
