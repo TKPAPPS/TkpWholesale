@@ -1612,6 +1612,70 @@ export async function findCart(sessionId: string, partnerId: number): Promise<nu
   return carts[0]?.id ?? null
 }
 
+// An address may sit on this portal's order if it is unowned or owned by COMPANY_ID.
+function isCompanyCompatible(companyId: [number, string] | false | undefined): boolean {
+  return !companyId || companyId[0] === COMPANY_ID
+}
+
+// When a cart is created with partner_id only, Odoo fills the delivery and invoice address
+// itself (res.partner.address_get). If the address it picks is owned by a SIBLING company,
+// Odoo's _check_company rejects the whole create with "Incompatible companies on records",
+// so the customer cannot add anything to the cart at all. Seen live 19-20/11/2026: partner 99
+// (EVEN CHEN) had delivery contact 6441 moved to Jcafe Sukhumvit (company 15) in Odoo.
+//
+// Returns overrides ONLY for an address Odoo would pick that is incompatible, replacing it with
+// the first compatible address of the same type under the same commercial partner, else the
+// partner itself. For every other customer it returns {} and the create is byte-identical to
+// before. Fails open to {} on any lookup error (= the old behaviour). Reads are own-identity
+// res.partner rows, so they skip the company scope (see callKw).
+export async function compatibleAddressOverrides(
+  sessionId: string,
+  partnerId: number,
+): Promise<{ partner_shipping_id?: number; partner_invoice_id?: number }> {
+  try {
+    const picked = await callKw(sessionId, 'res.partner', 'address_get',
+      [[partnerId], ['delivery', 'invoice']], {}, { scopeToCompany: false },
+    ) as { delivery?: number; invoice?: number }
+    const pickedIds = [picked.delivery, picked.invoice].filter((x): x is number => !!x)
+    if (!pickedIds.length) return {}
+
+    const rows = await callKw(sessionId, 'res.partner', 'read',
+      [Array.from(new Set([...pickedIds, partnerId]))], { fields: ['company_id', 'commercial_partner_id'] },
+      { scopeToCompany: false },
+    ) as { id: number; company_id: [number, string] | false; commercial_partner_id: [number, string] | false }[]
+    const byId = new Map(rows.map(r => [r.id, r]))
+
+    const out: { partner_shipping_id?: number; partner_invoice_id?: number } = {}
+    for (const [kind, field] of [['delivery', 'partner_shipping_id'], ['invoice', 'partner_invoice_id']] as const) {
+      const id = picked[kind]
+      if (!id || isCompanyCompatible(byId.get(id)?.company_id)) continue
+
+      const self = byId.get(partnerId)
+      const commercialId = self?.commercial_partner_id ? self.commercial_partner_id[0] : partnerId
+      const alternatives = await searchRead(sessionId, 'res.partner',
+        [
+          ['id', 'child_of', commercialId],
+          ['type', '=', kind],
+          ['active', '=', true],
+          ['company_id', 'in', [false, COMPANY_ID]],
+        ],
+        ['id'],
+        { limit: 1, order: 'id asc', scopeToCompany: false },
+      ) as unknown as { id: number }[]
+      const replacement = alternatives[0]?.id
+        ?? (isCompanyCompatible(self?.company_id) ? partnerId : undefined)
+      if (replacement) {
+        out[field] = replacement
+        console.warn(`cart: ${kind} address ${id} of partner ${partnerId} belongs to another company; using ${replacement}`)
+      }
+    }
+    return out
+  } catch (err) {
+    console.error('cart: compatible address lookup failed, using Odoo default', err)
+    return {}
+  }
+}
+
 export async function getOrCreateCart(
   sessionId: string,
   partnerId: number,
@@ -1627,6 +1691,8 @@ export async function getOrCreateCart(
     website_id: WEBSITE_ID,
     // Explicit, not left to the API user's default company.
     company_id: COMPANY_ID,
+    // Usually empty: only set when Odoo's own default address belongs to a sibling company.
+    ...(await compatibleAddressOverrides(sessionId, partnerId)),
   }
 
   const orderId = await callKw(sessionId, 'sale.order', 'create', [createVals], {}) as number
@@ -1767,13 +1833,20 @@ export async function fetchDeliveryAddresses(sessionId: string, commercialPartne
       ['type', 'in', ['delivery', 'contact', 'other']],
       ['active', '=', true],
     ],
-    ['id', 'name', 'street', 'street2', 'city', 'zip', 'country_id'],
+    ['id', 'name', 'street', 'street2', 'city', 'zip', 'country_id', 'company_id'],
     // Own addresses: NOT company-scoped. search_read SILENTLY FILTERS out-of-scope rows, so
     // a sibling-owned delivery address would just vanish from the picker with no error.
     { scopeToCompany: false },
-  ) as unknown as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false }[]
+  ) as unknown as { id: number; name: string; street: string | false; street2: string | false; city: string | false; zip: string | false; country_id: [number, string] | false; company_id: [number, string] | false }[]
 
-  return addresses.map(a => ({
+  // Drop addresses owned by a SIBLING company: writing one as partner_shipping_id on a
+  // company-1 order fails with "Incompatible companies" at checkout. If that would leave the
+  // customer with nothing, keep the full list (exactly the old behaviour) rather than an
+  // empty picker.
+  const compatible = addresses.filter(a => isCompanyCompatible(a.company_id))
+  const usable = compatible.length ? compatible : addresses
+
+  return usable.map(a => ({
     id: a.id,
     name: a.name,
     street: a.street || '',

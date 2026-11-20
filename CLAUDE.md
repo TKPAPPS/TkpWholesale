@@ -1187,6 +1187,34 @@ what W11 exercises).
 Found by the W12 load test, and only because it used 15 DIFFERENT customers. Every earlier
 single-customer test passed straight over it.
 
+**Since 20/11/2026 this case answers 409 `ACCOUNT_SETUP`** ("We could not start your order
+because of a setting on your account. Please contact us...") instead of 503 "Could not reach
+Odoo", and no longer drops the shared admin session. The partner itself still cannot order;
+fixing that is an Odoo data change (blank or company-1 `company_id`), not code.
+
+### The same error from a sibling-owned DELIVERY ADDRESS (fixed 20/11/2026)
+
+**This one was live.** A cart is created with `partner_id` only, so Odoo fills
+`partner_shipping_id`/`partner_invoice_id` itself via `res.partner.address_get`. On 16/11/2026
+a staff edit moved EVEN CHEN's (partner 99) delivery contact 6441 to Jcafe Sukhumvit
+(company 15). `address_get` kept picking 6441, so EVERY add-to-cart failed with "Incompatible
+companies" (13 attempts on 19-20/11) while the customer saw "Could not reach Odoo".
+
+- `compatibleAddressOverrides()` (`odoo-helpers.ts`, called by `getOrCreateCart`) asks Odoo
+  which addresses it WOULD pick and overrides only an incompatible one, with the first
+  same-type address under the commercial partner owned by company 1 or nobody, else the partner
+  itself. For everyone else it returns `{}`, so their create is unchanged. Fails open to `{}`.
+  Costs 2 extra reads per NEW cart only (not per add).
+- `fetchDeliveryAddresses()` (checkout picker AND the repeating-order cron's address check)
+  drops sibling-owned addresses, since writing one onto a company-1 order fails anyway. If that
+  would leave nothing, it returns the full list (old behaviour) rather than an empty picker.
+- Production on 20/11: ~20 customers (mostly J Cafe retail) have a Jcafe-owned delivery
+  address; the 3 active repeating orders (partner 126) use an unowned address, unaffected.
+- Staging test (staging8-42272591, local dev rig): 12/12 pass plus the 409 path. Old-style
+  create reproduces the error; EVEN CHEN's cart gets shipping 6232 / invoice 99; a normal
+  customer's addresses equal Odoo's default; picker shows [99, 6232] without 6441. Harness:
+  `~/Projects/temp-media/b2b-portal/2026-11-20-cart-address-company/`.
+
 ## Load: warm is fast, the risk is a cache-expiry stampede
 
 Measured 2026-08-23 against a PRODUCTION BUILD (`next start`, not `next dev`) pointed at

@@ -130,8 +130,17 @@ export async function POST(req: NextRequest) {
     const cart = await readCart(sessionId, cartId)
     return NextResponse.json({ ...cart, adjusted_packs: adjustedPacks })
   } catch (err) {
-    invalidateOdooSession()
     console.error('cart lines POST error:', err)
+    // Odoo answered, but refused on a multi-company setup problem in this customer's records
+    // (e.g. their partner itself is owned by a sibling company). Not an outage: say so, and
+    // keep the shared admin session (dropping it would force everyone to re-authenticate).
+    if (err instanceof Error && err.message.includes('Incompatible companies')) {
+      return NextResponse.json({
+        error: 'ACCOUNT_SETUP',
+        message: 'We could not start your order because of a setting on your account. Please contact us and we will fix it.',
+      }, { status: 409 })
+    }
+    invalidateOdooSession()
     return NextResponse.json({ error: 'ODOO_UNAVAILABLE', message: 'Could not reach Odoo.' }, { status: 503 })
   }
 }

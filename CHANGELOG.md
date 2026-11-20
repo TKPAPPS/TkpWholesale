@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-20 (Add to cart: delivery address owned by another company)
+
+- Fixed: a customer whose default delivery address belongs to a sibling company (Jcafe) could
+  not add anything to the cart and saw "Could not reach Odoo" (EVEN CHEN, since 16/11). New
+  carts now use a same-company address in that case; everyone else's carts are unchanged.
+- Checkout address list hides addresses owned by another company (they always failed).
+- When Odoo refuses a cart for a company mismatch the customer gets a clear "contact us"
+  message (409 `ACCOUNT_SETUP`) instead of "Could not reach Odoo".
+
 ## 2026-10-28 (Repeating orders: customers can change quantities)
 
 - Scheduled Orders card: "Change quantities" edits the pack count of each item. Saves to the
